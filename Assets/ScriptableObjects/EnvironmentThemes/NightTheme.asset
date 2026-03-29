@@ -1,0 +1,96 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 8532bbf5ed8074a10abab5c9f504753f, type: 3}
+  m_Name: NightTheme
+  m_EditorClassIdentifier: Assembly-CSharp::EnvironmentThemeData
+  themeType: 1
+  sky:
+    topColor: {r: 0.05, g: 0.08, b: 0.18, a: 1}
+    horizonColor: {r: 0.18, g: 0.22, b: 0.34, a: 1}
+    bottomColor: {r: 0.02, g: 0.03, b: 0.08, a: 1}
+    horizonOffset: -0.03
+    horizonSoftness: 0.28
+    rotationMultiplier: 0.06
+  farClouds:
+    enabled: 1
+    tint: {r: 0.25, g: 0.31, b: 0.42, a: 1}
+    opacity: 0.24
+    rotationMultiplier: 0.12
+    scrollVelocity: {x: 0.0011, y: 0.00006}
+    patternScale: 4.6
+    coverage: 0.58
+    softness: 0.18
+    bandCenter: 0.71
+    bandWidth: 0.15
+    intensity: 0.82
+    density: 48
+    twinkleSpeed: 1.5
+  midClouds:
+    enabled: 1
+    tint: {r: 0.33, g: 0.39, b: 0.52, a: 1}
+    opacity: 0.34
+    rotationMultiplier: 0.26
+    scrollVelocity: {x: 0.0026, y: 0.00012}
+    patternScale: 5.8
+    coverage: 0.56
+    softness: 0.16
+    bandCenter: 0.61
+    bandWidth: 0.2
+    intensity: 0.9
+    density: 48
+    twinkleSpeed: 1.5
+  weather:
+    enabled: 0
+    tint: {r: 0.17, g: 0.21, b: 0.3, a: 1}
+    opacity: 0.08
+    rotationMultiplier: 0.18
+    scrollVelocity: {x: 0.001, y: 0}
+    patternScale: 3.2
+    coverage: 0.48
+    softness: 0.2
+    bandCenter: 0.56
+    bandWidth: 0.26
+    intensity: 0.72
+    density: 48
+    twinkleSpeed: 1.5
+  stars:
+    enabled: 1
+    tint: {r: 0.78, g: 0.86, b: 1, a: 1}
+    opacity: 0.88
+    rotationMultiplier: 0.1
+    scrollVelocity: {x: 0.0004, y: 0}
+    patternScale: 4
+    coverage: 0.55
+    softness: 0.16
+    bandCenter: 0.34
+    bandWidth: 0.2
+    intensity: 1.35
+    density: 78
+    twinkleSpeed: 1.9
+  directionalLightColor: {r: 0.47, g: 0.56, b: 0.72, a: 1}
+  directionalLightIntensity: 0.45
+  ambientSkyColor: {r: 0.09, g: 0.12, b: 0.19, a: 1}
+  ambientEquatorColor: {r: 0.05, g: 0.07, b: 0.1, a: 1}
+  ambientGroundColor: {r: 0.02, g: 0.025, b: 0.03, a: 1}
+  ambientIntensity: 0.75
+  fogEnabled: 1
+  fogColor: {r: 0.08, g: 0.11, b: 0.17, a: 1}
+  fogDensity: 0.007
+  fogStartDistance: 42
+  fogEndDistance: 118
+  rain:
+    enabled: 0
+    intensity: 0
+    tint: {r: 0.74, g: 0.82, b: 0.93, a: 0.18}
+    emissionRate: 380
+    fallSpeed: 45
+    lifetime: 2.5
