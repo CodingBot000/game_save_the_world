@@ -3,6 +3,7 @@ using UnityEngine;
 
 public class HomingMissileController : MonoBehaviour
 {
+    private const float DefaultMissileVisualLength = 0.92f;
     private enum MissilePhase
     {
         Straight,
@@ -28,12 +29,23 @@ public class HomingMissileController : MonoBehaviour
     private float remainingLifetime;
     private float damage;
     private float hitRadius;
+    private float visualScale = 1f;
+    private float smokeScale = 1f;
+    private float impactEffectScale = 1f;
+    private bool useTemplateOriginalMaterials;
+    private Color templateTint = Color.white;
+    private Vector3 templateLocalEulerAngles;
     private Vector3 straightPhaseStartPosition;
     private Vector3 straightDirection;
     private Vector3 boostDirection;
     private Quaternion turnStartRotation;
     private Quaternion turnTargetRotation;
     private Transform exhaustAnchor;
+    private GameObject smokeTemplate;
+    private GameObject impactEffectTemplate;
+    private Texture2D visualTexture;
+    private Texture2D smokeTexture;
+    private GameObject smokeInstance;
     private TrailRenderer trailRenderer;
     private ParticleSystem smokeTrail;
     private readonly List<Material> runtimeMaterials = new();
@@ -55,11 +67,31 @@ public class HomingMissileController : MonoBehaviour
         float lifetime,
         float damageAmount,
         float projectileHitRadius,
-        GameObject visualTemplate = null)
+        GameObject visualTemplate = null,
+        GameObject smokePrefab = null,
+        GameObject impactEffectPrefab = null,
+        Texture2D visualTextureAsset = null,
+        Texture2D smokeTextureAsset = null,
+        float customVisualScale = 1f,
+        float customSmokeScale = 1f,
+        float customImpactEffectScale = 1f,
+        bool preserveTemplateMaterials = false,
+        Color customTemplateTint = default,
+        Vector3 customTemplateLocalEulerAngles = default)
     {
         battleController = owner;
         targetTransform = target;
         team = projectileTeam;
+        smokeTemplate = smokePrefab;
+        impactEffectTemplate = impactEffectPrefab;
+        visualTexture = visualTextureAsset;
+        smokeTexture = smokeTextureAsset;
+        visualScale = Mathf.Max(0.01f, customVisualScale);
+        smokeScale = Mathf.Max(0.01f, customSmokeScale);
+        impactEffectScale = Mathf.Max(0.01f, customImpactEffectScale);
+        useTemplateOriginalMaterials = preserveTemplateMaterials;
+        templateTint = customTemplateTint == default ? Color.white : customTemplateTint;
+        templateLocalEulerAngles = customTemplateLocalEulerAngles;
 
         Vector3 launchDirection = initialDirection.sqrMagnitude > 0.001f ? initialDirection.normalized : Vector3.forward;
         transform.rotation = Quaternion.LookRotation(launchDirection, Vector3.up);
@@ -108,6 +140,7 @@ public class HomingMissileController : MonoBehaviour
 
         if (hit)
         {
+            SpawnImpactEffect();
             Destroy(gameObject);
         }
     }
@@ -203,15 +236,27 @@ public class HomingMissileController : MonoBehaviour
 
         if (visualTemplate != null)
         {
-            GameObject customVisual = Instantiate(visualTemplate, visualRoot.transform);
-            customVisual.name = "MissileVisual";
-            customVisual.transform.localPosition = Vector3.zero;
-            customVisual.transform.localRotation = Quaternion.identity;
-            customVisual.transform.localScale = Vector3.one;
+            GameObject customVisual = InstantiateTemplate(visualTemplate, visualRoot.transform);
+            if (customVisual == null)
+            {
+                Debug.LogWarning($"Missile visual template failed to instantiate: {visualTemplate.name}", this);
+            }
+            else
+            {
+                customVisual.name = "MissileVisual";
+                customVisual.transform.localPosition = Vector3.zero;
+                customVisual.transform.localRotation = Quaternion.Euler(templateLocalEulerAngles);
+                ApplyTemplateVisualAppearance(customVisual);
+                if (!NormalizeCustomVisualScale(customVisual.transform))
+                {
+                    customVisual.transform.localScale = customVisual.transform.localScale * visualScale;
+                    Debug.LogWarning($"Missile visual bounds normalization failed, using raw scale on template: {visualTemplate.name}", this);
+                }
+            }
         }
         else
         {
-            CreateDefaultVisual(visualRoot.transform);
+            Debug.LogWarning("Missile visual template is missing. Missile will render without a body mesh.", this);
         }
 
         exhaustAnchor = ResolveExhaustAnchor(visualRoot.transform);
@@ -283,7 +328,26 @@ public class HomingMissileController : MonoBehaviour
 
     private void EnsureTrailRenderer()
     {
-        trailRenderer = GetComponent<TrailRenderer>() ?? gameObject.AddComponent<TrailRenderer>();
+        if (smokeTemplate != null)
+        {
+            if (trailRenderer != null)
+            {
+                trailRenderer.enabled = false;
+            }
+
+            return;
+        }
+
+        if (!TryGetComponent(out trailRenderer) || trailRenderer == null)
+        {
+            trailRenderer = gameObject.AddComponent<TrailRenderer>();
+        }
+
+        if (trailRenderer == null)
+        {
+            return;
+        }
+
         trailRenderer.time = 0.35f;
         trailRenderer.minVertexDistance = 0.03f;
         trailRenderer.startWidth = 0.14f;
@@ -304,6 +368,12 @@ public class HomingMissileController : MonoBehaviour
 
     private void EnsureSmokeTrail()
     {
+        if (smokeTexture != null)
+        {
+            CreateTexturedSmokeTrail();
+            return;
+        }
+
         GameObject smokeObject = new("SmokeTrail");
         smokeObject.transform.SetParent(exhaustAnchor != null ? exhaustAnchor : transform, false);
         smokeObject.transform.localPosition = Vector3.zero;
@@ -356,6 +426,65 @@ public class HomingMissileController : MonoBehaviour
             "Sprites/Default");
         smokeTrail.Stop(true, ParticleSystemStopBehavior.StopEmittingAndClear);
         smokeTrail.Play(true);
+    }
+
+    private void SpawnImpactEffect()
+    {
+        if (impactEffectTemplate == null)
+        {
+            return;
+        }
+
+        GameObject effectInstance = InstantiateTemplate(impactEffectTemplate, transform.position, transform.rotation);
+        if (effectInstance == null)
+        {
+            return;
+        }
+
+        effectInstance.transform.localScale = effectInstance.transform.localScale * impactEffectScale;
+        Destroy(effectInstance, 4f);
+    }
+
+    private static GameObject InstantiateTemplate(GameObject template, Transform parent)
+    {
+        if (template == null)
+        {
+            return null;
+        }
+
+        Object instance = Instantiate((Object)template, parent);
+        return ResolveInstantiatedGameObject(instance);
+    }
+
+    private static GameObject InstantiateTemplate(GameObject template, Vector3 position, Quaternion rotation)
+    {
+        if (template == null)
+        {
+            return null;
+        }
+
+        Object instance = Instantiate((Object)template, position, rotation);
+        return ResolveInstantiatedGameObject(instance);
+    }
+
+    private static GameObject ResolveInstantiatedGameObject(Object instance)
+    {
+        if (instance == null)
+        {
+            return null;
+        }
+
+        if (instance is GameObject gameObject)
+        {
+            return gameObject;
+        }
+
+        if (instance is Component component)
+        {
+            return component.gameObject;
+        }
+
+        return null;
     }
 
     private static Transform ResolveExhaustAnchor(Transform parent)
@@ -412,6 +541,117 @@ public class HomingMissileController : MonoBehaviour
         return gradient;
     }
 
+    private void CreateTexturedSmokeTrail()
+    {
+        GameObject smokeObject = new("SmokeTrail");
+        smokeObject.transform.SetParent(exhaustAnchor != null ? exhaustAnchor : transform, false);
+        smokeObject.transform.localPosition = Vector3.zero;
+        smokeObject.transform.localRotation = Quaternion.Euler(0f, 180f, 0f);
+
+        smokeTrail = smokeObject.AddComponent<ParticleSystem>();
+        smokeTrail.Stop(true, ParticleSystemStopBehavior.StopEmittingAndClear);
+        ParticleSystem.MainModule main = smokeTrail.main;
+        main.loop = true;
+        main.playOnAwake = false;
+        main.duration = 1.6f;
+        main.simulationSpace = ParticleSystemSimulationSpace.World;
+        main.startLifetime = new ParticleSystem.MinMaxCurve(1.15f, 2.05f);
+        main.startSpeed = new ParticleSystem.MinMaxCurve(1.1f, 2.1f);
+        main.startSize = new ParticleSystem.MinMaxCurve(0.21f, 0.39f);
+        main.startColor = new Color(0.99f, 0.995f, 1f, 0.97f);
+        main.maxParticles = 1200;
+
+        ParticleSystem.EmissionModule emission = smokeTrail.emission;
+        emission.enabled = true;
+        emission.rateOverTime = 260f;
+
+        ParticleSystem.ShapeModule shape = smokeTrail.shape;
+        shape.enabled = true;
+        shape.shapeType = ParticleSystemShapeType.Cone;
+        shape.angle = 9f;
+        shape.radius = 0.019f;
+        shape.radiusThickness = 0.12f;
+
+        ParticleSystem.VelocityOverLifetimeModule velocityOverLifetime = smokeTrail.velocityOverLifetime;
+        velocityOverLifetime.enabled = true;
+        velocityOverLifetime.space = ParticleSystemSimulationSpace.Local;
+        velocityOverLifetime.x = new ParticleSystem.MinMaxCurve(0f, 0f);
+        velocityOverLifetime.y = new ParticleSystem.MinMaxCurve(0f, 0f);
+        velocityOverLifetime.z = new ParticleSystem.MinMaxCurve(-0.9f, -1.8f);
+
+        ParticleSystem.ColorOverLifetimeModule colorOverLifetime = smokeTrail.colorOverLifetime;
+        colorOverLifetime.enabled = true;
+        colorOverLifetime.color = new ParticleSystem.MinMaxGradient(CreateSmokeGradient());
+
+        ParticleSystem.SizeOverLifetimeModule sizeOverLifetime = smokeTrail.sizeOverLifetime;
+        sizeOverLifetime.enabled = true;
+        AnimationCurve sizeCurve = new();
+        sizeCurve.AddKey(0f, 0.31f);
+        sizeCurve.AddKey(0.18f, 0.59f);
+        sizeCurve.AddKey(0.55f, 0.96f);
+        sizeCurve.AddKey(1f, 1.575f);
+        sizeOverLifetime.size = new ParticleSystem.MinMaxCurve(1f, sizeCurve);
+
+        ParticleSystemRenderer renderer = smokeTrail.GetComponent<ParticleSystemRenderer>();
+        renderer.renderMode = ParticleSystemRenderMode.Billboard;
+        renderer.maxParticleSize = 1.5f;
+
+        Material smokeMaterial = CreateRuntimeMaterial(
+            "RuntimeTemplateSmokeMaterial",
+            new Color(1f, 1f, 1f, 1f),
+            true,
+            "Universal Render Pipeline/Particles/Unlit",
+            "Particles/Standard Unlit",
+            "Sprites/Default");
+        ApplyTexture(smokeMaterial, smokeTexture);
+        renderer.sharedMaterial = smokeMaterial;
+
+        smokeObject.transform.localScale = Vector3.one * Mathf.Max(0.1f, smokeScale * 0.775f);
+        smokeTrail.Play(true);
+    }
+
+    private void ConfigureSmokeTemplate(GameObject smokeObject)
+    {
+        if (smokeObject == null)
+        {
+            return;
+        }
+
+        ParticleSystem[] smokeSystems = smokeObject.GetComponentsInChildren<ParticleSystem>(true);
+        for (int i = 0; i < smokeSystems.Length; i++)
+        {
+            ParticleSystem.MainModule main = smokeSystems[i].main;
+            main.simulationSpace = ParticleSystemSimulationSpace.World;
+        }
+
+        if (smokeTexture == null)
+        {
+            return;
+        }
+
+        Material smokeMaterial = CreateRuntimeMaterial(
+            "RuntimeTemplateSmokeMaterial",
+            new Color(1f, 1f, 1f, 0.72f),
+            true,
+            "Universal Render Pipeline/Particles/Unlit",
+            "Particles/Standard Unlit",
+            "Sprites/Default");
+        if (smokeMaterial == null)
+        {
+            return;
+        }
+
+        ApplyTexture(smokeMaterial, smokeTexture);
+
+        ParticleSystemRenderer[] renderers = smokeObject.GetComponentsInChildren<ParticleSystemRenderer>(true);
+        for (int i = 0; i < renderers.Length; i++)
+        {
+            renderers[i].renderMode = ParticleSystemRenderMode.Billboard;
+            renderers[i].maxParticleSize = Mathf.Max(1f, renderers[i].maxParticleSize);
+            renderers[i].sharedMaterial = smokeMaterial;
+        }
+    }
+
     private static Gradient CreateSmokeGradient()
     {
         Gradient gradient = new();
@@ -429,6 +669,86 @@ public class HomingMissileController : MonoBehaviour
                 new GradientAlphaKey(0f, 1f),
             });
         return gradient;
+    }
+
+    private void ApplyTemplateVisualAppearance(GameObject visualRoot)
+    {
+        if (visualRoot == null || useTemplateOriginalMaterials)
+        {
+            return;
+        }
+
+        Material overrideMaterial = CreateRuntimeMaterial(
+            "RuntimeMissileTemplateOverrideMaterial",
+            templateTint,
+            false,
+            "Universal Render Pipeline/Lit",
+            "Standard",
+            "Universal Render Pipeline/Unlit",
+            "Sprites/Default");
+        if (overrideMaterial == null)
+        {
+            return;
+        }
+
+        ApplyTexture(overrideMaterial, visualTexture);
+
+        Renderer[] renderers = visualRoot.GetComponentsInChildren<Renderer>(true);
+        for (int i = 0; i < renderers.Length; i++)
+        {
+            ApplyMaterialToAllSlots(renderers[i], overrideMaterial);
+        }
+    }
+
+    private bool NormalizeCustomVisualScale(Transform customVisual)
+    {
+        if (customVisual == null)
+        {
+            return false;
+        }
+
+        Renderer[] renderers = customVisual.GetComponentsInChildren<Renderer>(true);
+        if (renderers == null || renderers.Length == 0)
+        {
+            return false;
+        }
+
+        Bounds combinedBounds = renderers[0].bounds;
+        bool foundVisibleBounds = false;
+        for (int i = 0; i < renderers.Length; i++)
+        {
+            Renderer renderer = renderers[i];
+            if (renderer == null || !renderer.enabled)
+            {
+                continue;
+            }
+
+            if (!foundVisibleBounds)
+            {
+                combinedBounds = renderer.bounds;
+                foundVisibleBounds = true;
+                continue;
+            }
+
+            combinedBounds.Encapsulate(renderer.bounds);
+        }
+
+        if (!foundVisibleBounds)
+        {
+            return false;
+        }
+
+        float longestDimension = Mathf.Max(combinedBounds.size.x, combinedBounds.size.y, combinedBounds.size.z);
+        if (longestDimension <= 0.0001f)
+        {
+            return false;
+        }
+
+        Vector3 originalScale = customVisual.localScale;
+        float targetLength = Mathf.Max(0.1f, DefaultMissileVisualLength * visualScale);
+        float scaleFactor = targetLength / longestDimension;
+        customVisual.localScale = originalScale * scaleFactor;
+        return true;
     }
 
     private Material CreateRuntimeMaterial(string name, Color color, bool transparent, params string[] shaderNames)
@@ -493,6 +813,24 @@ public class HomingMissileController : MonoBehaviour
         return material;
     }
 
+    private static void ApplyTexture(Material material, Texture texture)
+    {
+        if (material == null || texture == null)
+        {
+            return;
+        }
+
+        if (material.HasProperty("_BaseMap"))
+        {
+            material.SetTexture("_BaseMap", texture);
+        }
+
+        if (material.HasProperty("_MainTex"))
+        {
+            material.SetTexture("_MainTex", texture);
+        }
+    }
+
     private static void ApplyMaterial(Renderer renderer, Material material)
     {
         if (renderer == null || material == null)
@@ -503,14 +841,62 @@ public class HomingMissileController : MonoBehaviour
         renderer.sharedMaterial = material;
     }
 
+    private static void ApplyMaterialToAllSlots(Renderer renderer, Material material)
+    {
+        if (renderer == null || material == null)
+        {
+            return;
+        }
+
+        Material[] sharedMaterials = renderer.sharedMaterials;
+        if (sharedMaterials == null || sharedMaterials.Length == 0)
+        {
+            renderer.sharedMaterial = material;
+            return;
+        }
+
+        for (int i = 0; i < sharedMaterials.Length; i++)
+        {
+            sharedMaterials[i] = material;
+        }
+
+        renderer.sharedMaterials = sharedMaterials;
+    }
+
     private void OnDestroy()
     {
+        DetachSmokeEffect();
+
         for (int i = 0; i < runtimeMaterials.Count; i++)
         {
             if (runtimeMaterials[i] != null)
             {
                 Destroy(runtimeMaterials[i]);
             }
+        }
+    }
+
+    private void DetachSmokeEffect()
+    {
+        if (smokeInstance != null)
+        {
+            smokeInstance.transform.SetParent(null, true);
+            ParticleSystem[] smokeSystems = smokeInstance.GetComponentsInChildren<ParticleSystem>(true);
+            for (int i = 0; i < smokeSystems.Length; i++)
+            {
+                smokeSystems[i].Stop(true, ParticleSystemStopBehavior.StopEmitting);
+            }
+
+            Destroy(smokeInstance, 4f);
+            smokeInstance = null;
+        }
+
+        if (smokeTrail != null)
+        {
+            smokeTrail.transform.SetParent(null, true);
+            smokeTrail.Stop(true, ParticleSystemStopBehavior.StopEmitting);
+            Destroy(smokeTrail.gameObject, 4f);
+            smokeTrail = null;
         }
     }
 }

@@ -325,7 +325,10 @@ public class HUDPresenter : MonoBehaviour
         if (playerCombatController.TryFireMissile())
         {
             SetStatusMessage("Missile away.");
+            return;
         }
+
+        SetStatusMessage(playerCombatController.GetMissileUnavailableReason());
     }
 
     private void HandleQuitButtonClicked()

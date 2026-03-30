@@ -21,13 +21,23 @@ public class PlayerCombatController : MonoBehaviour
     [SerializeField] private float missileAcceleration = 130f;
     [SerializeField] private float missileTurnRate = 280f;
     [SerializeField] private float missileLockOnDelay = 0.2f;
-    [SerializeField] private float missileStraightPhaseDuration = 0.3f;
+    [SerializeField] private float missileStraightPhaseDuration = 0.2f;
     [SerializeField] private float missileStraightPhaseDistance = 1.0f;
-    [SerializeField] private float missileTurnPhaseDuration = 0.6f;
+    [SerializeField] private float missileTurnPhaseDuration = 0.4f;
     [SerializeField] private float missileBoostPhaseDuration = 0.6f;
     [SerializeField] private float missileLifetime = 6f;
     [SerializeField] private float missileHitRadius = 1.8f;
     [SerializeField] private GameObject missileVisualTemplate;
+    [SerializeField] private GameObject missileSmokeTemplate;
+    [SerializeField] private GameObject missileImpactEffectTemplate;
+    [SerializeField] private Texture2D missileVisualTexture;
+    [SerializeField] private Texture2D missileSmokeTexture;
+    [SerializeField] private float missileVisualScale = 0.78f;
+    [SerializeField] private float missileSmokeScale = 0.22f;
+    [SerializeField] private float missileImpactEffectScale = 0.08f;
+    [SerializeField] private bool missileUseTemplateOriginalMaterials;
+    [SerializeField] private Color missileTemplateTint = new(0.94f, 0.95f, 0.98f, 1f);
+    [SerializeField] private Vector3 missileTemplateLocalEulerAngles = Vector3.zero;
     [SerializeField] private Transform missileLauncherLeft;
     [SerializeField] private Transform missileLauncherRight;
 
@@ -67,6 +77,41 @@ public class PlayerCombatController : MonoBehaviour
     public bool MissileInputAvailable => MissileSystemAvailable && (GameplayDebugFlags.IgnoreMissileCooldown || missileCooldownRemaining <= 0f);
     public float MissileCooldownRemaining => Mathf.Max(0f, missileCooldownRemaining);
     public float MissileCooldownDuration => Mathf.Max(0.01f, missileCooldown);
+
+    public string GetMissileUnavailableReason()
+    {
+        if (!combatEnabled)
+        {
+            return "Missile system offline.";
+        }
+
+        if (!IsAlive)
+        {
+            return "Player destroyed.";
+        }
+
+        if (!ResolveMissileLaunchers())
+        {
+            return "Missile launcher offline.";
+        }
+
+        if (battleController == null || bossController == null)
+        {
+            return "Missile lock unavailable.";
+        }
+
+        if (!bossController.IsAlive)
+        {
+            return "No missile target.";
+        }
+
+        if (missileCooldownRemaining > 0f && !GameplayDebugFlags.IgnoreMissileCooldown)
+        {
+            return $"Missile reloading {MissileCooldownRemaining:0.0}s";
+        }
+
+        return "Missile blocked.";
+    }
 
     private void Awake()
     {
@@ -216,7 +261,17 @@ public class PlayerCombatController : MonoBehaviour
             missileLifetime,
             missileDamage,
             missileHitRadius,
-            missileVisualTemplate);
+            missileVisualTemplate,
+            missileSmokeTemplate,
+            missileImpactEffectTemplate,
+            missileVisualTexture,
+            missileSmokeTexture,
+            missileVisualScale,
+            missileSmokeScale,
+            missileImpactEffectScale,
+            missileUseTemplateOriginalMaterials,
+            missileTemplateTint,
+            missileTemplateLocalEulerAngles);
         return true;
     }
 
@@ -282,27 +337,33 @@ public class PlayerCombatController : MonoBehaviour
 
     private void EnsureMuzzleFlash()
     {
-        if (muzzle == null || muzzleFlash != null)
+        if (muzzle == null)
         {
             return;
         }
 
-        Transform existing = muzzle.Find("MuzzleFlash");
-        if (existing != null)
+        if (muzzleFlash == null)
         {
-            muzzleFlash = existing.GetComponent<ParticleSystem>();
-            if (muzzleFlash != null)
+            Transform existing = muzzle.Find("MuzzleFlash");
+            if (existing != null)
             {
-                return;
+                muzzleFlash = existing.GetComponent<ParticleSystem>();
             }
         }
 
-        GameObject flashObject = new("MuzzleFlash");
-        flashObject.transform.SetParent(muzzle, false);
-        flashObject.transform.localPosition = new Vector3(0f, 0f, 0.08f);
-        flashObject.transform.localRotation = Quaternion.identity;
+        if (muzzleFlash == null)
+        {
+            GameObject flashObject = new("MuzzleFlash");
+            flashObject.transform.SetParent(muzzle, false);
+            flashObject.transform.localPosition = new Vector3(0f, 0f, 0.08f);
+            flashObject.transform.localRotation = Quaternion.identity;
+            muzzleFlash = flashObject.AddComponent<ParticleSystem>();
+        }
 
-        muzzleFlash = flashObject.AddComponent<ParticleSystem>();
+        muzzleFlash.Stop(true, ParticleSystemStopBehavior.StopEmittingAndClear);
+        muzzleFlash.transform.localPosition = new Vector3(0f, 0f, 0.08f);
+        muzzleFlash.transform.localRotation = Quaternion.identity;
+
         ParticleSystem.MainModule main = muzzleFlash.main;
         main.loop = false;
         main.playOnAwake = false;

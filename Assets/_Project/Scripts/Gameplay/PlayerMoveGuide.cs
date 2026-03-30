@@ -1,5 +1,8 @@
 using UnityEngine;
 using UnityEngine.Rendering;
+#if UNITY_EDITOR
+using UnityEditor;
+#endif
 
 [ExecuteAlways]
 public class PlayerMoveGuide : MonoBehaviour
@@ -26,6 +29,9 @@ public class PlayerMoveGuide : MonoBehaviour
     private LineRenderer nearRenderer;
     private LineRenderer farRenderer;
     private LineRenderer[] depthRenderers;
+#if UNITY_EDITOR
+    private bool editorRefreshScheduled;
+#endif
 
     public Camera TargetCamera => GetComponentInParent<Camera>();
     public Rect ViewportRect => Rect.MinMaxRect(
@@ -138,6 +144,13 @@ public class PlayerMoveGuide : MonoBehaviour
     private void OnValidate()
     {
         ClampValues();
+#if UNITY_EDITOR
+        if (!Application.isPlaying)
+        {
+            ScheduleEditorVisualRefresh();
+            return;
+        }
+#endif
         EnsureRuntimeVisuals();
         UpdateRuntimeVisuals();
     }
@@ -201,6 +214,31 @@ public class PlayerMoveGuide : MonoBehaviour
             depthRenderers[i] ??= CreateLineRenderer($"DepthRail_{i}", false, new Color(guideColor.r, guideColor.g, guideColor.b, 0.3f), depthLineWidth);
         }
     }
+
+#if UNITY_EDITOR
+    private void ScheduleEditorVisualRefresh()
+    {
+        if (editorRefreshScheduled || this == null)
+        {
+            return;
+        }
+
+        editorRefreshScheduled = true;
+        EditorApplication.delayCall += RefreshEditorVisuals;
+    }
+
+    private void RefreshEditorVisuals()
+    {
+        editorRefreshScheduled = false;
+        if (this == null)
+        {
+            return;
+        }
+
+        EnsureRuntimeVisuals();
+        UpdateRuntimeVisuals();
+    }
+#endif
 
     private void UpdateRuntimeVisuals()
     {
