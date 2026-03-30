@@ -17,6 +17,7 @@ public class BattleController : MonoBehaviour
     [SerializeField] private GameObject allyPlaceholder;
 
     private bool battleActive = true;
+    private bool awaitingDefeatChoice;
 
     public bool IsBattleActive => battleActive;
 
@@ -32,6 +33,11 @@ public class BattleController : MonoBehaviour
     {
         if (!battleActive)
         {
+            if (awaitingDefeatChoice)
+            {
+                return;
+            }
+
             Keyboard keyboard = Keyboard.current;
             if (keyboard != null && keyboard.rKey.wasPressedThisFrame)
             {
@@ -165,6 +171,8 @@ public class BattleController : MonoBehaviour
         if (hudPresenter != null && bossController != null && playerCombatController != null && playerOrbitController != null)
         {
             hudPresenter.Configure(bossController, playerCombatController, playerOrbitController);
+            hudPresenter.RetryRequested += HandleRetryRequested;
+            hudPresenter.QuitRequested += HandleQuitRequested;
             string modeLabel = GameFlowController.CurrentMode == GameMode.MultiPlaceholder
                 ? "Co-op placeholder mode"
                 : "Single battle mode";
@@ -175,6 +183,7 @@ public class BattleController : MonoBehaviour
     private void HandleBossDied()
     {
         battleActive = false;
+        awaitingDefeatChoice = false;
 
         if (bossAttackController != null)
         {
@@ -193,6 +202,7 @@ public class BattleController : MonoBehaviour
 
         if (hudPresenter != null)
         {
+            hudPresenter.HideMissionFailedOverlay();
             hudPresenter.SetStatusMessage("Boss defeated. Press R to restart.");
         }
     }
@@ -200,6 +210,7 @@ public class BattleController : MonoBehaviour
     private void HandlePlayerDied()
     {
         battleActive = false;
+        awaitingDefeatChoice = true;
 
         if (bossAttackController != null)
         {
@@ -218,8 +229,19 @@ public class BattleController : MonoBehaviour
 
         if (hudPresenter != null)
         {
-            hudPresenter.SetStatusMessage("Player down. Press R to restart.");
+            hudPresenter.SetStatusMessage("Mission failed.");
+            hudPresenter.ShowMissionFailedOverlay();
         }
+    }
+
+    private void HandleRetryRequested()
+    {
+        SceneManager.LoadScene(SceneManager.GetActiveScene().path);
+    }
+
+    private void HandleQuitRequested()
+    {
+        GameFlowController.LoadMainMenu();
     }
 
     private Transform FindSceneTransform(string objectName)
@@ -279,6 +301,12 @@ public class BattleController : MonoBehaviour
         if (playerCombatController != null)
         {
             playerCombatController.Died -= HandlePlayerDied;
+        }
+
+        if (hudPresenter != null)
+        {
+            hudPresenter.RetryRequested -= HandleRetryRequested;
+            hudPresenter.QuitRequested -= HandleQuitRequested;
         }
     }
 }

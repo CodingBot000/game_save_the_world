@@ -5,9 +5,11 @@ using UnityEngine.UI;
 public class MenuPresenter : MonoBehaviour
 {
     [SerializeField] private bool autoBuildUi = true;
+    [SerializeField] private float inputLockDuration = 0.35f;
 
     private Canvas canvas;
     private bool uiBuilt;
+    private float inputUnlockTime;
 
     private void Awake()
     {
@@ -19,16 +21,23 @@ public class MenuPresenter : MonoBehaviour
     {
         ResolveCanvas();
         TryBuildUi();
+        inputUnlockTime = Time.unscaledTime + inputLockDuration;
     }
 
     private void Start()
     {
         ResolveCanvas();
         TryBuildUi();
+        inputUnlockTime = Time.unscaledTime + inputLockDuration;
     }
 
     private void Update()
     {
+        if (Time.unscaledTime < inputUnlockTime)
+        {
+            return;
+        }
+
         Keyboard keyboard = Keyboard.current;
         if (keyboard == null)
         {
@@ -48,12 +57,12 @@ public class MenuPresenter : MonoBehaviour
 
     public void StartSingleBattle()
     {
-        GameFlowController.StartBattle(GameMode.Single);
+        GameFlowController.LoadStageSelect(GameMode.Single);
     }
 
     public void StartMultiPlaceholderBattle()
     {
-        GameFlowController.StartBattle(GameMode.MultiPlaceholder);
+        GameFlowController.LoadStageSelect(GameMode.MultiPlaceholder);
     }
 
     private void ResolveCanvas()
@@ -117,7 +126,7 @@ public class MenuPresenter : MonoBehaviour
             "SingleButton",
             root.transform,
             runtimeFont,
-            "Start Single Battle",
+            "Game Start",
             new Vector2(0f, -300f),
             new Color(0.12f, 0.62f, 0.46f),
             StartSingleBattle);
@@ -132,7 +141,7 @@ public class MenuPresenter : MonoBehaviour
             StartMultiPlaceholderBattle);
 
         Text hint = CreateText("Hint", root.transform, runtimeFont, 18, FontStyle.Normal, TextAnchor.MiddleCenter, new Color(0.82f, 0.86f, 0.92f));
-        hint.text = "Enter / Space: Single    M: Co-op Placeholder";
+        hint.text = "Enter / Space: Stage Select    M: Co-op Stage Select";
         RectTransform hintRect = hint.rectTransform;
         hintRect.anchorMin = new Vector2(0.5f, 0f);
         hintRect.anchorMax = new Vector2(0.5f, 0f);
@@ -211,7 +220,7 @@ public class MenuPresenter : MonoBehaviour
                 return existing.gameObject;
             }
 
-            Object.Destroy(existing.gameObject);
+            UnityEngine.Object.Destroy(existing.gameObject);
         }
 
         GameObject created = new GameObject(name, typeof(RectTransform));

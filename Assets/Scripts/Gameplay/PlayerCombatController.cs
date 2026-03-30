@@ -1,5 +1,6 @@
 using System;
 using UnityEngine;
+using UnityEngine.EventSystems;
 using UnityEngine.InputSystem;
 
 public class PlayerCombatController : MonoBehaviour
@@ -13,6 +14,22 @@ public class PlayerCombatController : MonoBehaviour
     [SerializeField] private float invulnerabilityDuration = 0.5f;
     [SerializeField] private float hitRadius = 1.4f;
     [SerializeField] private Transform muzzle;
+    [SerializeField] private float missileCooldown = 2.6f;
+    [SerializeField] private float missileDamage = 150f;
+    [SerializeField] private float missileLaunchSpeed = 18f;
+    [SerializeField] private float missileCruiseSpeed = 72f;
+    [SerializeField] private float missileAcceleration = 130f;
+    [SerializeField] private float missileTurnRate = 280f;
+    [SerializeField] private float missileLockOnDelay = 0.2f;
+    [SerializeField] private float missileStraightPhaseDuration = 0.3f;
+    [SerializeField] private float missileStraightPhaseDistance = 1.0f;
+    [SerializeField] private float missileTurnPhaseDuration = 0.6f;
+    [SerializeField] private float missileBoostPhaseDuration = 0.6f;
+    [SerializeField] private float missileLifetime = 6f;
+    [SerializeField] private float missileHitRadius = 1.8f;
+    [SerializeField] private GameObject missileVisualTemplate;
+    [SerializeField] private Transform missileLauncherLeft;
+    [SerializeField] private Transform missileLauncherRight;
 
     private BattleController battleController;
     private BossController bossController;
@@ -23,11 +40,13 @@ public class PlayerCombatController : MonoBehaviour
     private float invulnerabilityRemaining;
     private bool combatEnabled = true;
     private float currentHealth;
+    private float missileCooldownRemaining;
     private ParticleSystem muzzleFlash;
     private Material muzzleFlashMaterial;
     private Mesh muzzleFlashParticleMesh;
     private float pulseTimer;
     private Vector3 baseScale;
+    private bool launchLeftMissileNext = true;
 
     public event Action Died;
 
@@ -36,6 +55,18 @@ public class PlayerCombatController : MonoBehaviour
     public float MaxHealth => maxHealth;
     public float HitRadius => hitRadius;
     public Vector3 HitPoint => transform.position + Vector3.up * 1.2f;
+    public bool HasMissileLaunchers => ResolveMissileLaunchers();
+    public bool MissileSystemAvailable =>
+        combatEnabled &&
+        IsAlive &&
+        battleController != null &&
+        bossController != null &&
+        bossController.IsAlive &&
+        HasMissileLaunchers;
+    public bool MissileReady => MissileSystemAvailable && missileCooldownRemaining <= 0f;
+    public bool MissileInputAvailable => MissileSystemAvailable && (GameplayDebugFlags.IgnoreMissileCooldown || missileCooldownRemaining <= 0f);
+    public float MissileCooldownRemaining => Mathf.Max(0f, missileCooldownRemaining);
+    public float MissileCooldownDuration => Mathf.Max(0.01f, missileCooldown);
 
     private void Awake()
     {
@@ -48,6 +79,7 @@ public class PlayerCombatController : MonoBehaviour
     private void Update()
     {
         shootCooldownRemaining -= Time.deltaTime;
+        missileCooldownRemaining -= Time.deltaTime;
         invulnerabilityRemaining -= Time.deltaTime;
         pulseTimer = Mathf.Max(0f, pulseTimer - Time.deltaTime * 5f);
         transform.localScale = baseScale * (1f + pulseTimer * 0.06f);
@@ -59,7 +91,8 @@ public class PlayerCombatController : MonoBehaviour
 
         Mouse mouse = Mouse.current;
         Keyboard keyboard = Keyboard.current;
-        bool mouseFire = mouse != null && mouse.leftButton.isPressed;
+        bool pointerOverUi = EventSystem.current != null && EventSystem.current.IsPointerOverGameObject();
+        bool mouseFire = mouse != null && mouse.leftButton.isPressed && !pointerOverUi;
         bool keyboardFire = keyboard != null && keyboard.spaceKey.isPressed;
         if (mouseFire || keyboardFire)
         {
@@ -82,6 +115,7 @@ public class PlayerCombatController : MonoBehaviour
             }
         }
 
+        ResolveMissileLaunchers();
         EnsureMuzzleFlash();
     }
 
@@ -133,6 +167,117 @@ public class PlayerCombatController : MonoBehaviour
         {
             projectile.Launch(battleController, ProjectileTeam.Player, direction, projectileSpeed, projectileDamage);
         }
+    }
+
+    public bool TryFireMissile()
+    {
+        if (!MissileSystemAvailable)
+        {
+            return false;
+        }
+
+        if (missileCooldownRemaining > 0f && !GameplayDebugFlags.IgnoreMissileCooldown)
+        {
+            return false;
+        }
+
+        Transform launchTransform = SelectNextMissileLauncher();
+        if (launchTransform == null)
+        {
+            return false;
+        }
+
+        Vector3 launchDirection = GetMissileLaunchDirection();
+        float boostAcceleration = Mathf.Max(
+            missileAcceleration,
+            Mathf.Abs(missileCruiseSpeed - missileLaunchSpeed) / Mathf.Max(0.01f, missileBoostPhaseDuration));
+
+        missileCooldownRemaining = Mathf.Max(0.1f, missileCooldown);
+
+        GameObject missileInstance = new("PlayerMissileRuntime");
+        missileInstance.transform.position = launchTransform.position;
+        missileInstance.transform.rotation = Quaternion.LookRotation(launchDirection.normalized, Vector3.up);
+
+        HomingMissileController missile = missileInstance.AddComponent<HomingMissileController>();
+        missile.Launch(
+            battleController,
+            bossController.AimPoint,
+            ProjectileTeam.Player,
+            launchDirection,
+            missileLaunchSpeed,
+            missileCruiseSpeed,
+            boostAcceleration,
+            missileTurnRate,
+            missileLockOnDelay,
+            missileStraightPhaseDuration,
+            missileStraightPhaseDistance,
+            missileTurnPhaseDuration,
+            missileBoostPhaseDuration,
+            missileLifetime,
+            missileDamage,
+            missileHitRadius,
+            missileVisualTemplate);
+        return true;
+    }
+
+    private bool ResolveMissileLaunchers()
+    {
+        if (missileLauncherLeft == null)
+        {
+            missileLauncherLeft = transform.Find("MissileLauncherLeft");
+        }
+
+        if (missileLauncherRight == null)
+        {
+            missileLauncherRight = transform.Find("MissileLauncherRight");
+        }
+
+        return missileLauncherLeft != null || missileLauncherRight != null;
+    }
+
+    private Transform SelectNextMissileLauncher()
+    {
+        ResolveMissileLaunchers();
+
+        if (missileLauncherLeft != null && missileLauncherRight != null)
+        {
+            Transform selected = launchLeftMissileNext ? missileLauncherLeft : missileLauncherRight;
+            launchLeftMissileNext = !launchLeftMissileNext;
+            return selected;
+        }
+
+        if (missileLauncherLeft != null)
+        {
+            return missileLauncherLeft;
+        }
+
+        if (missileLauncherRight != null)
+        {
+            return missileLauncherRight;
+        }
+
+        return null;
+    }
+
+    private Vector3 GetMissileLaunchDirection()
+    {
+        Camera referenceCamera = Camera.main;
+        if (referenceCamera != null)
+        {
+            Vector3 screenRight = Vector3.ProjectOnPlane(referenceCamera.transform.right, Vector3.up);
+            if (screenRight.sqrMagnitude > 0.001f)
+            {
+                return screenRight.normalized;
+            }
+        }
+
+        Vector3 fallback = Vector3.ProjectOnPlane(transform.right, Vector3.up);
+        if (fallback.sqrMagnitude > 0.001f)
+        {
+            return fallback.normalized;
+        }
+
+        return Vector3.right;
     }
 
     private void EnsureMuzzleFlash()

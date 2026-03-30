@@ -63,7 +63,71 @@ Transform:
   m_ConstrainProportionsScale: 0
   m_Children:
   - {fileID: 2569405495621553950}
+  - {fileID: 5221743100000000001}
+  - {fileID: 5221743100000000003}
   m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!1 &5221743100000000000
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 5221743100000000001}
+  m_Layer: 0
+  m_Name: MissileLauncherLeft
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &5221743100000000001
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 5221743100000000000}
+  serializedVersion: 2
+  m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
+  m_LocalPosition: {x: -0.62, y: 0.62, z: 0.04}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 4405679316718279896}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!1 &5221743100000000002
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 5221743100000000003}
+  m_Layer: 0
+  m_Name: MissileLauncherRight
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &5221743100000000003
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 5221743100000000002}
+  serializedVersion: 2
+  m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
+  m_LocalPosition: {x: 0.62, y: 0.62, z: 0.04}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 4405679316718279896}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!114 &1929496558789208638
 MonoBehaviour:
@@ -106,3 +170,19 @@ MonoBehaviour:
   invulnerabilityDuration: 0.5
   hitRadius: 1.4
   muzzle: {fileID: 0}
+  missileCooldown: 2.6
+  missileDamage: 150
+  missileLaunchSpeed: 18
+  missileCruiseSpeed: 72
+  missileAcceleration: 130
+  missileTurnRate: 280
+  missileLockOnDelay: 0.2
+  missileStraightPhaseDuration: 0.2
+  missileStraightPhaseDistance: 1
+  missileTurnPhaseDuration: 0.4
+  missileBoostPhaseDuration: 0.6
+  missileLifetime: 6
+  missileHitRadius: 1.8
+  missileVisualTemplate: {fileID: 0}
+  missileLauncherLeft: {fileID: 0}
+  missileLauncherRight: {fileID: 0}

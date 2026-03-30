@@ -9,8 +9,14 @@ EditorBuildSettings:
     path: Assets/Scenes/Boot.unity/Boot.unity
     guid: e49bccbc82c22471490ea9369d5ebe8c
   - enabled: 1
+    path: Assets/Scenes/IntroScene.unity/IntroScene.unity
+    guid: 1be65b05fd774446963e4aa91253ecbc
+  - enabled: 1
     path: Assets/Scenes/MainMenu.unity/MainMenu.unity
     guid: a84a8725f4421447f968dcbe76412fe8
+  - enabled: 1
+    path: Assets/Scenes/StageSelectScene.unity/StageSelectScene.unity
+    guid: c332212edf094b8f82ca5acbb77325ce
   - enabled: 1
     path: Assets/Scenes/BattleArena.unity/BattleArena.unity
     guid: c419ae1373b3e4979afcde7b30a81e3a

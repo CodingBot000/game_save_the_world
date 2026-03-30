@@ -1,8 +1,12 @@
+using System;
 using UnityEngine;
 using UnityEngine.UI;
 
 public class HUDPresenter : MonoBehaviour
 {
+    public event Action RetryRequested;
+    public event Action QuitRequested;
+
     private BossController bossController;
     private PlayerCombatController playerCombatController;
     private PlayerOrbitController playerOrbitController;
@@ -12,6 +16,10 @@ public class HUDPresenter : MonoBehaviour
     private Text playerText;
     private Text statusText;
     private Text hintText;
+    private Button missileButton;
+    private Image missileButtonImage;
+    private Text missileButtonLabel;
+    private GameObject missionFailedOverlay;
     private bool uiBuilt;
 
     private string statusMessage = string.Empty;
@@ -68,6 +76,8 @@ public class HUDPresenter : MonoBehaviour
         {
             statusText.text = statusMessage;
         }
+
+        UpdateMissileButtonState();
     }
 
     public void Configure(BossController boss, PlayerCombatController player, PlayerOrbitController orbit)
@@ -81,6 +91,66 @@ public class HUDPresenter : MonoBehaviour
     {
         statusMessage = message;
         statusTimer = 3f;
+    }
+
+    private void UpdateMissileButtonState()
+    {
+        if (missileButton == null || missileButtonImage == null || missileButtonLabel == null)
+        {
+            return;
+        }
+
+        if (playerCombatController == null)
+        {
+            missileButton.interactable = false;
+            missileButtonImage.color = new Color(0.28f, 0.28f, 0.32f, 0.9f);
+            missileButtonLabel.text = "MISSILE";
+            return;
+        }
+
+        bool hasLaunchers = playerCombatController.HasMissileLaunchers;
+        bool systemAvailable = playerCombatController.MissileSystemAvailable;
+        bool ready = playerCombatController.MissileReady;
+        bool canLaunch = playerCombatController.MissileInputAvailable;
+        missileButton.interactable = canLaunch;
+
+        if (!hasLaunchers)
+        {
+            missileButtonImage.color = new Color(0.22f, 0.22f, 0.24f, 0.92f);
+            missileButtonLabel.text = "MISSILE\nOFFLINE";
+            return;
+        }
+
+        if (!systemAvailable)
+        {
+            missileButtonImage.color = new Color(0.22f, 0.22f, 0.24f, 0.92f);
+            missileButtonLabel.text = "MISSILE\nLOCKED";
+            return;
+        }
+
+        float cooldownRemaining = playerCombatController.MissileCooldownRemaining;
+        missileButtonImage.color = ready
+            ? new Color(0.82f, 0.38f, 0.16f, 0.96f)
+            : new Color(0.38f, 0.34f, 0.32f, 0.94f);
+        missileButtonLabel.text = ready
+            ? "MISSILE\nREADY"
+            : $"MISSILE\n{cooldownRemaining:0.0}s";
+    }
+
+    public void ShowMissionFailedOverlay()
+    {
+        if (missionFailedOverlay != null)
+        {
+            missionFailedOverlay.SetActive(true);
+        }
+    }
+
+    public void HideMissionFailedOverlay()
+    {
+        if (missionFailedOverlay != null)
+        {
+            missionFailedOverlay.SetActive(false);
+        }
     }
 
     private void EnsureRuntimeUi()
@@ -163,9 +233,104 @@ public class HUDPresenter : MonoBehaviour
         hintRect.pivot = new Vector2(0.5f, 0f);
         hintRect.sizeDelta = new Vector2(960f, 32f);
         hintRect.anchoredPosition = new Vector2(0f, 18f);
-        hintText.text = "Camera auto-orbit   A / D strafe   W / S up-down   Q / Z forward-back   Space / Left click fire   R restart";
+        hintText.text = "Camera auto-orbit   A / D strafe   W / S up-down   Q / Z forward-back   Space / Left click fire   Missile button bottom-right   R restart";
+
+        missileButton = CreateAnchoredButton(
+            "MissileButton",
+            hudRoot.transform,
+            runtimeFont,
+            "MISSILE\nREADY",
+            new Vector2(1f, 0f),
+            new Vector2(1f, 0f),
+            new Vector2(1f, 0f),
+            new Vector2(-28f, 28f),
+            new Vector2(208f, 74f),
+            new Color(0.82f, 0.38f, 0.16f, 0.96f),
+            FireMissile,
+            out missileButtonImage,
+            out missileButtonLabel);
+
+        missionFailedOverlay = FindOrCreateUiObject("MissionFailedOverlay", hudRoot.transform);
+        Image overlayImage = missionFailedOverlay.GetComponent<Image>() ?? missionFailedOverlay.AddComponent<Image>();
+        overlayImage.color = new Color(0.02f, 0.03f, 0.05f, 0.74f);
+        RectTransform overlayRect = missionFailedOverlay.GetComponent<RectTransform>();
+        overlayRect.anchorMin = Vector2.zero;
+        overlayRect.anchorMax = Vector2.one;
+        overlayRect.offsetMin = Vector2.zero;
+        overlayRect.offsetMax = Vector2.zero;
+
+        GameObject panel = FindOrCreateUiObject("Panel", missionFailedOverlay.transform);
+        Image panelImage = panel.GetComponent<Image>() ?? panel.AddComponent<Image>();
+        panelImage.color = new Color(0.1f, 0.12f, 0.18f, 0.96f);
+        RectTransform panelRect = panel.GetComponent<RectTransform>();
+        panelRect.anchorMin = new Vector2(0.5f, 0.5f);
+        panelRect.anchorMax = new Vector2(0.5f, 0.5f);
+        panelRect.pivot = new Vector2(0.5f, 0.5f);
+        panelRect.sizeDelta = new Vector2(460f, 240f);
+        panelRect.anchoredPosition = Vector2.zero;
+
+        Text titleText = CreateText("Title", panel.transform, runtimeFont, TextAnchor.MiddleCenter, 34, Color.white);
+        titleText.text = "Mission Failed";
+        RectTransform titleRect = titleText.rectTransform;
+        titleRect.anchorMin = new Vector2(0.5f, 1f);
+        titleRect.anchorMax = new Vector2(0.5f, 1f);
+        titleRect.pivot = new Vector2(0.5f, 1f);
+        titleRect.sizeDelta = new Vector2(360f, 48f);
+        titleRect.anchoredPosition = new Vector2(0f, -36f);
+
+        Text bodyText = CreateText("Body", panel.transform, runtimeFont, TextAnchor.MiddleCenter, 18, new Color(0.82f, 0.86f, 0.92f));
+        bodyText.text = "The titan remains active.\nRegroup and try the assault again.";
+        RectTransform bodyRect = bodyText.rectTransform;
+        bodyRect.anchorMin = new Vector2(0.5f, 0.5f);
+        bodyRect.anchorMax = new Vector2(0.5f, 0.5f);
+        bodyRect.pivot = new Vector2(0.5f, 0.5f);
+        bodyRect.sizeDelta = new Vector2(360f, 56f);
+        bodyRect.anchoredPosition = new Vector2(0f, 8f);
+
+        CreateButton(
+            "RetryButton",
+            panel.transform,
+            runtimeFont,
+            "Retry",
+            new Vector2(-92f, -72f),
+            new Color(0.16f, 0.62f, 0.44f),
+            HandleRetryButtonClicked);
+
+        CreateButton(
+            "QuitButton",
+            panel.transform,
+            runtimeFont,
+            "Quit",
+            new Vector2(92f, -72f),
+            new Color(0.72f, 0.24f, 0.2f),
+            HandleQuitButtonClicked);
+
+        missionFailedOverlay.SetActive(false);
 
         uiBuilt = true;
+    }
+
+    private void HandleRetryButtonClicked()
+    {
+        RetryRequested?.Invoke();
+    }
+
+    private void FireMissile()
+    {
+        if (playerCombatController == null)
+        {
+            return;
+        }
+
+        if (playerCombatController.TryFireMissile())
+        {
+            SetStatusMessage("Missile away.");
+        }
+    }
+
+    private void HandleQuitButtonClicked()
+    {
+        QuitRequested?.Invoke();
     }
 
     private static GameObject FindOrCreateUiObject(string name, Transform parent)
@@ -178,7 +343,7 @@ public class HUDPresenter : MonoBehaviour
                 return existing.gameObject;
             }
 
-            Object.Destroy(existing.gameObject);
+            UnityEngine.Object.Destroy(existing.gameObject);
         }
 
         GameObject created = new GameObject(name, typeof(RectTransform));
@@ -197,5 +362,84 @@ public class HUDPresenter : MonoBehaviour
         text.horizontalOverflow = HorizontalWrapMode.Overflow;
         text.verticalOverflow = VerticalWrapMode.Overflow;
         return text;
+    }
+
+    private static Button CreateButton(
+        string name,
+        Transform parent,
+        Font font,
+        string label,
+        Vector2 anchoredPosition,
+        Color color,
+        UnityEngine.Events.UnityAction onClick)
+    {
+        GameObject buttonObject = FindOrCreateUiObject(name, parent);
+        Image image = buttonObject.GetComponent<Image>() ?? buttonObject.AddComponent<Image>();
+        image.color = color;
+
+        Button button = buttonObject.GetComponent<Button>() ?? buttonObject.AddComponent<Button>();
+        button.targetGraphic = image;
+        button.onClick.RemoveAllListeners();
+        button.onClick.AddListener(onClick);
+
+        RectTransform buttonRect = buttonObject.GetComponent<RectTransform>();
+        buttonRect.anchorMin = new Vector2(0.5f, 0.5f);
+        buttonRect.anchorMax = new Vector2(0.5f, 0.5f);
+        buttonRect.pivot = new Vector2(0.5f, 0.5f);
+        buttonRect.sizeDelta = new Vector2(150f, 50f);
+        buttonRect.anchoredPosition = anchoredPosition;
+
+        Text labelText = CreateText($"{name}Label", buttonObject.transform, font, TextAnchor.MiddleCenter, 20, Color.white);
+        RectTransform labelRect = labelText.rectTransform;
+        labelRect.anchorMin = Vector2.zero;
+        labelRect.anchorMax = Vector2.one;
+        labelRect.offsetMin = Vector2.zero;
+        labelRect.offsetMax = Vector2.zero;
+        labelText.text = label;
+
+        return button;
+    }
+
+    private static Button CreateAnchoredButton(
+        string name,
+        Transform parent,
+        Font font,
+        string label,
+        Vector2 anchorMin,
+        Vector2 anchorMax,
+        Vector2 pivot,
+        Vector2 anchoredPosition,
+        Vector2 size,
+        Color color,
+        UnityEngine.Events.UnityAction onClick,
+        out Image buttonImage,
+        out Text buttonLabel)
+    {
+        GameObject buttonObject = FindOrCreateUiObject(name, parent);
+        buttonImage = buttonObject.GetComponent<Image>() ?? buttonObject.AddComponent<Image>();
+        buttonImage.color = color;
+
+        Button button = buttonObject.GetComponent<Button>() ?? buttonObject.AddComponent<Button>();
+        button.targetGraphic = buttonImage;
+        button.onClick.RemoveAllListeners();
+        button.onClick.AddListener(onClick);
+
+        RectTransform buttonRect = buttonObject.GetComponent<RectTransform>();
+        buttonRect.anchorMin = anchorMin;
+        buttonRect.anchorMax = anchorMax;
+        buttonRect.pivot = pivot;
+        buttonRect.sizeDelta = size;
+        buttonRect.anchoredPosition = anchoredPosition;
+
+        buttonLabel = CreateText($"{name}Label", buttonObject.transform, font, TextAnchor.MiddleCenter, 19, Color.white);
+        buttonLabel.fontStyle = FontStyle.Bold;
+        RectTransform labelRect = buttonLabel.rectTransform;
+        labelRect.anchorMin = Vector2.zero;
+        labelRect.anchorMax = Vector2.one;
+        labelRect.offsetMin = Vector2.zero;
+        labelRect.offsetMax = Vector2.zero;
+        buttonLabel.text = label;
+
+        return button;
     }
 }
