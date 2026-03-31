@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.InputSystem;
 using UnityEngine.UI;
@@ -65,6 +66,21 @@ public class MenuPresenter : MonoBehaviour
         GameFlowController.LoadStageSelect(GameMode.MultiPlaceholder);
     }
 
+    public void OpenGarage()
+    {
+        GameFlowController.LoadGarage();
+    }
+
+    public void OpenCharacter()
+    {
+        GameFlowController.LoadCharacter();
+    }
+
+    public void OpenPlaceholder(string featureName)
+    {
+        Debug.Log($"{featureName} is not implemented yet.");
+    }
+
     private void ResolveCanvas()
     {
         canvas = GetComponent<Canvas>();
@@ -90,19 +106,22 @@ public class MenuPresenter : MonoBehaviour
         Font runtimeFont = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
         GameObject root = FindOrCreateUiObject("GeneratedMainMenu", canvas.transform);
         RectTransform rootRect = root.GetComponent<RectTransform>();
-        rootRect.anchorMin = Vector2.zero;
-        rootRect.anchorMax = Vector2.one;
-        rootRect.offsetMin = Vector2.zero;
-        rootRect.offsetMax = Vector2.zero;
+        SimpleUiFactory.StretchFull(rootRect);
 
         GameObject backdrop = FindOrCreateUiObject("Backdrop", root.transform);
         Image backdropImage = backdrop.GetComponent<Image>() ?? backdrop.AddComponent<Image>();
         backdropImage.color = new Color(0.08f, 0.11f, 0.16f, 0.92f);
         RectTransform backdropRect = backdrop.GetComponent<RectTransform>();
-        backdropRect.anchorMin = Vector2.zero;
-        backdropRect.anchorMax = Vector2.one;
-        backdropRect.offsetMin = Vector2.zero;
-        backdropRect.offsetMax = Vector2.zero;
+        SimpleUiFactory.StretchFull(backdropRect);
+
+        Image rightTopPanel = SimpleUiFactory.CreateImage("RightTopPanel", root.transform, new Color(0.07f, 0.1f, 0.15f, 0.68f));
+        SimpleUiFactory.SetAnchoredLayout(
+            rightTopPanel.rectTransform,
+            new Vector2(1f, 1f),
+            new Vector2(1f, 1f),
+            new Vector2(1f, 1f),
+            new Vector2(330f, 320f),
+            new Vector2(-36f, -36f));
 
         Text title = CreateText("Title", root.transform, runtimeFont, 42, FontStyle.Bold, TextAnchor.MiddleCenter, Color.white);
         title.text = "Titan Destroyer";
@@ -122,26 +141,155 @@ public class MenuPresenter : MonoBehaviour
         subtitleRect.sizeDelta = new Vector2(960f, 32f);
         subtitleRect.anchoredPosition = new Vector2(0f, -180f);
 
+        List<Button> buttons = new List<Button>();
+
         Button singleButton = CreateButton(
             "SingleButton",
             root.transform,
             runtimeFont,
             "Game Start",
-            new Vector2(0f, -300f),
             new Color(0.12f, 0.62f, 0.46f),
             StartSingleBattle);
+        SimpleUiFactory.SetAnchoredLayout(
+            singleButton.GetComponent<RectTransform>(),
+            new Vector2(0.5f, 0.5f),
+            new Vector2(0.5f, 0.5f),
+            new Vector2(0.5f, 0.5f),
+            new Vector2(420f, 72f),
+            new Vector2(0f, 0f));
+        buttons.Add(singleButton);
 
-        Button multiButton = CreateButton(
-            "MultiButton",
+        Button garageButton = CreateButton(
+            "GarageButton",
             root.transform,
             runtimeFont,
-            "Start Co-op Placeholder",
-            new Vector2(0f, -390f),
-            new Color(0.76f, 0.57f, 0.18f),
-            StartMultiPlaceholderBattle);
+            "Garage",
+            new Color(0.17f, 0.55f, 0.92f),
+            OpenGarage);
+        SimpleUiFactory.SetAnchoredLayout(
+            garageButton.GetComponent<RectTransform>(),
+            new Vector2(1f, 0f),
+            new Vector2(1f, 0f),
+            new Vector2(1f, 0f),
+            new Vector2(240f, 56f),
+            new Vector2(-44f, 120f));
+        buttons.Add(garageButton);
+
+        Button characterButton = CreateButton(
+            "CharacterButton",
+            root.transform,
+            runtimeFont,
+            "Pilot",
+            new Color(0.7f, 0.41f, 0.16f),
+            OpenCharacter);
+        SimpleUiFactory.SetAnchoredLayout(
+            characterButton.GetComponent<RectTransform>(),
+            new Vector2(1f, 0f),
+            new Vector2(1f, 0f),
+            new Vector2(1f, 0f),
+            new Vector2(240f, 56f),
+            new Vector2(-44f, 50f));
+        buttons.Add(characterButton);
+
+        Button recordButton = CreateButton(
+            "RecordButton",
+            root.transform,
+            runtimeFont,
+            "Record",
+            new Color(0.24f, 0.34f, 0.5f),
+            () => OpenPlaceholder("Record"));
+        SimpleUiFactory.SetAnchoredLayout(
+            recordButton.GetComponent<RectTransform>(),
+            new Vector2(0f, 0f),
+            new Vector2(0f, 0f),
+            new Vector2(0f, 0f),
+            new Vector2(240f, 56f),
+            new Vector2(44f, 120f));
+        buttons.Add(recordButton);
+
+        Button leaderBoardButton = CreateButton(
+            "LeaderBoardButton",
+            root.transform,
+            runtimeFont,
+            "LeaderBoard",
+            new Color(0.31f, 0.32f, 0.52f),
+            () => OpenPlaceholder("LeaderBoard"));
+        SimpleUiFactory.SetAnchoredLayout(
+            leaderBoardButton.GetComponent<RectTransform>(),
+            new Vector2(0f, 0f),
+            new Vector2(0f, 0f),
+            new Vector2(0f, 0f),
+            new Vector2(240f, 56f),
+            new Vector2(44f, 50f));
+        buttons.Add(leaderBoardButton);
+
+        Button fuelButton = CreateButton(
+            "FuelButton",
+            rightTopPanel.transform,
+            runtimeFont,
+            "Fuel: 20",
+            new Color(0.2f, 0.46f, 0.34f),
+            () => OpenPlaceholder("Fuel"));
+        SimpleUiFactory.SetAnchoredLayout(
+            fuelButton.GetComponent<RectTransform>(),
+            new Vector2(0.5f, 1f),
+            new Vector2(0.5f, 1f),
+            new Vector2(0.5f, 1f),
+            new Vector2(270f, 52f),
+            new Vector2(0f, -50f));
+        buttons.Add(fuelButton);
+
+        Button currencyButton = CreateButton(
+            "CurrencyButton",
+            rightTopPanel.transform,
+            runtimeFont,
+            "Gold / Premium: 3k",
+            new Color(0.55f, 0.45f, 0.14f),
+            () => OpenPlaceholder("Currency"),
+            18);
+        SimpleUiFactory.SetAnchoredLayout(
+            currencyButton.GetComponent<RectTransform>(),
+            new Vector2(0.5f, 1f),
+            new Vector2(0.5f, 1f),
+            new Vector2(0.5f, 1f),
+            new Vector2(270f, 52f),
+            new Vector2(0f, -114f));
+        buttons.Add(currencyButton);
+
+        Button alertButton = CreateButton(
+            "AlertButton",
+            rightTopPanel.transform,
+            runtimeFont,
+            "Alerts",
+            new Color(0.6f, 0.23f, 0.18f),
+            () => OpenPlaceholder("Alerts"));
+        SimpleUiFactory.SetAnchoredLayout(
+            alertButton.GetComponent<RectTransform>(),
+            new Vector2(0.5f, 1f),
+            new Vector2(0.5f, 1f),
+            new Vector2(0.5f, 1f),
+            new Vector2(270f, 52f),
+            new Vector2(0f, -178f));
+        buttons.Add(alertButton);
+
+        Button settingsButton = CreateButton(
+            "SettingsButton",
+            rightTopPanel.transform,
+            runtimeFont,
+            "Settings",
+            new Color(0.22f, 0.29f, 0.4f),
+            () => OpenPlaceholder("Settings"));
+        SimpleUiFactory.SetAnchoredLayout(
+            settingsButton.GetComponent<RectTransform>(),
+            new Vector2(0.5f, 1f),
+            new Vector2(0.5f, 1f),
+            new Vector2(0.5f, 1f),
+            new Vector2(270f, 52f),
+            new Vector2(0f, -242f));
+        buttons.Add(settingsButton);
 
         Text hint = CreateText("Hint", root.transform, runtimeFont, 18, FontStyle.Normal, TextAnchor.MiddleCenter, new Color(0.82f, 0.86f, 0.92f));
-        hint.text = "Enter / Space: Stage Select    M: Co-op Stage Select";
+        hint.text = "Enter / Space: Stage Select";
         RectTransform hintRect = hint.rectTransform;
         hintRect.anchorMin = new Vector2(0.5f, 0f);
         hintRect.anchorMax = new Vector2(0.5f, 0f);
@@ -149,8 +297,10 @@ public class MenuPresenter : MonoBehaviour
         hintRect.sizeDelta = new Vector2(720f, 28f);
         hintRect.anchoredPosition = new Vector2(0f, 60f);
 
-        singleButton.navigation = Navigation.defaultNavigation;
-        multiButton.navigation = Navigation.defaultNavigation;
+        foreach (Button button in buttons)
+        {
+            button.navigation = Navigation.defaultNavigation;
+        }
     }
 
     private static Button CreateButton(
@@ -158,35 +308,11 @@ public class MenuPresenter : MonoBehaviour
         Transform parent,
         Font font,
         string label,
-        Vector2 anchoredPosition,
         Color color,
-        UnityEngine.Events.UnityAction onClick)
+        UnityEngine.Events.UnityAction onClick,
+        int fontSize = 22)
     {
-        GameObject buttonObject = FindOrCreateUiObject(name, parent);
-        Image image = buttonObject.GetComponent<Image>() ?? buttonObject.AddComponent<Image>();
-        image.color = color;
-
-        Button button = buttonObject.GetComponent<Button>() ?? buttonObject.AddComponent<Button>();
-        button.targetGraphic = image;
-        button.onClick.RemoveAllListeners();
-        button.onClick.AddListener(onClick);
-
-        RectTransform buttonRect = buttonObject.GetComponent<RectTransform>();
-        buttonRect.anchorMin = new Vector2(0.5f, 1f);
-        buttonRect.anchorMax = new Vector2(0.5f, 1f);
-        buttonRect.pivot = new Vector2(0.5f, 1f);
-        buttonRect.sizeDelta = new Vector2(360f, 58f);
-        buttonRect.anchoredPosition = anchoredPosition;
-
-        Text labelText = CreateText($"{name}Label", buttonObject.transform, font, 22, FontStyle.Bold, TextAnchor.MiddleCenter, Color.white);
-        labelText.text = label;
-        RectTransform labelRect = labelText.rectTransform;
-        labelRect.anchorMin = Vector2.zero;
-        labelRect.anchorMax = Vector2.one;
-        labelRect.offsetMin = Vector2.zero;
-        labelRect.offsetMax = Vector2.zero;
-
-        return button;
+        return SimpleUiFactory.CreateButton(name, parent, font, label, color, onClick, fontSize);
     }
 
     private static Text CreateText(
@@ -212,19 +338,6 @@ public class MenuPresenter : MonoBehaviour
 
     private static GameObject FindOrCreateUiObject(string name, Transform parent)
     {
-        Transform existing = parent.Find(name);
-        if (existing != null)
-        {
-            if (existing is RectTransform)
-            {
-                return existing.gameObject;
-            }
-
-            UnityEngine.Object.Destroy(existing.gameObject);
-        }
-
-        GameObject created = new GameObject(name, typeof(RectTransform));
-        created.transform.SetParent(parent, false);
-        return created;
+        return SimpleUiFactory.FindOrCreateUiObject(name, parent);
     }
 }
