@@ -58,12 +58,14 @@ public class MenuPresenter : MonoBehaviour
 
     public void StartSingleBattle()
     {
-        GameFlowController.LoadStageSelect(GameMode.Single);
+        // GameFlowController.LoadStageSelect(GameMode.Single);
+        GameFlowController.LoadStageStepSelect(GameMode.Single);
     }
 
     public void StartMultiPlaceholderBattle()
     {
-        GameFlowController.LoadStageSelect(GameMode.MultiPlaceholder);
+        // GameFlowController.LoadStageSelect(GameMode.MultiPlaceholder);
+        GameFlowController.LoadStageStepSelect(GameMode.MultiPlaceholder);
     }
 
     public void OpenGarage()

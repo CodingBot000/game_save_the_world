@@ -109,6 +109,16 @@ public class EnvironmentThemeDebugPanel : MonoBehaviour
 
     private void TryBuildUi()
     {
+        if (!showDebugPanel)
+        {
+            if (panelRoot != null)
+            {
+                panelRoot.SetActive(false);
+            }
+
+            return;
+        }
+
         if (uiBuilt || !autoBuildUi || targetCanvas == null)
         {
             return;

@@ -12,6 +12,7 @@ public class ProjectileController : MonoBehaviour
     [SerializeField] private float defaultDamage = 10f;
     [SerializeField] private float lifetime = 4f;
     [SerializeField] private float hitRadius = 1f;
+    [SerializeField] private bool useColliderBasedHitRadius = true;
 
     private BattleController battleController;
     private ProjectileTeam team;
@@ -19,6 +20,14 @@ public class ProjectileController : MonoBehaviour
     private float damage;
     private Vector3 velocity;
     private float remainingLifetime;
+    private Collider cachedHitCollider;
+    private float effectiveHitRadius;
+
+    private void Awake()
+    {
+        CacheHitCollider();
+        effectiveHitRadius = ResolveHitRadius();
+    }
 
     public void Launch(BattleController owner, ProjectileTeam projectileTeam, Vector3 direction, float speedOverride, float damageOverride)
     {
@@ -28,6 +37,8 @@ public class ProjectileController : MonoBehaviour
         damage = damageOverride > 0f ? damageOverride : defaultDamage;
         velocity = direction.normalized * speed;
         remainingLifetime = lifetime;
+        CacheHitCollider();
+        effectiveHitRadius = ResolveHitRadius();
     }
 
     private void Update()
@@ -48,12 +59,70 @@ public class ProjectileController : MonoBehaviour
         }
 
         bool hit = team == ProjectileTeam.Player
-            ? battleController.TryHitBoss(transform.position, hitRadius, damage)
-            : battleController.TryHitPlayer(transform.position, hitRadius, damage);
+            ? battleController.TryHitBoss(transform.position, effectiveHitRadius, damage)
+            : battleController.TryHitPlayer(transform.position, effectiveHitRadius, damage, cachedHitCollider);
 
         if (hit)
         {
             Destroy(gameObject);
+        }
+    }
+
+    private void CacheHitCollider()
+    {
+        cachedHitCollider = GetComponent<Collider>();
+    }
+
+    private float ResolveHitRadius()
+    {
+        float fallbackRadius = Mathf.Max(0.01f, hitRadius);
+        if (!useColliderBasedHitRadius || cachedHitCollider == null || !cachedHitCollider.enabled)
+        {
+            return fallbackRadius;
+        }
+
+        return Mathf.Max(0.01f, CalculateColliderHitRadius(cachedHitCollider));
+    }
+
+    private static float CalculateColliderHitRadius(Collider collider)
+    {
+        if (collider == null)
+        {
+            return 0f;
+        }
+
+        Vector3 lossyScale = collider.transform.lossyScale;
+        switch (collider)
+        {
+            case SphereCollider sphereCollider:
+                float sphereScale = Mathf.Max(Mathf.Abs(lossyScale.x), Mathf.Abs(lossyScale.y), Mathf.Abs(lossyScale.z));
+                return sphereCollider.radius * sphereScale;
+
+            case CapsuleCollider capsuleCollider:
+                float capsuleRadiusScale = capsuleCollider.direction switch
+                {
+                    0 => Mathf.Max(Mathf.Abs(lossyScale.y), Mathf.Abs(lossyScale.z)),
+                    1 => Mathf.Max(Mathf.Abs(lossyScale.x), Mathf.Abs(lossyScale.z)),
+                    _ => Mathf.Max(Mathf.Abs(lossyScale.x), Mathf.Abs(lossyScale.y))
+                };
+                float capsuleHeightScale = capsuleCollider.direction switch
+                {
+                    0 => Mathf.Abs(lossyScale.x),
+                    1 => Mathf.Abs(lossyScale.y),
+                    _ => Mathf.Abs(lossyScale.z)
+                };
+                float capsuleRadius = capsuleCollider.radius * capsuleRadiusScale;
+                float capsuleHalfHeight = capsuleCollider.height * capsuleHeightScale * 0.5f;
+                return Mathf.Max(capsuleRadius, capsuleHalfHeight);
+
+            case BoxCollider boxCollider:
+                Vector3 scaledHalfSize = Vector3.Scale(
+                    boxCollider.size * 0.5f,
+                    new Vector3(Mathf.Abs(lossyScale.x), Mathf.Abs(lossyScale.y), Mathf.Abs(lossyScale.z)));
+                return scaledHalfSize.magnitude;
+
+            default:
+                return collider.bounds.extents.magnitude;
         }
     }
 }

@@ -5,16 +5,25 @@ using UnityEngine.SceneManagement;
 [DefaultExecutionOrder(200)]
 public class BattleController : MonoBehaviour
 {
+    private const string PlayerVisualRootName = "PlayerVisualRoot";
+    private const string DamageHurtboxName = "CrashObserver";
+    private static readonly Vector3 DefaultPlayerVehicleLocalPosition = new(0f, 1f, 0f);
+    private static readonly Quaternion DefaultPlayerVehicleLocalRotation = Quaternion.Euler(270.01978f, 0f, 0f);
+    private static readonly Vector3 DefaultPlayerVehicleLocalScale = new Vector3(1.442044f, 0.6920179f, 0.396217f);
+
     [Header("Runtime References")]
     [SerializeField] private BossController bossController;
     [SerializeField] private BossAttackController bossAttackController;
     [SerializeField] private PlayerOrbitController playerOrbitController;
     [SerializeField] private PlayerCombatController playerCombatController;
-    [SerializeField] private ArenaCameraRig arenaCameraRig;
+    [SerializeField] private PlayerMovementBounds playerMovementBounds;
     [SerializeField] private HUDPresenter hudPresenter;
     [SerializeField] private GameObject playerProjectileTemplate;
     [SerializeField] private GameObject bossProjectileTemplate;
     [SerializeField] private GameObject allyPlaceholder;
+    [SerializeField] private GameObject backgroundRoot;
+    [SerializeField] private EnvironmentThemeDebugPanel environmentThemeDebugPanel;
+    [SerializeField] private PlayerMoveGuide playerMoveGuide;
 
     private bool battleActive = true;
     private bool awaitingDefeatChoice;
@@ -24,6 +33,7 @@ public class BattleController : MonoBehaviour
     private void Start()
     {
         ResolveReferences();
+        ApplySelectedPlayerVehicleVisual();
         ApplyModeConfiguration();
         PositionSceneActors();
         WireRuntime();
@@ -82,15 +92,14 @@ public class BattleController : MonoBehaviour
         return bossController.ApplyDamage(damage);
     }
 
-    public bool TryHitPlayer(Vector3 worldPoint, float hitRadius, float damage)
+    public bool TryHitPlayer(Vector3 worldPoint, float hitRadius, float damage, Collider projectileCollider = null)
     {
         if (!battleActive || playerCombatController == null || !playerCombatController.IsAlive)
         {
             return false;
         }
 
-        float distance = Vector3.Distance(worldPoint, playerCombatController.HitPoint);
-        if (distance > hitRadius + playerCombatController.HitRadius)
+        if (!playerCombatController.CheckHit(worldPoint, hitRadius, projectileCollider))
         {
             return false;
         }
@@ -104,15 +113,33 @@ public class BattleController : MonoBehaviour
         bossAttackController ??= FindSceneComponent<BossAttackController>();
         playerOrbitController ??= FindSceneComponent<PlayerOrbitController>();
         playerCombatController ??= FindSceneComponent<PlayerCombatController>();
-        arenaCameraRig ??= FindSceneComponent<ArenaCameraRig>();
+        playerMovementBounds ??= FindSceneComponent<PlayerMovementBounds>();
         hudPresenter ??= FindSceneComponent<HUDPresenter>();
         playerProjectileTemplate ??= FindSceneObject("PlayerProjectileTemplate");
         bossProjectileTemplate ??= FindSceneObject("BossProjectileTemplate");
         allyPlaceholder ??= FindSceneObject("AllyPlaceholder");
+        backgroundRoot ??= FindSceneObject("BackgroundRoot");
+        environmentThemeDebugPanel ??= FindSceneComponent<EnvironmentThemeDebugPanel>();
+        playerMoveGuide ??= FindSceneComponent<PlayerMoveGuide>();
     }
 
     private void ApplyModeConfiguration()
     {
+        if (backgroundRoot != null)
+        {
+            backgroundRoot.SetActive(false);
+        }
+
+        if (environmentThemeDebugPanel != null)
+        {
+            environmentThemeDebugPanel.enabled = false;
+        }
+
+        if (playerMoveGuide != null)
+        {
+            playerMoveGuide.gameObject.SetActive(false);
+        }
+
         if (bossController != null)
         {
             float health = GameFlowController.CurrentMode == GameMode.MultiPlaceholder ? 2800f : 2000f;
@@ -126,27 +153,126 @@ public class BattleController : MonoBehaviour
         }
     }
 
-    private void PositionSceneActors()
+    private void ApplySelectedPlayerVehicleVisual()
     {
-        if (arenaCameraRig != null && bossController != null)
+        if (playerOrbitController == null)
         {
-            arenaCameraRig.Configure(bossController.OrbitCenter, bossController.AimPoint);
+            return;
         }
 
-        if (playerOrbitController != null && bossController != null && arenaCameraRig != null)
+        HelicopterSelectionState selectionState = HelicopterSelectionState.EnsureInitialized();
+        VehicleDefinition selectedVehicle = selectionState.EnsureSelectedHelicopter();
+        if (selectedVehicle == null || selectedVehicle.Prefab == null)
         {
-            playerOrbitController.Configure(bossController.OrbitCenter, bossController.AimPoint, arenaCameraRig);
+            return;
+        }
+
+        Transform playerVisualRoot = playerOrbitController.transform.Find(PlayerVisualRootName);
+        if (playerVisualRoot == null)
+        {
+            GameObject rootObject = new GameObject(PlayerVisualRootName);
+            playerVisualRoot = rootObject.transform;
+            playerVisualRoot.SetParent(playerOrbitController.transform, false);
+            playerVisualRoot.localPosition = Vector3.zero;
+            playerVisualRoot.localRotation = Quaternion.identity;
+            playerVisualRoot.localScale = Vector3.one;
+        }
+
+        Vector3 localPosition = DefaultPlayerVehicleLocalPosition;
+        Quaternion localRotation = DefaultPlayerVehicleLocalRotation;
+        Vector3 localScale = DefaultPlayerVehicleLocalScale;
+        Transform preservedDamageHurtbox = PreserveDamageHurtbox(playerVisualRoot);
+
+        if (playerVisualRoot.childCount > 0)
+        {
+            Transform templateVisual = playerVisualRoot.GetChild(0);
+            localPosition = templateVisual.localPosition;
+            localRotation = templateVisual.localRotation;
+            localScale = templateVisual.localScale;
+        }
+
+        for (int i = playerVisualRoot.childCount - 1; i >= 0; i--)
+        {
+            DestroyImmediate(playerVisualRoot.GetChild(i).gameObject);
+        }
+
+        GameObject vehicleInstance = Instantiate(selectedVehicle.Prefab, playerVisualRoot);
+        vehicleInstance.name = selectedVehicle.Prefab.name;
+        vehicleInstance.transform.localPosition = localPosition;
+        vehicleInstance.transform.localRotation = localRotation;
+        vehicleInstance.transform.localScale = localScale;
+        RestoreDamageHurtbox(vehicleInstance.transform, preservedDamageHurtbox);
+
+        playerOrbitController.RefreshVisualBindings();
+        if (playerCombatController != null)
+        {
+            playerCombatController.RefreshVisualBindings();
+        }
+    }
+
+    private static Transform PreserveDamageHurtbox(Transform playerVisualRoot)
+    {
+        if (playerVisualRoot == null)
+        {
+            return null;
+        }
+
+        Transform damageHurtbox = FindDeepChild(playerVisualRoot, DamageHurtboxName);
+        if (damageHurtbox == null)
+        {
+            return null;
+        }
+
+        damageHurtbox.SetParent(playerVisualRoot.parent, true);
+        return damageHurtbox;
+    }
+
+    private static void RestoreDamageHurtbox(Transform vehicleVisualRoot, Transform damageHurtbox)
+    {
+        if (vehicleVisualRoot == null || damageHurtbox == null)
+        {
+            return;
+        }
+
+        damageHurtbox.SetParent(vehicleVisualRoot, true);
+    }
+
+    private static Transform FindDeepChild(Transform root, string targetName)
+    {
+        if (root == null || string.IsNullOrWhiteSpace(targetName))
+        {
+            return null;
+        }
+
+        for (int i = 0; i < root.childCount; i++)
+        {
+            Transform child = root.GetChild(i);
+            if (child.name == targetName)
+            {
+                return child;
+            }
+
+            Transform nested = FindDeepChild(child, targetName);
+            if (nested != null)
+            {
+                return nested;
+            }
+        }
+
+        return null;
+    }
+
+    private void PositionSceneActors()
+    {
+        if (playerOrbitController != null && bossController != null)
+        {
+            playerOrbitController.Configure(bossController.OrbitCenter, bossController.AimPoint, playerMovementBounds);
             playerOrbitController.AdoptScenePlacement(playerOrbitController.transform.position);
         }
 
         if (bossController != null)
         {
             bossController.CaptureBasePose();
-
-            if (playerOrbitController != null)
-            {
-                bossController.AdoptSceneRotation(playerOrbitController.transform.position);
-            }
         }
     }
 
@@ -176,7 +302,7 @@ public class BattleController : MonoBehaviour
             string modeLabel = GameFlowController.CurrentMode == GameMode.MultiPlaceholder
                 ? "Co-op placeholder mode"
                 : "Single battle mode";
-            hudPresenter.SetStatusMessage($"{modeLabel}. Camera auto-orbits. A/D strafe. W/S altitude. Q/Z forward-back.");
+            hudPresenter.SetStatusMessage($"{modeLabel}. A/D strafe. W/S altitude. Q/Z forward-back.");
         }
     }
 

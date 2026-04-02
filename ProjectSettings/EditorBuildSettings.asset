@@ -24,6 +24,9 @@ EditorBuildSettings:
     path: Assets/Scenes/StageSelectScene.unity/StageSelectScene.unity
     guid: c332212edf094b8f82ca5acbb77325ce
   - enabled: 1
+    path: Assets/Scenes/StageSelectScene.unity/StageStepSelectScene.unity
+    guid: f9612b6c65f13456295d2da52f31632c
+  - enabled: 1
     path: Assets/Scenes/BattleArena.unity/BattleArena.unity
     guid: c419ae1373b3e4979afcde7b30a81e3a
   m_configObjects:

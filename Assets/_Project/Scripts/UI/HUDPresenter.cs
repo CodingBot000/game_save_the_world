@@ -12,14 +12,23 @@ public class HUDPresenter : MonoBehaviour
     private PlayerOrbitController playerOrbitController;
 
     private Image bossFillImage;
+    private RectTransform bossFillRect;
     private Text bossText;
-    private Text playerText;
+    private Image hullFillImage;
+    private RectTransform hullFillRect;
+    private Image armorFillImage;
+    private RectTransform armorFillRect;
+    private Text hullText;
+    private Text armorText;
+    private Text playerInfoText;
+    private Text stageDebugText;
     private Text statusText;
     private Text hintText;
     private Button missileButton;
     private Image missileButtonImage;
     private Text missileButtonLabel;
     private GameObject missionFailedOverlay;
+    private StageSelectionState stageSelectionState;
     private bool uiBuilt;
 
     private string statusMessage = string.Empty;
@@ -44,9 +53,11 @@ public class HUDPresenter : MonoBehaviour
     {
         if (bossController != null && bossFillImage != null)
         {
-            bossFillImage.fillAmount = bossController.MaxHealth > 0f
-                ? bossController.CurrentHealth / bossController.MaxHealth
-                : 0f;
+            SetBarFill(
+                bossFillRect,
+                bossController.MaxHealth > 0f
+                    ? bossController.CurrentHealth / bossController.MaxHealth
+                    : 0f);
         }
 
         if (bossController != null && bossText != null)
@@ -54,12 +65,44 @@ public class HUDPresenter : MonoBehaviour
             bossText.text = $"Boss HP  {Mathf.CeilToInt(bossController.CurrentHealth)} / {Mathf.CeilToInt(bossController.MaxHealth)}";
         }
 
-        if (playerCombatController != null && playerOrbitController != null && playerText != null)
+        if (playerCombatController != null)
         {
-            playerText.text =
-                $"Player HP  {Mathf.CeilToInt(playerCombatController.CurrentHealth)} / {Mathf.CeilToInt(playerCombatController.MaxHealth)}\n" +
-                $"Boss Range  {playerOrbitController.CurrentDistance:F1}";
+            if (hullFillImage != null)
+            {
+                SetBarFill(
+                    hullFillRect,
+                    playerCombatController.MaxHull > 0f
+                        ? playerCombatController.CurrentHull / playerCombatController.MaxHull
+                        : 0f);
+            }
+
+            if (armorFillImage != null)
+            {
+                SetBarFill(
+                    armorFillRect,
+                    playerCombatController.MaxArmor > 0f
+                        ? playerCombatController.CurrentArmor / playerCombatController.MaxArmor
+                        : 0f);
+            }
+
+            if (hullText != null)
+            {
+                hullText.text = $"HP  {Mathf.CeilToInt(playerCombatController.CurrentHull)} / {Mathf.CeilToInt(playerCombatController.MaxHull)}";
+            }
+
+            if (armorText != null)
+            {
+                string armorState = playerCombatController.ArmorBroken ? "  BROKEN" : string.Empty;
+                armorText.text = $"Armor  {Mathf.CeilToInt(playerCombatController.CurrentArmor)} / {Mathf.CeilToInt(playerCombatController.MaxArmor)}{armorState}";
+            }
         }
+
+        if (playerOrbitController != null && playerInfoText != null)
+        {
+            playerInfoText.text = $"Boss Range  {playerOrbitController.CurrentDistance:F1}";
+        }
+
+        UpdateStageDebugText();
 
         if (statusTimer > 0f)
         {
@@ -85,6 +128,7 @@ public class HUDPresenter : MonoBehaviour
         bossController = boss;
         playerCombatController = player;
         playerOrbitController = orbit;
+        stageSelectionState = StageSelectionState.EnsureInitialized();
     }
 
     public void SetStatusMessage(string message)
@@ -190,17 +234,21 @@ public class HUDPresenter : MonoBehaviour
         backgroundRect.sizeDelta = new Vector2(560f, 28f);
         backgroundRect.anchoredPosition = new Vector2(0f, -28f);
 
-        GameObject barFill = FindOrCreateUiObject("BossBarFill", barBackground.transform);
+        GameObject bossFillArea = FindOrCreateUiObject("BossBarFillArea", barBackground.transform);
+        RectTransform bossFillAreaRect = bossFillArea.GetComponent<RectTransform>();
+        bossFillAreaRect.anchorMin = Vector2.zero;
+        bossFillAreaRect.anchorMax = Vector2.one;
+        bossFillAreaRect.offsetMin = new Vector2(4f, 4f);
+        bossFillAreaRect.offsetMax = new Vector2(-4f, -4f);
+
+        GameObject barFill = FindOrCreateUiObject("BossBarFill", bossFillArea.transform);
         bossFillImage = barFill.GetComponent<Image>() ?? barFill.AddComponent<Image>();
         bossFillImage.color = new Color(0.85f, 0.28f, 0.28f, 1f);
-        bossFillImage.type = Image.Type.Filled;
-        bossFillImage.fillMethod = Image.FillMethod.Horizontal;
-        bossFillImage.fillOrigin = 0;
-        RectTransform fillRect = barFill.GetComponent<RectTransform>();
-        fillRect.anchorMin = Vector2.zero;
-        fillRect.anchorMax = Vector2.one;
-        fillRect.offsetMin = new Vector2(4f, 4f);
-        fillRect.offsetMax = new Vector2(-4f, -4f);
+        bossFillRect = barFill.GetComponent<RectTransform>();
+        bossFillRect.anchorMin = Vector2.zero;
+        bossFillRect.anchorMax = Vector2.one;
+        bossFillRect.offsetMin = Vector2.zero;
+        bossFillRect.offsetMax = Vector2.zero;
 
         bossText = CreateText("BossLabel", hudRoot.transform, runtimeFont, TextAnchor.MiddleCenter, 20, Color.white);
         RectTransform bossTextRect = bossText.rectTransform;
@@ -210,13 +258,51 @@ public class HUDPresenter : MonoBehaviour
         bossTextRect.sizeDelta = new Vector2(620f, 32f);
         bossTextRect.anchoredPosition = new Vector2(0f, -62f);
 
-        playerText = CreateText("PlayerLabel", hudRoot.transform, runtimeFont, TextAnchor.UpperLeft, 18, Color.white);
-        RectTransform playerRect = playerText.rectTransform;
-        playerRect.anchorMin = new Vector2(0f, 1f);
-        playerRect.anchorMax = new Vector2(0f, 1f);
-        playerRect.pivot = new Vector2(0f, 1f);
-        playerRect.sizeDelta = new Vector2(380f, 64f);
-        playerRect.anchoredPosition = new Vector2(24f, -24f);
+        GameObject playerStatusRoot = FindOrCreateUiObject("PlayerStatusRoot", hudRoot.transform);
+        RectTransform playerStatusRect = playerStatusRoot.GetComponent<RectTransform>();
+        playerStatusRect.anchorMin = new Vector2(0f, 1f);
+        playerStatusRect.anchorMax = new Vector2(0f, 1f);
+        playerStatusRect.pivot = new Vector2(0f, 1f);
+        playerStatusRect.sizeDelta = new Vector2(420f, 124f);
+        playerStatusRect.anchoredPosition = new Vector2(24f, -24f);
+
+        CreateStatusBar(
+            "HullBar",
+            playerStatusRoot.transform,
+            runtimeFont,
+            new Vector2(0f, 1f),
+            new Vector2(0f, 1f),
+            new Vector2(0f, 1f),
+            new Vector2(0f, 0f),
+            new Vector2(360f, 28f),
+            new Color(0.22f, 0.07f, 0.07f, 0.9f),
+            new Color(0.86f, 0.2f, 0.2f, 1f),
+            out hullFillImage,
+            out hullFillRect,
+            out hullText);
+
+        CreateStatusBar(
+            "ArmorBar",
+            playerStatusRoot.transform,
+            runtimeFont,
+            new Vector2(0f, 1f),
+            new Vector2(0f, 1f),
+            new Vector2(0f, 1f),
+            new Vector2(0f, -36f),
+            new Vector2(360f, 28f),
+            new Color(0.05f, 0.1f, 0.18f, 0.9f),
+            new Color(0.2f, 0.5f, 0.94f, 1f),
+            out armorFillImage,
+            out armorFillRect,
+            out armorText);
+
+        playerInfoText = CreateText("PlayerInfoLabel", playerStatusRoot.transform, runtimeFont, TextAnchor.UpperLeft, 18, Color.white);
+        RectTransform playerInfoRect = playerInfoText.rectTransform;
+        playerInfoRect.anchorMin = new Vector2(0f, 1f);
+        playerInfoRect.anchorMax = new Vector2(0f, 1f);
+        playerInfoRect.pivot = new Vector2(0f, 1f);
+        playerInfoRect.sizeDelta = new Vector2(360f, 28f);
+        playerInfoRect.anchoredPosition = new Vector2(0f, -76f);
 
         statusText = CreateText("StatusLabel", hudRoot.transform, runtimeFont, TextAnchor.MiddleCenter, 22, new Color(1f, 0.88f, 0.62f));
         RectTransform statusRect = statusText.rectTransform;
@@ -233,7 +319,15 @@ public class HUDPresenter : MonoBehaviour
         hintRect.pivot = new Vector2(0.5f, 0f);
         hintRect.sizeDelta = new Vector2(960f, 32f);
         hintRect.anchoredPosition = new Vector2(0f, 18f);
-        hintText.text = "Camera auto-orbit   A / D strafe   W / S up-down   Q / Z forward-back   Space / Left click fire   Missile button bottom-right   R restart";
+        hintText.text = "A / D strafe   W / S up-down   Q / Z forward-back   Space / Left click fire   Missile button bottom-right   R restart";
+
+        stageDebugText = CreateText("StageDebugLabel", hudRoot.transform, runtimeFont, TextAnchor.LowerLeft, 16, new Color(0.88f, 0.93f, 0.98f, 0.96f));
+        RectTransform stageDebugRect = stageDebugText.rectTransform;
+        stageDebugRect.anchorMin = new Vector2(0f, 0f);
+        stageDebugRect.anchorMax = new Vector2(0f, 0f);
+        stageDebugRect.pivot = new Vector2(0f, 0f);
+        stageDebugRect.sizeDelta = new Vector2(720f, 124f);
+        stageDebugRect.anchoredPosition = new Vector2(24f, 20f);
 
         missileButton = CreateAnchoredButton(
             "MissileButton",
@@ -444,5 +538,97 @@ public class HUDPresenter : MonoBehaviour
         buttonLabel.text = label;
 
         return button;
+    }
+
+    private static void SetBarFill(RectTransform fillRect, float ratio)
+    {
+        if (fillRect == null)
+        {
+            return;
+        }
+
+        float clampedRatio = Mathf.Clamp01(ratio);
+        fillRect.anchorMin = Vector2.zero;
+        fillRect.anchorMax = new Vector2(clampedRatio, 1f);
+        fillRect.offsetMin = Vector2.zero;
+        fillRect.offsetMax = Vector2.zero;
+    }
+
+    private void UpdateStageDebugText()
+    {
+        if (stageDebugText == null)
+        {
+            return;
+        }
+
+        stageSelectionState ??= StageSelectionState.EnsureInitialized();
+
+        string stageId = !string.IsNullOrWhiteSpace(stageSelectionState.SelectedStageId)
+            ? stageSelectionState.SelectedStageId
+            : "(unset)";
+        string stageName = !string.IsNullOrWhiteSpace(stageSelectionState.SelectedStageName)
+            ? stageSelectionState.SelectedStageName
+            : "(unset)";
+        string difficultyLabel = $"{stageSelectionState.SelectedDifficultyName} ({stageSelectionState.SelectedDifficultyNumber})";
+        string hitDebug = playerCombatController != null
+            ? playerCombatController.LastHitDebugSummary
+            : "LastHit: player unavailable";
+
+        stageDebugText.text =
+            $"SelectedStageId: {stageId}\n" +
+            $"SelectedStageName: {stageName}\n" +
+            $"SelectedDifficulty: {difficultyLabel}\n" +
+            hitDebug;
+    }
+
+    private static void CreateStatusBar(
+        string name,
+        Transform parent,
+        Font font,
+        Vector2 anchorMin,
+        Vector2 anchorMax,
+        Vector2 pivot,
+        Vector2 anchoredPosition,
+        Vector2 size,
+        Color backgroundColor,
+        Color fillColor,
+        out Image fillImage,
+        out RectTransform fillRect,
+        out Text overlayText)
+    {
+        GameObject rootObject = FindOrCreateUiObject(name, parent);
+        Image backgroundImage = rootObject.GetComponent<Image>() ?? rootObject.AddComponent<Image>();
+        backgroundImage.color = backgroundColor;
+
+        RectTransform rootRect = rootObject.GetComponent<RectTransform>();
+        rootRect.anchorMin = anchorMin;
+        rootRect.anchorMax = anchorMax;
+        rootRect.pivot = pivot;
+        rootRect.anchoredPosition = anchoredPosition;
+        rootRect.sizeDelta = size;
+
+        GameObject fillAreaObject = FindOrCreateUiObject($"{name}FillArea", rootObject.transform);
+        RectTransform fillAreaRect = fillAreaObject.GetComponent<RectTransform>();
+        fillAreaRect.anchorMin = Vector2.zero;
+        fillAreaRect.anchorMax = Vector2.one;
+        fillAreaRect.offsetMin = new Vector2(3f, 3f);
+        fillAreaRect.offsetMax = new Vector2(-3f, -3f);
+
+        GameObject fillObject = FindOrCreateUiObject($"{name}Fill", fillAreaObject.transform);
+        fillImage = fillObject.GetComponent<Image>() ?? fillObject.AddComponent<Image>();
+        fillImage.color = fillColor;
+        fillRect = fillObject.GetComponent<RectTransform>();
+        fillRect.anchorMin = Vector2.zero;
+        fillRect.anchorMax = Vector2.one;
+        fillRect.offsetMin = Vector2.zero;
+        fillRect.offsetMax = Vector2.zero;
+
+        overlayText = CreateText($"{name}Label", rootObject.transform, font, TextAnchor.MiddleCenter, 16, Color.white);
+        overlayText.fontStyle = FontStyle.Bold;
+        RectTransform textRect = overlayText.rectTransform;
+        textRect.anchorMin = Vector2.zero;
+        textRect.anchorMax = Vector2.one;
+        textRect.offsetMin = Vector2.zero;
+        textRect.offsetMax = Vector2.zero;
     }
 }

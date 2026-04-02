@@ -1,4 +1,5 @@
 using UnityEngine;
+using UnityEngine.Serialization;
 
 [DefaultExecutionOrder(-200)]
 public class ArenaCameraRig : MonoBehaviour
@@ -9,6 +10,11 @@ public class ArenaCameraRig : MonoBehaviour
     private const float DefaultPositionLerpSpeed = 8f;
 
     [SerializeField] private bool deriveRuntimeOffsetFromScenePlacement = true;
+    [Header("Debug")]
+    [FormerlySerializedAs("debugFreezeOrbit")]
+    [Tooltip("True = stop camera orbit. False = rotate normally. Toggle only this bool when comparing combat behavior.")]
+    // Debug toggle: change this one bool only.
+    [SerializeField] private bool freezeOrbitWithBoolToggle = true;
     [SerializeField] private float orbitRadius = 24f;
     [SerializeField] private float height = 12f;
     [SerializeField] private float orbitSpeedDegrees = 14f;
@@ -26,6 +32,13 @@ public class ArenaCameraRig : MonoBehaviour
             Vector3 forward = Vector3.ProjectOnPlane(transform.forward, Vector3.up);
             return forward.sqrMagnitude > 0.001f ? forward.normalized : Vector3.forward;
         }
+    }
+
+    // Runtime debug toggle used by the HUD button.
+    public bool FreezeOrbitWithBoolToggle
+    {
+        get => freezeOrbitWithBoolToggle;
+        set => freezeOrbitWithBoolToggle = value;
     }
 
     public Vector3 PlanarRight
@@ -51,6 +64,11 @@ public class ArenaCameraRig : MonoBehaviour
         SnapImmediate();
     }
 
+    public void ToggleOrbitFreeze()
+    {
+        freezeOrbitWithBoolToggle = !freezeOrbitWithBoolToggle;
+    }
+
     private void Awake()
     {
         EnsureRuntimeDefaults();
@@ -63,7 +81,10 @@ public class ArenaCameraRig : MonoBehaviour
             return;
         }
 
-        orbitAngleDegrees -= orbitSpeedDegrees * Time.deltaTime;
+        if (!freezeOrbitWithBoolToggle)
+        {
+            orbitAngleDegrees -= orbitSpeedDegrees * Time.deltaTime;
+        }
         Vector3 desiredPosition = GetDesiredPosition();
         transform.position = Vector3.Lerp(transform.position, desiredPosition, 1f - Mathf.Exp(-positionLerpSpeed * Time.deltaTime));
         transform.rotation = GetDesiredRotation(transform.position);

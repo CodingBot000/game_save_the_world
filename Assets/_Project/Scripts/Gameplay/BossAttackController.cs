@@ -79,6 +79,7 @@ public class BossAttackController : MonoBehaviour
         Vector3 target = playerCombatController.HitPoint;
         Vector3 forward = (target - origin).normalized;
         Quaternion centerRotation = Quaternion.LookRotation(forward, Vector3.up);
+        float spreadProjectileSpeed = projectileSpeed * 0.9f;
 
         float step = spreadShotCount > 1 ? spreadAngle / (spreadShotCount - 1) : 0f;
         float start = -spreadAngle * 0.5f;
@@ -87,7 +88,7 @@ public class BossAttackController : MonoBehaviour
         {
             float angle = start + step * i;
             Vector3 direction = centerRotation * Quaternion.AngleAxis(angle, Vector3.up) * Vector3.forward;
-            SpawnProjectile(origin, direction, projectileSpeed * 0.9f, projectileDamage * 0.7f);
+            SpawnProjectile(origin, direction, spreadProjectileSpeed, projectileDamage * 0.7f);
         }
     }
 

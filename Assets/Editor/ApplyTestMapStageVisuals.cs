@@ -9,9 +9,9 @@ public static class ApplyTestMapStageVisuals
     private const string BattleArenaScenePath = "Assets/Scenes/BattleArena.unity/BattleArena.unity";
     private const string StageVisualAssetPath = "Assets/TestMap/testmap fbx/testmap.fbx";
     private const string BossVisualAssetPath = "Assets/TestMap/testmap fbx/Kaijutest.fbx";
-    private const string PlayerVisualAssetPath = "Assets/TestMap/testmap fbx/Airtest.fbx";
+    private const string VehicleCatalogAssetPath = "Assets/Resources/Vehicles/VehicleCatalog.asset";
+    private const string VehiclePrefabFolder = "Assets/Resources/Vehicles/Helicopters/Prefabs";
     private const string BossVisualMaterialPath = "Assets/Materials/StageVisuals/BossVisual_TestMap_Black.mat";
-    private const string PlayerVisualMaterialPath = "Assets/Materials/StageVisuals/PlayerVisual_TestMap_Green.mat";
 
     private const string StageVisualRootName = "StageVisualRoot";
     private const string BossVisualRootName = "BossVisualRoot";
@@ -28,15 +28,14 @@ public static class ApplyTestMapStageVisuals
 
     private static readonly Vector3 PlayerLocalPosition = new(0f, 1f, 0f);
     private static readonly Vector3 PlayerLocalEulerAngles = new(270.01978f, 0f, 0f);
-    private static readonly Vector3 PlayerLocalScale = new(1.442044f, 0.6920179f, 0.396217f);
+    private static readonly Vector3 PlayerLocalScale = new Vector3(1.442044f, 0.6920179f, 0.396217f);
 
     private static readonly Vector3 AllyLocalPosition = new(0f, 1f, 0f);
     private static readonly Vector3 AllyLocalEulerAngles = new(270.01978f, 0f, 0f);
-    private static readonly Vector3 AllyLocalScale = new(1.1f, 0.55f, 0.32f);
+    private static readonly Vector3 AllyLocalScale = new Vector3(1.1f, 0.55f, 0.32f);
 
     private const float PlayerOrbitHeight = 12f;
     private static readonly Color BossVisualColor = new(0.06f, 0.06f, 0.06f, 1f);
-    private static readonly Color PlayerVisualColor = new(0.2f, 0.85f, 0.25f, 1f);
 
     [MenuItem("Tools/TitanDestroyer/Apply TestMap Stage Visuals")]
     public static void Apply()
@@ -70,10 +69,10 @@ public static class ApplyTestMapStageVisuals
 
         GameObject stageVisualAsset = AssetDatabase.LoadAssetAtPath<GameObject>(StageVisualAssetPath);
         GameObject bossVisualAsset = AssetDatabase.LoadAssetAtPath<GameObject>(BossVisualAssetPath);
-        GameObject playerVisualAsset = AssetDatabase.LoadAssetAtPath<GameObject>(PlayerVisualAssetPath);
+        GameObject playerVisualAsset = LoadDefaultVehiclePrefab();
         if (stageVisualAsset == null || bossVisualAsset == null || playerVisualAsset == null)
         {
-            Debug.LogError("One or more FBX assets could not be loaded.");
+            Debug.LogError("One or more BattleArena visual assets could not be loaded.");
             return;
         }
 
@@ -100,14 +99,13 @@ public static class ApplyTestMapStageVisuals
 
         InstantiateMountedVisual(stageVisualAsset, stageVisualRoot, "StageVisual_TestMap", StageLocalPosition, StageLocalEulerAngles, StageLocalScale);
         GameObject bossVisual = InstantiateMountedVisual(bossVisualAsset, bossVisualRoot, "BossVisual_TestMap", BossLocalPosition, BossLocalEulerAngles, BossLocalScale);
-        GameObject playerVisual = InstantiateMountedVisual(playerVisualAsset, playerVisualRoot, "PlayerVisual_TestMap", PlayerLocalPosition, PlayerLocalEulerAngles, PlayerLocalScale);
+        InstantiateMountedVisual(playerVisualAsset, playerVisualRoot, "PlayerVisual_Vehicle", PlayerLocalPosition, PlayerLocalEulerAngles, PlayerLocalScale);
         if (allyVisualRoot != null)
         {
-            InstantiateMountedVisual(playerVisualAsset, allyVisualRoot, "AllyVisual_TestMap", AllyLocalPosition, AllyLocalEulerAngles, AllyLocalScale);
+            InstantiateMountedVisual(playerVisualAsset, allyVisualRoot, "AllyVisual_Vehicle", AllyLocalPosition, AllyLocalEulerAngles, AllyLocalScale);
         }
 
         ApplySharedMaterial(bossVisual, GetOrCreateMaterial(BossVisualMaterialPath, BossVisualColor));
-        ApplySharedMaterial(playerVisual, GetOrCreatePlayerVisualMaterial());
 
         RemoveRenderersOutsideMount(environment, StageVisualRootName);
         RemoveRenderersOutsideMount(bossRoot, BossVisualRootName);
@@ -126,6 +124,30 @@ public static class ApplyTestMapStageVisuals
         AssetDatabase.Refresh();
 
         Debug.Log("Applied TestMap stage visuals to BattleArena.");
+    }
+
+    private static GameObject LoadDefaultVehiclePrefab()
+    {
+        VehicleCatalog catalog = AssetDatabase.LoadAssetAtPath<VehicleCatalog>(VehicleCatalogAssetPath);
+        if (catalog != null && catalog.Helicopters.Count > 0 && catalog.Helicopters[0] != null && catalog.Helicopters[0].Prefab != null)
+        {
+            return catalog.Helicopters[0].Prefab;
+        }
+
+        string[] prefabGuids = AssetDatabase.FindAssets("t:Prefab", new[] { VehiclePrefabFolder });
+        if (prefabGuids.Length == 0)
+        {
+            return null;
+        }
+
+        System.Array.Sort(prefabGuids, (left, right) =>
+        {
+            string leftPath = AssetDatabase.GUIDToAssetPath(left);
+            string rightPath = AssetDatabase.GUIDToAssetPath(right);
+            return string.CompareOrdinal(leftPath, rightPath);
+        });
+
+        return AssetDatabase.LoadAssetAtPath<GameObject>(AssetDatabase.GUIDToAssetPath(prefabGuids[0]));
     }
 
     private static Scene EnsureBattleArenaScene()
@@ -226,11 +248,6 @@ public static class ApplyTestMapStageVisuals
         target.localPosition = localPosition;
         target.localRotation = Quaternion.Euler(localEulerAngles);
         target.localScale = localScale;
-    }
-
-    private static Material GetOrCreatePlayerVisualMaterial()
-    {
-        return GetOrCreateMaterial(PlayerVisualMaterialPath, PlayerVisualColor);
     }
 
     private static Material GetOrCreateMaterial(string materialPath, Color color)
