@@ -166,10 +166,18 @@ public class PlayerCombatController : MonoBehaviour
         Keyboard keyboard = Keyboard.current;
         bool pointerOverUi = EventSystem.current != null && EventSystem.current.IsPointerOverGameObject();
         bool mouseFire = mouse != null && mouse.leftButton.isPressed && !pointerOverUi;
+        bool mouseMissileFire = mouse != null && mouse.rightButton.wasPressedThisFrame && !pointerOverUi;
         bool keyboardFire = keyboard != null && keyboard.spaceKey.isPressed;
         if (mouseFire || keyboardFire)
         {
             TryFire();
+        }
+
+        if (mouseMissileFire)
+        {
+            // Keep missile debug cooldown behavior centralized in TryFireMissile / GameplayDebugFlags
+            // so UI and mouse input both follow the same launch rules.
+            TryFireMissile();
         }
     }
 

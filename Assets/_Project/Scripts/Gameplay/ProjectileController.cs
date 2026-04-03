@@ -12,6 +12,9 @@ public class ProjectileController : MonoBehaviour
     [SerializeField] private float defaultDamage = 10f;
     [SerializeField] private float lifetime = 4f;
     [SerializeField] private float hitRadius = 1f;
+    // Keep the hitbox reference separate from the rendered mesh so future
+    // projectile patterns can reuse the same Launch flow while changing only prefab visuals.
+    [SerializeField] private Collider hitColliderOverride;
     [SerializeField] private bool useColliderBasedHitRadius = true;
 
     private BattleController battleController;
@@ -70,7 +73,18 @@ public class ProjectileController : MonoBehaviour
 
     private void CacheHitCollider()
     {
-        cachedHitCollider = GetComponent<Collider>();
+        // Prefer an explicit hit collider so the prefab can shrink or stylize visuals
+        // without changing gameplay collision. Fall back to root/children for older prefabs.
+        cachedHitCollider = hitColliderOverride;
+        if (cachedHitCollider == null)
+        {
+            cachedHitCollider = GetComponent<Collider>();
+        }
+
+        if (cachedHitCollider == null)
+        {
+            cachedHitCollider = GetComponentInChildren<Collider>();
+        }
     }
 
     private float ResolveHitRadius()

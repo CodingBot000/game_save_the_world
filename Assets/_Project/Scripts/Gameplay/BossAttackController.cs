@@ -9,6 +9,7 @@ public class BossAttackController : MonoBehaviour
     [SerializeField] private int spreadShotCount = 5;
     [SerializeField] private float spreadAngle = 26f;
     [SerializeField] private Transform firePoint;
+    [SerializeField] private BossBulletPatternController bulletPatternController;
 
     private BattleController battleController;
     private BossController bossController;
@@ -17,14 +18,37 @@ public class BossAttackController : MonoBehaviour
     private float attackTimer = 1f;
     private int attackSequence;
 
+    public float BaseProjectileSpeed => projectileSpeed;
+    public float BaseProjectileDamage => projectileDamage;
+    public float CurrentAttackInterval => Mathf.Lerp(enragedAttackInterval, baseAttackInterval, bossController != null ? bossController.HealthRatio : 1f);
+    public Vector3 CurrentFireOrigin => firePoint != null ? firePoint.position : (bossController != null ? bossController.HitPoint : transform.position);
+    public Vector3 CurrentBossCenter => bossController != null ? bossController.HitPoint : transform.position;
+    public Vector3 CurrentPlayerHitPoint => playerCombatController != null ? playerCombatController.HitPoint : transform.position;
+
+    public bool CanAttack =>
+        battleController != null &&
+        bossController != null &&
+        playerCombatController != null &&
+        projectileTemplate != null &&
+        battleController.IsBattleActive &&
+        bossController.IsAlive &&
+        playerCombatController.IsAlive;
+
+    private void Awake()
+    {
+        bulletPatternController ??= GetComponent<BossBulletPatternController>();
+    }
+
     private void Update()
     {
-        if (battleController == null || bossController == null || playerCombatController == null || projectileTemplate == null)
+        // Keep a minimal fallback so older scenes still fire even if the new
+        // pattern controller component has not been attached yet.
+        if (bulletPatternController != null)
         {
             return;
         }
 
-        if (!battleController.IsBattleActive || !bossController.IsAlive || !playerCombatController.IsAlive)
+        if (!CanAttack)
         {
             return;
         }
@@ -35,18 +59,17 @@ public class BossAttackController : MonoBehaviour
             return;
         }
 
-        float interval = Mathf.Lerp(enragedAttackInterval, baseAttackInterval, bossController.HealthRatio);
-        attackTimer = interval;
+        attackTimer = CurrentAttackInterval;
         attackSequence++;
 
         bool useSpreadAttack = bossController.HealthRatio < 0.7f && attackSequence % 3 == 0;
         if (useSpreadAttack)
         {
-            FireSpreadBurst();
+            FireLegacySpreadBurst();
         }
         else
         {
-            Fire();
+            FireLegacyDirectShot();
         }
     }
 
@@ -62,22 +85,49 @@ public class BossAttackController : MonoBehaviour
             Transform explicitFirePoint = bossController.transform.Find("AimPoint");
             firePoint = explicitFirePoint != null ? explicitFirePoint : bossController.AimPoint;
         }
+
+        bulletPatternController ??= GetComponent<BossBulletPatternController>();
+        if (bulletPatternController != null)
+        {
+            bulletPatternController.Configure(this, owner, boss, player);
+        }
     }
 
-    private void Fire()
+    public ProjectileController SpawnProjectile(Vector3 origin, Vector3 direction, float speed, float damage, string runtimeName = "BossProjectileRuntime")
     {
-        Vector3 origin = firePoint != null ? firePoint.position : bossController.HitPoint;
-        Vector3 target = playerCombatController.HitPoint;
-        Vector3 direction = (target - origin).normalized;
+        if (projectileTemplate == null || battleController == null)
+        {
+            return null;
+        }
 
+        Vector3 normalizedDirection = direction.sqrMagnitude > 0.0001f ? direction.normalized : Vector3.forward;
+
+        // Patterns only provide origin, direction, and tunable values. The projectile prefab
+        // continues to own visuals and hitbox behavior so future bullet styles can swap freely.
+        GameObject projectileInstance = Instantiate(projectileTemplate, origin, Quaternion.LookRotation(normalizedDirection));
+        projectileInstance.name = runtimeName;
+        projectileInstance.SetActive(true);
+
+        ProjectileController projectile = projectileInstance.GetComponent<ProjectileController>();
+        if (projectile != null)
+        {
+            projectile.Launch(battleController, ProjectileTeam.Boss, normalizedDirection, speed, damage);
+        }
+
+        return projectile;
+    }
+
+    private void FireLegacyDirectShot()
+    {
+        Vector3 origin = CurrentFireOrigin;
+        Vector3 direction = (CurrentPlayerHitPoint - origin).normalized;
         SpawnProjectile(origin, direction, projectileSpeed, projectileDamage);
     }
 
-    private void FireSpreadBurst()
+    private void FireLegacySpreadBurst()
     {
-        Vector3 origin = firePoint != null ? firePoint.position : bossController.HitPoint;
-        Vector3 target = playerCombatController.HitPoint;
-        Vector3 forward = (target - origin).normalized;
+        Vector3 origin = CurrentFireOrigin;
+        Vector3 forward = (CurrentPlayerHitPoint - origin).normalized;
         Quaternion centerRotation = Quaternion.LookRotation(forward, Vector3.up);
         float spreadProjectileSpeed = projectileSpeed * 0.9f;
 
@@ -89,19 +139,6 @@ public class BossAttackController : MonoBehaviour
             float angle = start + step * i;
             Vector3 direction = centerRotation * Quaternion.AngleAxis(angle, Vector3.up) * Vector3.forward;
             SpawnProjectile(origin, direction, spreadProjectileSpeed, projectileDamage * 0.7f);
-        }
-    }
-
-    private void SpawnProjectile(Vector3 origin, Vector3 direction, float speed, float damage)
-    {
-        GameObject projectileInstance = Instantiate(projectileTemplate, origin, Quaternion.LookRotation(direction));
-        projectileInstance.name = "BossProjectileRuntime";
-        projectileInstance.SetActive(true);
-
-        ProjectileController projectile = projectileInstance.GetComponent<ProjectileController>();
-        if (projectile != null)
-        {
-            projectile.Launch(battleController, ProjectileTeam.Boss, direction, speed, damage);
         }
     }
 }

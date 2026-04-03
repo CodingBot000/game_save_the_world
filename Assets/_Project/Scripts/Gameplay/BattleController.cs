@@ -130,11 +130,6 @@ public class BattleController : MonoBehaviour
             backgroundRoot.SetActive(false);
         }
 
-        if (environmentThemeDebugPanel != null)
-        {
-            environmentThemeDebugPanel.enabled = false;
-        }
-
         if (playerMoveGuide != null)
         {
             playerMoveGuide.gameObject.SetActive(false);
@@ -335,6 +330,18 @@ public class BattleController : MonoBehaviour
 
     private void HandlePlayerDied()
     {
+        // Keep undead handling at the final defeat gate so the rest of the combat code
+        // stays unchanged while debug sessions can bypass the mission-failed flow.
+        if (GameplayDebugFlags.Undead)
+        {
+            if (hudPresenter != null)
+            {
+                hudPresenter.SetStatusMessage("Undead debug active. Mission fail suppressed.");
+            }
+
+            return;
+        }
+
         battleActive = false;
         awaitingDefeatChoice = true;
 
