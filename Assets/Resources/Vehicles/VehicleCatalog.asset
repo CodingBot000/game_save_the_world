@@ -1,0 +1,55 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: f90219cba66df461791a9c352a0932c4, type: 3}
+  m_Name: VehicleCatalog
+  m_EditorClassIdentifier: Assembly-CSharp::VehicleCatalog
+  helicopters:
+  - id: helicopter_1
+    displayName: Helicopter1
+    prefab: {fileID: 1866262587047033715, guid: da5632b892d124e7b9c69cad87fbf127, type: 3}
+    thumbnail: {fileID: 2800000, guid: a07613ffd76334c4a8a9d992ae441e4b, type: 3}
+  - id: helicopter_2
+    displayName: Helicopter2
+    prefab: {fileID: 3997858062926740614, guid: 9432d15c84f1b426ea708b13938ce8d6, type: 3}
+    thumbnail: {fileID: 2800000, guid: 6b14b1fedd46f46cf8308b45cb3270ed, type: 3}
+  - id: helicopter_3
+    displayName: Helicopter3
+    prefab: {fileID: 4435584432082465713, guid: 1497370e9fe004e49b6c1a5c93b740f7, type: 3}
+    thumbnail: {fileID: 2800000, guid: 2400afcfc8d95437f97840f0966fd298, type: 3}
+  - id: helicopter_4
+    displayName: Helicopter4
+    prefab: {fileID: 3141137658746207064, guid: 77a1e982cf4454908b476072dc9504ac, type: 3}
+    thumbnail: {fileID: 2800000, guid: cd61e083f2b8c4bc0878ab3db2f3be8a, type: 3}
+  - id: helicopter_5
+    displayName: Helicopter5
+    prefab: {fileID: 1894911524668519548, guid: e6b12254c43a84c1488d190e84368d44, type: 3}
+    thumbnail: {fileID: 2800000, guid: 1057559e7def94194bdc248aa4e3d095, type: 3}
+  - id: helicopter_6
+    displayName: Helicopter6
+    prefab: {fileID: 6938071465915954735, guid: f3e2518a0b0134e29ad9929ff9aa3880, type: 3}
+    thumbnail: {fileID: 2800000, guid: 18b340d2f1ddf4d6b95b9a619a6fbf73, type: 3}
+  - id: helicopter_7
+    displayName: Helicopter7
+    prefab: {fileID: 6045628367993285434, guid: b18a47bdfa13d4c04921f0c01c4019c6, type: 3}
+    thumbnail: {fileID: 2800000, guid: c9c8691297d584d569a2ff69be9d78d9, type: 3}
+  - id: helicopter_8
+    displayName: Helicopter8
+    prefab: {fileID: 9105614905184914779, guid: b55374ca0c1ee44a498407f1a3154023, type: 3}
+    thumbnail: {fileID: 2800000, guid: d267e8f0d3fea4de89b52c89a095f26e, type: 3}
+  - id: helicopter_9
+    displayName: Helicopter9
+    prefab: {fileID: 1291946651809650625, guid: d6cb45960414b449dbd24baaf8a6f46b, type: 3}
+    thumbnail: {fileID: 2800000, guid: fcb9c5e26f39f4781828d85275c56e0c, type: 3}
+  - id: helicopter_10
+    displayName: Helicopter10
+    prefab: {fileID: 3680808338890842082, guid: fa9e1e3d41d7f4f8f9d1972107297b13, type: 3}
+    thumbnail: {fileID: 2800000, guid: dd9b2236031d74658951898058135449, type: 3}

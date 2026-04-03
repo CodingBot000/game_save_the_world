@@ -5,28 +5,20 @@ using UnityEditor.SceneManagement;
 [InitializeOnLoad]
 public static class PlayModeStartSceneBootstrap
 {
-    private const string BootScenePath = "Assets/Scenes/Boot.unity/Boot.unity";
-
     static PlayModeStartSceneBootstrap()
     {
-        EnsureBootSceneStart();
+        EnsureCurrentSceneStart();
     }
 
     [InitializeOnLoadMethod]
-    private static void EnsureBootSceneStart()
+    private static void EnsureCurrentSceneStart()
     {
-        SceneAsset bootScene = AssetDatabase.LoadAssetAtPath<SceneAsset>(BootScenePath);
-        if (bootScene == null)
+        if (EditorSceneManager.playModeStartScene == null)
         {
             return;
         }
 
-        if (EditorSceneManager.playModeStartScene == bootScene)
-        {
-            return;
-        }
-
-        EditorSceneManager.playModeStartScene = bootScene;
+        EditorSceneManager.playModeStartScene = null;
     }
 }
 #endif

@@ -9,6 +9,7 @@ public static class GameFlowController
     public const string IntroSceneName = "IntroScene";
     public const string MainMenuSceneName = "MainMenu";
     public const string StageSelectSceneName = "StageSelectScene";
+    public const string StageStepSelectSceneName = "StageStepSelectScene";
     public const string BattleSceneName = "BattleArena";
     public const string GarageSceneName = "GarageScene";
     public const string CharacterSceneName = "CharacterScene";
@@ -34,6 +35,12 @@ public static class GameFlowController
     {
         CurrentMode = mode;
         SceneManager.LoadScene(StageSelectSceneName);
+    }
+
+    public static void LoadStageStepSelect(GameMode mode)
+    {
+        CurrentMode = mode;
+        SceneManager.LoadScene(StageStepSelectSceneName);
     }
 
     public static void StartBattle(GameMode mode)

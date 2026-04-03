@@ -1,6 +1,9 @@
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.EventSystems;
 using UnityEngine.InputSystem;
+using UnityEngine.InputSystem.UI;
+using UnityEngine.Rendering;
 using UnityEngine.Rendering.Universal;
 using UnityEngine.SceneManagement;
 using UnityEngine.UI;
@@ -8,41 +11,59 @@ using UnityEngine.UI;
 public class GarageScenePresenter : MonoBehaviour
 {
     private const int PreviewLayer = 2;
-    private const float HelicopterCardScale = 1.7f;
-    private const float HelicopterCardWidth = 220f * HelicopterCardScale;
-    private const float HelicopterCardHeight = 300f;
-    private static readonly Vector3 BattleVisualLocalPosition = new Vector3(0f, 1f, 0f);
-    private static readonly Vector3 BattleVisualLocalScale = new Vector3(1f, 0.6920179f, 1f);
-    private static readonly Quaternion BattleVisualLocalRotation = Quaternion.Euler(-90f, 0f, 0f);
+    private const float ThumbnailBaseYaw = 210f;
+    private const float ThumbnailSpinSpeed = 16f;
+    private const float ThumbnailDistanceMultiplier = 0.98f;
+    private const float PreviewPitchClamp = 40f;
 
-    [SerializeField] private bool autoBuildUi = true;
+    [SerializeField] private GarageSceneView view;
     [SerializeField] private Transform previewTuningAnchor;
 
     private readonly Dictionary<string, Image> cardFrames = new Dictionary<string, Image>();
+    private readonly Dictionary<string, ThumbnailStage> liveThumbnailStages = new Dictionary<string, ThumbnailStage>();
+    private readonly List<GarageHelicopterCardView> spawnedCards = new List<GarageHelicopterCardView>();
     private readonly List<RenderTexture> thumbnailTextures = new List<RenderTexture>();
 
-    private Canvas canvas;
-    private bool uiBuilt;
-    private RectTransform previewRect;
-    private RawImage previewImage;
-    private Text selectedHelicopterText;
+    private HelicopterSelectionState selectionState;
     private Transform previewStageRoot;
     private Transform previewModelAnchor;
     private Camera previewCamera;
     private RenderTexture previewTexture;
     private GameObject previewInstance;
     private float previewYaw = 210f;
+    private float previewPitch;
+    private bool viewBound;
+
+    private sealed class ThumbnailStage
+    {
+        public RenderTexture Texture;
+        public Camera Camera;
+        public Transform ModelAnchor;
+        public GameObject StageRoot;
+    }
 
     private void Awake()
     {
-        ResolveCanvas();
-        TryBuildUi();
+        EnsureStandaloneRuntimeSupport();
+        ResolveView();
+        BindView();
+        BindSelectionState();
     }
 
     private void OnEnable()
     {
-        ResolveCanvas();
-        TryBuildUi();
+        EnsureStandaloneRuntimeSupport();
+        ResolveView();
+        BindView();
+        BindSelectionState();
+    }
+
+    private void OnDisable()
+    {
+        if (selectionState != null)
+        {
+            selectionState.SelectionChanged -= RefreshSelection;
+        }
     }
 
     private void OnDestroy()
@@ -65,11 +86,21 @@ public class GarageScenePresenter : MonoBehaviour
         }
 
         thumbnailTextures.Clear();
+
+        foreach (ThumbnailStage stage in liveThumbnailStages.Values)
+        {
+            if (stage?.StageRoot != null)
+            {
+                Destroy(stage.StageRoot);
+            }
+        }
+
+        liveThumbnailStages.Clear();
     }
 
     private void Update()
     {
-        if (!uiBuilt)
+        if (!viewBound)
         {
             return;
         }
@@ -82,45 +113,82 @@ public class GarageScenePresenter : MonoBehaviour
         }
 
         HandlePreviewRotation();
+        UpdateLiveThumbnailRotation();
     }
 
-    private void ResolveCanvas()
+    private void EnsureStandaloneRuntimeSupport()
     {
-        canvas = GetComponent<Canvas>();
-        if (canvas == null)
-        {
-            canvas = GetComponentInParent<Canvas>();
-        }
-
-        if (canvas == null)
-        {
-            GameObject canvasObject = new GameObject(
-                "GarageCanvas",
-                typeof(RectTransform),
-                typeof(Canvas),
-                typeof(CanvasScaler),
-                typeof(GraphicRaycaster));
-            canvasObject.transform.SetParent(transform, false);
-            canvas = canvasObject.GetComponent<Canvas>();
-        }
-    }
-
-    private void TryBuildUi()
-    {
-        if (uiBuilt || !autoBuildUi || canvas == null)
+        if (!Application.isPlaying)
         {
             return;
         }
 
-        BuildUi();
-        uiBuilt = true;
+        // GarageScene 바로 실행시 에러 방지를 위한 방어코드.
+        EnsureEventSystem();
+        EnsureFallbackDisplayCamera();
     }
 
-    private void BuildUi()
+    private void EnsureEventSystem()
     {
-        HelicopterSelectionState selectionState = HelicopterSelectionState.EnsureInitialized();
-        Font runtimeFont = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+        if (FindAnyObjectByType<EventSystem>() != null)
+        {
+            return;
+        }
 
+        GameObject eventSystemObject = new GameObject("EventSystem", typeof(EventSystem), typeof(InputSystemUIInputModule));
+        eventSystemObject.transform.SetParent(transform, false);
+    }
+
+    private void EnsureFallbackDisplayCamera()
+    {
+        Camera[] cameras = FindObjectsByType<Camera>(FindObjectsInactive.Exclude, FindObjectsSortMode.None);
+        for (int i = 0; i < cameras.Length; i++)
+        {
+            Camera candidate = cameras[i];
+            if (candidate != null &&
+                candidate.enabled &&
+                candidate.gameObject.activeInHierarchy &&
+                candidate.targetTexture == null)
+            {
+                return;
+            }
+        }
+
+        GameObject cameraObject = new GameObject("GarageStandaloneCamera", typeof(Camera));
+        cameraObject.transform.SetParent(transform, false);
+
+        Camera fallbackCamera = cameraObject.GetComponent<Camera>();
+        fallbackCamera.clearFlags = CameraClearFlags.SolidColor;
+        fallbackCamera.backgroundColor = new Color(0.02f, 0.04f, 0.08f, 1f);
+        fallbackCamera.cullingMask = 0;
+        fallbackCamera.depth = -100f;
+        fallbackCamera.nearClipPlane = 0.1f;
+        fallbackCamera.farClipPlane = 10f;
+        ConfigurePreviewCamera(fallbackCamera);
+    }
+
+    private void ResolveView()
+    {
+        if (view == null)
+        {
+            view = GetComponent<GarageSceneView>();
+        }
+
+        if (view == null)
+        {
+            view = GetComponentInChildren<GarageSceneView>(true);
+        }
+    }
+
+    private void BindView()
+    {
+        if (view == null || !view.IsConfigured)
+        {
+            viewBound = false;
+            return;
+        }
+
+        Canvas canvas = view.Canvas;
         canvas.renderMode = RenderMode.ScreenSpaceOverlay;
         canvas.overrideSorting = true;
         canvas.sortingOrder = 100;
@@ -131,117 +199,91 @@ public class GarageScenePresenter : MonoBehaviour
         scaler.screenMatchMode = CanvasScaler.ScreenMatchMode.MatchWidthOrHeight;
         scaler.matchWidthOrHeight = 0.5f;
 
-        GameObject root = SimpleUiFactory.FindOrCreateUiObject("GarageRoot", canvas.transform);
-        SimpleUiFactory.StretchFull(root.GetComponent<RectTransform>());
+        if (string.IsNullOrWhiteSpace(view.TitleText.text))
+        {
+            view.TitleText.text = "Garage";
+        }
 
-        Image dimmer = SimpleUiFactory.CreateImage("Dimmer", root.transform, new Color(0.02f, 0.04f, 0.08f, 0.84f));
-        SimpleUiFactory.StretchFull(dimmer.rectTransform);
+        view.CloseButton.onClick.RemoveAllListeners();
+        view.CloseButton.onClick.AddListener(CloseScene);
+        view.HelicopterCardTemplate.gameObject.SetActive(false);
 
-        Image panel = SimpleUiFactory.CreateImage("Panel", root.transform, new Color(0.07f, 0.11f, 0.16f, 0.98f));
-        SimpleUiFactory.StretchFull(panel.rectTransform);
-
-        Image accent = SimpleUiFactory.CreateImage("Accent", panel.transform, new Color(0.16f, 0.55f, 0.9f, 1f));
-        SimpleUiFactory.SetAnchoredLayout(
-            accent.rectTransform,
-            new Vector2(0f, 1f),
-            new Vector2(1f, 1f),
-            new Vector2(0.5f, 1f),
-            new Vector2(0f, 10f),
-            Vector2.zero);
-
-        Button closeButton = SimpleUiFactory.CreateButton(
-            "CloseButton",
-            root.transform,
-            runtimeFont,
-            "X",
-            new Color(0.69f, 0.18f, 0.18f, 1f),
-            CloseScene,
-            24);
-        SimpleUiFactory.SetAnchoredLayout(
-            closeButton.GetComponent<RectTransform>(),
-            new Vector2(0f, 1f),
-            new Vector2(0f, 1f),
-            new Vector2(0f, 1f),
-            new Vector2(72f, 72f),
-            new Vector2(44f, -44f));
-
-        Text title = SimpleUiFactory.CreateText("Title", panel.transform, runtimeFont, 42, FontStyle.Bold, TextAnchor.MiddleLeft, Color.white);
-        title.text = "Garage";
-        SimpleUiFactory.SetAnchoredLayout(
-            title.rectTransform,
-            new Vector2(0f, 1f),
-            new Vector2(0f, 1f),
-            new Vector2(0f, 1f),
-            new Vector2(320f, 56f),
-            new Vector2(132f, -52f));
-
-        Text subtitle = SimpleUiFactory.CreateText("Subtitle", panel.transform, runtimeFont, 20, FontStyle.Normal, TextAnchor.UpperLeft, new Color(0.84f, 0.89f, 0.96f));
-        subtitle.text = "";
-        SimpleUiFactory.SetAnchoredLayout(
-            subtitle.rectTransform,
-            new Vector2(0f, 1f),
-            new Vector2(1f, 1f),
-            new Vector2(0f, 1f),
-            new Vector2(-320f, 64f),
-            new Vector2(56f, -136f));
-
-        selectedHelicopterText = SimpleUiFactory.CreateText("SelectedHelicopter", panel.transform, runtimeFont, 22, FontStyle.Bold, TextAnchor.MiddleRight, new Color(0.9f, 0.95f, 1f));
-        SimpleUiFactory.SetAnchoredLayout(
-            selectedHelicopterText.rectTransform,
-            new Vector2(1f, 1f),
-            new Vector2(1f, 1f),
-            new Vector2(1f, 1f),
-            new Vector2(340f, 34f),
-            new Vector2(-56f, -78f));
-
-        Image previewFrame = SimpleUiFactory.CreateImage("PreviewFrame", panel.transform, new Color(0.09f, 0.14f, 0.2f, 1f));
-        previewRect = previewFrame.rectTransform;
-        SimpleUiFactory.SetAnchoredLayout(
-            previewRect,
-            new Vector2(0.18f, 0.28f),
-            new Vector2(0.82f, 0.88f),
-            new Vector2(0.5f, 0.5f),
-            Vector2.zero,
-            new Vector2(0f, -12f));
-
-        GameObject previewImageObject = SimpleUiFactory.FindOrCreateUiObject("PreviewImage", previewFrame.transform);
-        previewImage = previewImageObject.GetComponent<RawImage>() ?? previewImageObject.AddComponent<RawImage>();
-
-        SimpleUiFactory.StretchFull(previewImage.rectTransform);
-        previewImage.color = Color.white;
-
-        BuildPreviewStage();
-        BuildHelicopterScroller(panel.transform, runtimeFont, selectionState);
-        RefreshSelection();
+        EnsurePreviewStage();
+        viewBound = true;
     }
 
-    private void BuildPreviewStage()
+    private void BindSelectionState()
     {
-        previewStageRoot = new GameObject("GaragePreviewStage").transform;
-        previewStageRoot.SetParent(transform, false);
+        HelicopterSelectionState newSelectionState = HelicopterSelectionState.EnsureInitialized();
+        if (selectionState == newSelectionState)
+        {
+            if (viewBound)
+            {
+                RebuildCards();
+                RefreshSelection();
+            }
 
-        previewModelAnchor = new GameObject("PreviewModelAnchor").transform;
-        previewModelAnchor.SetParent(previewStageRoot, false);
+            return;
+        }
 
-        previewTexture = new RenderTexture(1024, 1024, 24);
-        previewTexture.name = "GaragePreviewTexture";
-        previewTexture.Create();
-        previewImage.texture = previewTexture;
+        if (selectionState != null)
+        {
+            selectionState.SelectionChanged -= RefreshSelection;
+        }
 
-        GameObject cameraObject = new GameObject("GaragePreviewCamera", typeof(Camera));
-        cameraObject.transform.SetParent(previewStageRoot, false);
-        previewCamera = cameraObject.GetComponent<Camera>();
-        previewCamera.clearFlags = CameraClearFlags.SolidColor;
-        previewCamera.backgroundColor = new Color(0.03f, 0.05f, 0.08f, 0f);
-        previewCamera.fieldOfView = 28f;
-        previewCamera.nearClipPlane = 0.1f;
-        previewCamera.farClipPlane = 200f;
-        previewCamera.targetTexture = previewTexture;
-        previewCamera.cullingMask = 1 << PreviewLayer;
-        ConfigurePreviewCamera(previewCamera);
+        selectionState = newSelectionState;
+        if (selectionState != null)
+        {
+            selectionState.SelectionChanged += RefreshSelection;
+        }
 
-        CreatePreviewLight("KeyLight", new Vector3(40f, -35f, 0f), 1.4f);
-        CreatePreviewLight("FillLight", new Vector3(20f, 145f, 0f), 0.75f);
+        if (viewBound)
+        {
+            RebuildCards();
+            RefreshSelection();
+        }
+    }
+
+    private void EnsurePreviewStage()
+    {
+        if (previewStageRoot == null)
+        {
+            previewStageRoot = new GameObject("GaragePreviewStage").transform;
+            previewStageRoot.SetParent(transform, false);
+        }
+
+        if (previewModelAnchor == null)
+        {
+            previewModelAnchor = new GameObject("PreviewModelAnchor").transform;
+            previewModelAnchor.SetParent(previewStageRoot, false);
+        }
+
+        if (previewTexture == null)
+        {
+            previewTexture = new RenderTexture(1024, 1024, 24);
+            previewTexture.name = "GaragePreviewTexture";
+            previewTexture.Create();
+        }
+
+        view.PreviewImage.texture = previewTexture;
+
+        if (previewCamera == null)
+        {
+            GameObject cameraObject = new GameObject("GaragePreviewCamera", typeof(Camera));
+            cameraObject.transform.SetParent(previewStageRoot, false);
+            previewCamera = cameraObject.GetComponent<Camera>();
+            previewCamera.clearFlags = CameraClearFlags.SolidColor;
+            previewCamera.backgroundColor = new Color(0.03f, 0.05f, 0.08f, 0f);
+            previewCamera.fieldOfView = 28f;
+            previewCamera.nearClipPlane = 0.1f;
+            previewCamera.farClipPlane = 200f;
+            previewCamera.targetTexture = previewTexture;
+            previewCamera.cullingMask = 1 << PreviewLayer;
+            ConfigurePreviewCamera(previewCamera);
+
+            CreatePreviewLight("KeyLight", new Vector3(40f, -35f, 0f), 1.4f);
+            CreatePreviewLight("FillLight", new Vector3(20f, 145f, 0f), 0.75f);
+        }
     }
 
     private void CreatePreviewLight(string name, Vector3 eulerAngles, float intensity)
@@ -263,167 +305,70 @@ public class GarageScenePresenter : MonoBehaviour
         light.cullingMask = 1 << PreviewLayer;
     }
 
-    private void BuildHelicopterScroller(Transform parent, Font font, HelicopterSelectionState selectionState)
+    private void RebuildCards()
     {
-        Image listPanel = SimpleUiFactory.CreateImage("HelicopterScrollerPanel", parent, new Color(0.05f, 0.08f, 0.12f, 0.96f));
-        SimpleUiFactory.SetAnchoredLayout(
-            listPanel.rectTransform,
-            new Vector2(0f, 0f),
-            new Vector2(1f, 0f),
-            new Vector2(0.5f, 0f),
-            new Vector2(-48f, 360f),
-            new Vector2(0f, 18f));
-
-        GameObject viewport = SimpleUiFactory.FindOrCreateUiObject("Viewport", listPanel.transform);
-        RectTransform viewportRect = viewport.GetComponent<RectTransform>();
-        viewportRect.anchorMin = new Vector2(0f, 0f);
-        viewportRect.anchorMax = new Vector2(1f, 1f);
-        viewportRect.pivot = new Vector2(0.5f, 0.5f);
-        viewportRect.offsetMin = new Vector2(10f, 10f);
-        viewportRect.offsetMax = new Vector2(-10f, -10f);
-
-        Image viewportImage = viewport.GetComponent<Image>() ?? viewport.AddComponent<Image>();
-        viewportImage.color = new Color(1f, 1f, 1f, 0.01f);
-        viewportImage.raycastTarget = true;
-
-        Mask existingMask = viewport.GetComponent<Mask>();
-        if (existingMask != null)
+        if (!viewBound || selectionState == null)
         {
-            Destroy(existingMask);
+            return;
         }
 
-        RectMask2D rectMask = viewport.GetComponent<RectMask2D>() ?? viewport.AddComponent<RectMask2D>();
+        for (int i = 0; i < spawnedCards.Count; i++)
+        {
+            if (spawnedCards[i] != null)
+            {
+                Destroy(spawnedCards[i].gameObject);
+            }
+        }
 
-        GameObject content = SimpleUiFactory.FindOrCreateUiObject("Content", viewport.transform);
-        RectTransform contentRect = content.GetComponent<RectTransform>();
-        contentRect.anchorMin = new Vector2(0f, 0f);
-        contentRect.anchorMax = new Vector2(0f, 1f);
-        contentRect.pivot = new Vector2(0f, 0.5f);
-        contentRect.anchoredPosition = Vector2.zero;
-        contentRect.sizeDelta = new Vector2(0f, 0f);
+        spawnedCards.Clear();
+        cardFrames.Clear();
 
-        HorizontalLayoutGroup layoutGroup = content.GetComponent<HorizontalLayoutGroup>() ?? content.AddComponent<HorizontalLayoutGroup>();
-        layoutGroup.spacing = 10f;
-        layoutGroup.childAlignment = TextAnchor.MiddleLeft;
-        layoutGroup.childControlWidth = false;
-        layoutGroup.childControlHeight = false;
-        layoutGroup.childForceExpandWidth = false;
-        layoutGroup.childForceExpandHeight = false;
-        layoutGroup.padding = new RectOffset(4, 4, 4, 4);
-
-        ContentSizeFitter contentSizeFitter = content.GetComponent<ContentSizeFitter>() ?? content.AddComponent<ContentSizeFitter>();
-        contentSizeFitter.horizontalFit = ContentSizeFitter.FitMode.PreferredSize;
-        contentSizeFitter.verticalFit = ContentSizeFitter.FitMode.Unconstrained;
-
-        ScrollRect scrollRect = listPanel.GetComponent<ScrollRect>() ?? listPanel.gameObject.AddComponent<ScrollRect>();
-        scrollRect.viewport = viewportRect;
-        scrollRect.content = contentRect;
-        scrollRect.horizontal = true;
-        scrollRect.vertical = false;
-        scrollRect.inertia = true;
-        scrollRect.movementType = ScrollRect.MovementType.Clamped;
-        scrollRect.scrollSensitivity = 24f;
-
-        IReadOnlyList<HelicopterGarageEntry> helicopters = selectionState.OwnedHelicopters;
+        IReadOnlyList<VehicleDefinition> helicopters = selectionState.OwnedHelicopters;
         for (int i = 0; i < helicopters.Count; i++)
         {
-            CreateHelicopterCard(content.transform, font, helicopters[i], selectionState, HelicopterCardWidth, HelicopterCardHeight);
+            CreateHelicopterCard(helicopters[i]);
         }
 
-        Canvas.ForceUpdateCanvases();
-        LayoutRebuilder.ForceRebuildLayoutImmediate(contentRect);
-        LayoutRebuilder.ForceRebuildLayoutImmediate(viewportRect);
-        LayoutRebuilder.ForceRebuildLayoutImmediate(listPanel.rectTransform);
+        LayoutRebuilder.ForceRebuildLayoutImmediate(view.HelicopterContent);
     }
 
-    private void CreateHelicopterCard(
-        Transform parent,
-        Font font,
-        HelicopterGarageEntry entry,
-        HelicopterSelectionState selectionState,
-        float cardWidth,
-        float cardHeight)
+    private void CreateHelicopterCard(VehicleDefinition entry)
     {
-        GameObject cardObject = SimpleUiFactory.FindOrCreateUiObject($"{entry.Id}Card", parent);
-        Image cardFrame = cardObject.GetComponent<Image>() ?? cardObject.AddComponent<Image>();
-        cardFrame.color = new Color(0.15f, 0.2f, 0.28f, 1f);
+        GarageHelicopterCardView card = Instantiate(view.HelicopterCardTemplate, view.HelicopterContent);
+        card.gameObject.name = $"{entry.Id}Card";
+        card.gameObject.SetActive(true);
 
-        Button button = cardObject.GetComponent<Button>() ?? cardObject.AddComponent<Button>();
-        button.targetGraphic = cardFrame;
-        button.onClick.RemoveAllListeners();
-        button.onClick.AddListener(() =>
+        card.Button.onClick.RemoveAllListeners();
+        card.Button.onClick.AddListener(() =>
         {
             selectionState.SelectHelicopter(entry.Id);
             RefreshSelection();
         });
 
-        RectTransform cardRect = cardObject.GetComponent<RectTransform>();
-        cardRect.anchorMin = new Vector2(0f, 0.5f);
-        cardRect.anchorMax = new Vector2(0f, 0.5f);
-        cardRect.pivot = new Vector2(0f, 0.5f);
-        cardRect.sizeDelta = new Vector2(cardWidth, cardHeight);
-        cardRect.anchoredPosition = Vector2.zero;
+        card.ThumbnailImage.texture = GetCardThumbnail(entry);
+        card.ThumbnailImage.color = Color.white;
+        card.NameText.text = entry.DisplayName;
+        card.Frame.color = new Color(0.15f, 0.2f, 0.28f, 1f);
 
-        LayoutElement layoutElement = cardObject.GetComponent<LayoutElement>() ?? cardObject.AddComponent<LayoutElement>();
-        layoutElement.preferredWidth = cardWidth;
-        layoutElement.preferredHeight = cardHeight;
-        layoutElement.minWidth = cardWidth;
-        layoutElement.minHeight = cardHeight;
-        layoutElement.flexibleWidth = 0f;
-        layoutElement.flexibleHeight = 0f;
-
-        Image colorSwatch = SimpleUiFactory.CreateImage("ColorSwatch", cardObject.transform, new Color(0.12f, 0.16f, 0.24f, 1f));
-        colorSwatch.rectTransform.anchorMin = Vector2.zero;
-        colorSwatch.rectTransform.anchorMax = Vector2.one;
-        colorSwatch.rectTransform.pivot = new Vector2(0.5f, 0.5f);
-        colorSwatch.rectTransform.offsetMin = new Vector2(4f, 42f);
-        colorSwatch.rectTransform.offsetMax = new Vector2(-4f, -4f);
-
-        RawImage thumbnailImage = SimpleUiFactory.FindOrCreateUiObject("Thumbnail", colorSwatch.transform).GetComponent<RawImage>();
-        if (thumbnailImage == null)
-        {
-            thumbnailImage = SimpleUiFactory.FindOrCreateUiObject("Thumbnail", colorSwatch.transform).AddComponent<RawImage>();
-        }
-
-        SimpleUiFactory.StretchFull(thumbnailImage.rectTransform);
-        Texture2D bakedThumbnail = Resources.Load<Texture2D>($"Garage/HelicopterThumbnails/{entry.DisplayName}");
-        thumbnailImage.texture = bakedThumbnail != null ? bakedThumbnail : CreateHelicopterThumbnail(selectionState, entry);
-        thumbnailImage.color = Color.white;
-        thumbnailImage.raycastTarget = false;
-
-        Image labelBar = SimpleUiFactory.CreateImage("LabelBar", cardObject.transform, new Color(0.08f, 0.11f, 0.16f, 0.96f));
-        labelBar.rectTransform.anchorMin = new Vector2(0f, 0f);
-        labelBar.rectTransform.anchorMax = new Vector2(1f, 0f);
-        labelBar.rectTransform.pivot = new Vector2(0.5f, 0f);
-        labelBar.rectTransform.sizeDelta = new Vector2(-8f, 30f);
-        labelBar.rectTransform.anchoredPosition = new Vector2(0f, 4f);
-        labelBar.raycastTarget = false;
-
-        Text nameText = SimpleUiFactory.CreateText("Name", cardObject.transform, font, Mathf.RoundToInt(14f * HelicopterCardScale), FontStyle.Bold, TextAnchor.MiddleCenter, Color.white);
-        nameText.text = entry.DisplayName;
-        nameText.rectTransform.anchorMin = new Vector2(0f, 0f);
-        nameText.rectTransform.anchorMax = new Vector2(1f, 0f);
-        nameText.rectTransform.pivot = new Vector2(0.5f, 0f);
-        nameText.rectTransform.sizeDelta = new Vector2(-12f, 26f);
-        nameText.rectTransform.anchoredPosition = new Vector2(0f, 6f);
-        nameText.horizontalOverflow = HorizontalWrapMode.Overflow;
-        nameText.verticalOverflow = VerticalWrapMode.Truncate;
-        nameText.raycastTarget = false;
-
-        cardFrames[entry.Id] = cardFrame;
+        spawnedCards.Add(card);
+        cardFrames[entry.Id] = card.Frame;
     }
 
     private void RefreshSelection()
     {
-        HelicopterSelectionState selectionState = HelicopterSelectionState.EnsureInitialized();
-        HelicopterGarageEntry selectedHelicopter = selectionState.SelectedHelicopter;
+        if (!viewBound || selectionState == null)
+        {
+            return;
+        }
+
+        VehicleDefinition selectedHelicopter = selectionState.EnsureSelectedHelicopter();
         if (selectedHelicopter == null)
         {
             return;
         }
 
-        selectedHelicopterText.text = $"Selected: {selectedHelicopter.DisplayName}";
-        RebuildPreview(selectionState, selectedHelicopter);
+        view.SelectedHelicopterText.text = $"Selected: {selectedHelicopter.DisplayName}";
+        RebuildPreview(selectedHelicopter);
         RefreshCardHighlights(selectedHelicopter.Id);
     }
 
@@ -437,26 +382,25 @@ public class GarageScenePresenter : MonoBehaviour
         }
     }
 
-    private void RebuildPreview(HelicopterSelectionState selectionState, HelicopterGarageEntry selectedHelicopter)
+    private void RebuildPreview(VehicleDefinition selectedHelicopter)
     {
         if (previewInstance != null)
         {
             Destroy(previewInstance);
         }
 
-        GameObject sourcePrefab = selectionState.LoadPreviewPrefab(selectedHelicopter);
+        GameObject sourcePrefab = selectedHelicopter.Prefab;
         previewInstance = InstantiatePreviewObject(sourcePrefab, previewModelAnchor);
 
         previewInstance.name = "SelectedHelicopterPreview";
         previewInstance.transform.localPosition = Vector3.zero;
         previewInstance.transform.localRotation = Quaternion.identity;
-        previewInstance.transform.localScale = Vector3.one * 1.65f;
+        previewInstance.transform.localScale = Vector3.one;
 
         DisablePreviewBehaviours(previewInstance);
         SetLayerRecursively(previewInstance, PreviewLayer);
-        ApplyTint(previewInstance, selectedHelicopter.Tint);
-        ApplyPreviewTuning(previewInstance.transform);
         FramePreview(previewInstance);
+        ApplyPreviewTuning(previewInstance.transform);
         ApplyPreviewTuningOffset(previewInstance.transform);
         ApplyPreviewRotation();
     }
@@ -472,9 +416,9 @@ public class GarageScenePresenter : MonoBehaviour
         wrapper.transform.SetParent(parent, false);
 
         GameObject instance = Instantiate(sourcePrefab, wrapper.transform);
-        instance.transform.localPosition = BattleVisualLocalPosition;
-        instance.transform.localRotation = BattleVisualLocalRotation;
-        instance.transform.localScale = BattleVisualLocalScale;
+        instance.transform.localPosition = Vector3.zero;
+        instance.transform.localRotation = Quaternion.identity;
+        instance.transform.localScale = Vector3.one;
 
         if (wrapper.GetComponentsInChildren<Renderer>(true).Length > 0)
         {
@@ -485,7 +429,26 @@ public class GarageScenePresenter : MonoBehaviour
         return CreateFallbackPreview(parent);
     }
 
-    private RenderTexture CreateHelicopterThumbnail(HelicopterSelectionState selectionState, HelicopterGarageEntry entry)
+    private Texture GetCardThumbnail(VehicleDefinition entry)
+    {
+        if (entry == null)
+        {
+            return null;
+        }
+
+        if (liveThumbnailStages.TryGetValue(entry.Id, out ThumbnailStage existingStage) &&
+            existingStage != null &&
+            existingStage.Texture != null)
+        {
+            return existingStage.Texture;
+        }
+
+        ThumbnailStage thumbnailStage = CreateHelicopterThumbnail(entry);
+        liveThumbnailStages[entry.Id] = thumbnailStage;
+        return thumbnailStage.Texture;
+    }
+
+    private ThumbnailStage CreateHelicopterThumbnail(VehicleDefinition entry)
     {
         RenderTexture thumbnailTexture = new RenderTexture(512, 512, 24);
         thumbnailTexture.name = $"{entry.Id}_Thumbnail";
@@ -501,13 +464,12 @@ public class GarageScenePresenter : MonoBehaviour
 
         Camera camera = cameraObject.GetComponent<Camera>();
         camera.clearFlags = CameraClearFlags.SolidColor;
-        camera.backgroundColor = new Color(0.03f, 0.05f, 0.08f, 0f);
+        camera.backgroundColor = new Color(0.03f, 0.05f, 0.08f, 1f);
         camera.fieldOfView = 24f;
         camera.nearClipPlane = 0.1f;
         camera.farClipPlane = 200f;
-        camera.targetTexture = thumbnailTexture;
         camera.cullingMask = 1 << PreviewLayer;
-        camera.enabled = true;
+        camera.enabled = false;
         ConfigurePreviewCamera(camera);
 
         Transform modelAnchor = new GameObject("ThumbnailModelAnchor").transform;
@@ -516,20 +478,26 @@ public class GarageScenePresenter : MonoBehaviour
         CreatePreviewLight(stageRoot.transform, "ThumbnailKeyLight", new Vector3(40f, -35f, 0f), 1.35f);
         CreatePreviewLight(stageRoot.transform, "ThumbnailFillLight", new Vector3(20f, 145f, 0f), 0.7f);
 
-        GameObject sourcePrefab = selectionState.LoadPreviewPrefab(entry);
+        GameObject sourcePrefab = entry.Prefab;
         GameObject thumbnailInstance = InstantiatePreviewObject(sourcePrefab, modelAnchor);
         thumbnailInstance.transform.localPosition = Vector3.zero;
         thumbnailInstance.transform.localRotation = Quaternion.identity;
-        thumbnailInstance.transform.localScale = Vector3.one * 1.35f;
+        thumbnailInstance.transform.localScale = Vector3.one;
 
         DisablePreviewBehaviours(thumbnailInstance);
         SetLayerRecursively(thumbnailInstance, PreviewLayer);
-        ApplyTint(thumbnailInstance, entry.Tint);
 
         PositionThumbnailCamera(thumbnailInstance, camera);
-        modelAnchor.localRotation = Quaternion.Euler(0f, 210f, 0f);
+        modelAnchor.localRotation = Quaternion.Euler(0f, ThumbnailBaseYaw, 0f);
+        RenderThumbnailCamera(camera, thumbnailTexture);
 
-        return thumbnailTexture;
+        return new ThumbnailStage
+        {
+            Texture = thumbnailTexture,
+            Camera = camera,
+            ModelAnchor = modelAnchor,
+            StageRoot = stageRoot
+        };
     }
 
     private void ApplyPreviewTuning(Transform target)
@@ -565,7 +533,7 @@ public class GarageScenePresenter : MonoBehaviour
     private static void PositionThumbnailCamera(GameObject target, Camera camera)
     {
         float radius = CenterPreviewAtOrigin(target);
-        float distance = radius / Mathf.Tan(camera.fieldOfView * 0.5f * Mathf.Deg2Rad) * 2.15f;
+        float distance = radius / Mathf.Tan(camera.fieldOfView * 0.5f * Mathf.Deg2Rad) * ThumbnailDistanceMultiplier;
 
         camera.transform.localPosition = new Vector3(0f, radius * 0.18f, -distance);
         camera.transform.localRotation = Quaternion.Euler(8f, 0f, 0f);
@@ -574,7 +542,10 @@ public class GarageScenePresenter : MonoBehaviour
     private static float CenterPreviewAtOrigin(GameObject target)
     {
         Bounds bounds = CalculateBounds(target);
-        target.transform.localPosition -= bounds.center;
+        Vector3 localCenter = target.transform.parent != null
+            ? target.transform.parent.InverseTransformPoint(bounds.center)
+            : bounds.center;
+        target.transform.localPosition -= localCenter;
 
         bounds = CalculateBounds(target);
         return Mathf.Max(bounds.extents.x, bounds.extents.y, bounds.extents.z);
@@ -627,29 +598,9 @@ public class GarageScenePresenter : MonoBehaviour
         }
     }
 
-    private static void ApplyTint(GameObject target, Color tint)
-    {
-        Renderer[] renderers = target.GetComponentsInChildren<Renderer>(true);
-        for (int i = 0; i < renderers.Length; i++)
-        {
-            Material[] materials = renderers[i].materials;
-            for (int j = 0; j < materials.Length; j++)
-            {
-                if (materials[j].HasProperty("_BaseColor"))
-                {
-                    materials[j].SetColor("_BaseColor", tint);
-                }
-                else if (materials[j].HasProperty("_Color"))
-                {
-                    materials[j].SetColor("_Color", tint);
-                }
-            }
-        }
-    }
-
     private void HandlePreviewRotation()
     {
-        if (previewRect == null || previewInstance == null)
+        if (view == null || view.PreviewRect == null || previewInstance == null)
         {
             return;
         }
@@ -658,7 +609,7 @@ public class GarageScenePresenter : MonoBehaviour
         if (mouse != null)
         {
             Vector2 mousePosition = mouse.position.ReadValue();
-            if (RectTransformUtility.RectangleContainsScreenPoint(previewRect, mousePosition))
+            if (RectTransformUtility.RectangleContainsScreenPoint(view.PreviewRect, mousePosition))
             {
                 float scrollDelta = mouse.scroll.ReadValue().y;
                 if (Mathf.Abs(scrollDelta) > 0.01f)
@@ -669,6 +620,7 @@ public class GarageScenePresenter : MonoBehaviour
                 if (mouse.leftButton.isPressed)
                 {
                     previewYaw += mouse.delta.ReadValue().x * 0.18f;
+                    previewPitch = Mathf.Clamp(previewPitch - mouse.delta.ReadValue().y * 0.12f, -PreviewPitchClamp, PreviewPitchClamp);
                 }
             }
         }
@@ -677,9 +629,10 @@ public class GarageScenePresenter : MonoBehaviour
         if (touchscreen != null && touchscreen.primaryTouch.press.isPressed)
         {
             Vector2 touchPosition = touchscreen.primaryTouch.position.ReadValue();
-            if (RectTransformUtility.RectangleContainsScreenPoint(previewRect, touchPosition))
+            if (RectTransformUtility.RectangleContainsScreenPoint(view.PreviewRect, touchPosition))
             {
                 previewYaw += touchscreen.primaryTouch.delta.ReadValue().x * 0.18f;
+                previewPitch = Mathf.Clamp(previewPitch - touchscreen.primaryTouch.delta.ReadValue().y * 0.12f, -PreviewPitchClamp, PreviewPitchClamp);
             }
         }
 
@@ -690,8 +643,49 @@ public class GarageScenePresenter : MonoBehaviour
     {
         if (previewModelAnchor != null)
         {
-            previewModelAnchor.localRotation = Quaternion.Euler(0f, previewYaw, 0f);
+            previewModelAnchor.localRotation = Quaternion.Euler(previewPitch, previewYaw, 0f);
         }
+    }
+
+    private void UpdateLiveThumbnailRotation()
+    {
+        if (liveThumbnailStages.Count == 0)
+        {
+            return;
+        }
+
+        float animatedYaw = ThumbnailBaseYaw + Time.unscaledTime * ThumbnailSpinSpeed;
+        foreach (ThumbnailStage stage in liveThumbnailStages.Values)
+        {
+            if (stage?.ModelAnchor == null)
+            {
+                continue;
+            }
+
+            stage.ModelAnchor.localRotation = Quaternion.Euler(0f, animatedYaw, 0f);
+            if (stage.Camera != null && stage.Texture != null)
+            {
+                RenderThumbnailCamera(stage.Camera, stage.Texture);
+            }
+        }
+    }
+
+    private static void RenderThumbnailCamera(Camera camera, RenderTexture targetTexture)
+    {
+        if (camera == null || targetTexture == null)
+        {
+            return;
+        }
+
+        RenderPipeline.StandardRequest request = new RenderPipeline.StandardRequest
+        {
+            destination = targetTexture,
+            mipLevel = 0,
+            slice = 0,
+            face = CubemapFace.Unknown
+        };
+
+        RenderPipeline.SubmitRenderRequest(camera, request);
     }
 
     private static GameObject CreateFallbackPreview(Transform parent)

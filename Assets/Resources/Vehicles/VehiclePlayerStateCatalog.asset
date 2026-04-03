@@ -1,0 +1,93 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 08f3d066eb95a43488c451dcf7c2cfda, type: 3}
+  m_Name: VehiclePlayerStateCatalog
+  m_EditorClassIdentifier: Assembly-CSharp::VehiclePlayerStateCatalog
+  fallbackState:
+    vehicleId: 
+    hullHp: 100
+    armorHp: 120
+    repairRate: 8
+    repairDelay: 2.5
+    brokenRecoverThreshold: 36
+    hullDamageMultiplierWhenBroken: 1.25
+  vehicles:
+  - vehicleId: helicopter_1
+    hullHp: 100
+    armorHp: 120
+    repairRate: 8
+    repairDelay: 2.5
+    brokenRecoverThreshold: 36
+    hullDamageMultiplierWhenBroken: 1.25
+  - vehicleId: helicopter_2
+    hullHp: 100
+    armorHp: 120
+    repairRate: 8
+    repairDelay: 2.5
+    brokenRecoverThreshold: 36
+    hullDamageMultiplierWhenBroken: 1.25
+  - vehicleId: helicopter_3
+    hullHp: 100
+    armorHp: 120
+    repairRate: 8
+    repairDelay: 2.5
+    brokenRecoverThreshold: 36
+    hullDamageMultiplierWhenBroken: 1.25
+  - vehicleId: helicopter_4
+    hullHp: 100
+    armorHp: 120
+    repairRate: 8
+    repairDelay: 2.5
+    brokenRecoverThreshold: 36
+    hullDamageMultiplierWhenBroken: 1.25
+  - vehicleId: helicopter_5
+    hullHp: 100
+    armorHp: 120
+    repairRate: 8
+    repairDelay: 2.5
+    brokenRecoverThreshold: 36
+    hullDamageMultiplierWhenBroken: 1.25
+  - vehicleId: helicopter_6
+    hullHp: 100
+    armorHp: 120
+    repairRate: 8
+    repairDelay: 2.5
+    brokenRecoverThreshold: 36
+    hullDamageMultiplierWhenBroken: 1.25
+  - vehicleId: helicopter_7
+    hullHp: 100
+    armorHp: 120
+    repairRate: 8
+    repairDelay: 2.5
+    brokenRecoverThreshold: 36
+    hullDamageMultiplierWhenBroken: 1.25
+  - vehicleId: helicopter_8
+    hullHp: 100
+    armorHp: 120
+    repairRate: 8
+    repairDelay: 2.5
+    brokenRecoverThreshold: 36
+    hullDamageMultiplierWhenBroken: 1.25
+  - vehicleId: helicopter_9
+    hullHp: 100
+    armorHp: 120
+    repairRate: 8
+    repairDelay: 2.5
+    brokenRecoverThreshold: 36
+    hullDamageMultiplierWhenBroken: 1.25
+  - vehicleId: helicopter_10
+    hullHp: 100
+    armorHp: 120
+    repairRate: 8
+    repairDelay: 2.5
+    brokenRecoverThreshold: 36
+    hullDamageMultiplierWhenBroken: 1.25

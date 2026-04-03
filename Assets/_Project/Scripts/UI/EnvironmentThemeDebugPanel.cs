@@ -1,11 +1,16 @@
 using UnityEngine;
 using UnityEngine.UI;
+#if UNITY_EDITOR
+using UnityEditor;
+using UnityEditor.SceneManagement;
+#endif
 
 [DefaultExecutionOrder(550)]
 public class EnvironmentThemeDebugPanel : MonoBehaviour
 {
+    private const string PanelRootName = "GeneratedEnvironmentThemeDebug";
+
     [Header("Debug UI")]
-    [SerializeField] private bool autoBuildUi = true;
     [SerializeField] private bool showDebugPanel = true;
     [SerializeField] private Vector2 panelAnchoredPosition = new(-24f, -24f);
 
@@ -15,15 +20,21 @@ public class EnvironmentThemeDebugPanel : MonoBehaviour
 
     private GameObject panelRoot;
     private Text currentThemeText;
+    private Button dayButton;
+    private Button nightButton;
+    private Button rainButton;
+    private Button undeadButton;
     private Image dayButtonImage;
     private Image nightButtonImage;
     private Image rainButtonImage;
-    private bool uiBuilt;
+    private Image undeadButtonImage;
+    private Text undeadButtonLabel;
+    private bool uiBound;
 
     private void Awake()
     {
         ResolveReferences();
-        TryBuildUi();
+        EnsureUiReferences();
     }
 
     private void Reset()
@@ -34,14 +45,14 @@ public class EnvironmentThemeDebugPanel : MonoBehaviour
     private void OnEnable()
     {
         ResolveReferences();
-        TryBuildUi();
+        EnsureUiReferences();
         RefreshUiState();
     }
 
     private void Start()
     {
         ResolveReferences();
-        TryBuildUi();
+        EnsureUiReferences();
         RefreshUiState();
     }
 
@@ -53,6 +64,7 @@ public class EnvironmentThemeDebugPanel : MonoBehaviour
     private void Update()
     {
         ResolveReferences();
+        EnsureUiReferences();
         RefreshUiState();
     }
 
@@ -89,6 +101,51 @@ public class EnvironmentThemeDebugPanel : MonoBehaviour
         RefreshUiState();
     }
 
+    public void ToggleUndead()
+    {
+        GameplayDebugFlags.Undead = !GameplayDebugFlags.Undead;
+        RefreshUiState();
+    }
+
+    public void SetDebugPanelVisible(bool visible)
+    {
+        showDebugPanel = visible;
+        RefreshUiState();
+    }
+
+#if UNITY_EDITOR
+    [ContextMenu("Rebuild Authored Environment Debug UI")]
+    public void RebuildAuthoredUiForEditor()
+    {
+        if (Application.isPlaying)
+        {
+            return;
+        }
+
+        ResolveReferences();
+        if (targetCanvas == null)
+        {
+            Debug.LogWarning("EnvironmentThemeDebugPanel could not find a Canvas to rebuild authored UI.", this);
+            return;
+        }
+
+        Transform existingRoot = targetCanvas.transform.Find(PanelRootName);
+        if (existingRoot != null)
+        {
+            DestroyImmediate(existingRoot.gameObject);
+        }
+
+        ClearUiReferences();
+        BuildUi(targetCanvas.transform);
+        EnsureUiReferences();
+        RefreshUiState();
+
+        EditorUtility.SetDirty(targetCanvas.gameObject);
+        EditorUtility.SetDirty(gameObject);
+        EditorSceneManager.MarkSceneDirty(gameObject.scene);
+    }
+#endif
+
     private void ResolveReferences()
     {
         if (targetCanvas == null)
@@ -107,92 +164,80 @@ public class EnvironmentThemeDebugPanel : MonoBehaviour
         }
     }
 
-    private void TryBuildUi()
+    private void EnsureUiReferences()
     {
-        if (uiBuilt || !autoBuildUi || targetCanvas == null)
+        if (uiBound || targetCanvas == null)
         {
             return;
         }
 
-        BuildUi();
-        uiBuilt = true;
+        Transform panelTransform = targetCanvas.transform.Find(PanelRootName);
+        if (panelTransform == null)
+        {
+            return;
+        }
+
+        panelRoot = panelTransform.gameObject;
+        currentThemeText = FindUiComponent<Text>(panelTransform, "CurrentThemeLabel");
+
+        dayButton = FindUiComponent<Button>(panelTransform, "DayButton");
+        dayButtonImage = FindUiComponent<Image>(panelTransform, "DayButton");
+        nightButton = FindUiComponent<Button>(panelTransform, "NightButton");
+        nightButtonImage = FindUiComponent<Image>(panelTransform, "NightButton");
+        rainButton = FindUiComponent<Button>(panelTransform, "RainButton");
+        rainButtonImage = FindUiComponent<Image>(panelTransform, "RainButton");
+        undeadButton = FindUiComponent<Button>(panelTransform, "UndeadButton");
+        undeadButtonImage = FindUiComponent<Image>(panelTransform, "UndeadButton");
+        undeadButtonLabel = FindUiComponent<Text>(panelTransform, "UndeadButton/UndeadButtonLabel");
+
+        if (dayButton != null)
+        {
+            dayButton.onClick.RemoveListener(SetDayTheme);
+            dayButton.onClick.AddListener(SetDayTheme);
+        }
+
+        if (nightButton != null)
+        {
+            nightButton.onClick.RemoveListener(SetNightTheme);
+            nightButton.onClick.AddListener(SetNightTheme);
+        }
+
+        if (rainButton != null)
+        {
+            rainButton.onClick.RemoveListener(SetRainTheme);
+            rainButton.onClick.AddListener(SetRainTheme);
+        }
+
+        if (undeadButton != null)
+        {
+            undeadButton.onClick.RemoveListener(ToggleUndead);
+            undeadButton.onClick.AddListener(ToggleUndead);
+        }
+
+        uiBound =
+            panelRoot != null &&
+            currentThemeText != null &&
+            dayButton != null &&
+            nightButton != null &&
+            rainButton != null &&
+            undeadButton != null &&
+            undeadButtonLabel != null;
     }
 
-    private void BuildUi()
+    private void ClearUiReferences()
     {
-        Font runtimeFont = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
-
-        panelRoot = FindOrCreateUiObject("GeneratedEnvironmentThemeDebug", targetCanvas.transform);
-        RectTransform panelRect = panelRoot.GetComponent<RectTransform>();
-        panelRect.anchorMin = new Vector2(1f, 1f);
-        panelRect.anchorMax = new Vector2(1f, 1f);
-        panelRect.pivot = new Vector2(1f, 1f);
-        panelRect.sizeDelta = new Vector2(308f, 132f);
-        panelRect.anchoredPosition = panelAnchoredPosition;
-
-        Image panelBackground = panelRoot.GetComponent<Image>() ?? panelRoot.AddComponent<Image>();
-        panelBackground.color = new Color(0.07f, 0.10f, 0.15f, 0.84f);
-
-        Text titleText = CreateText(
-            "TitleLabel",
-            panelRoot.transform,
-            runtimeFont,
-            18,
-            FontStyle.Bold,
-            TextAnchor.UpperLeft,
-            new Color(0.94f, 0.97f, 1f));
-        titleText.text = "Environment Theme";
-        RectTransform titleRect = titleText.rectTransform;
-        titleRect.anchorMin = new Vector2(0f, 1f);
-        titleRect.anchorMax = new Vector2(1f, 1f);
-        titleRect.pivot = new Vector2(0f, 1f);
-        titleRect.offsetMin = new Vector2(14f, -34f);
-        titleRect.offsetMax = new Vector2(-14f, -10f);
-
-        currentThemeText = CreateText(
-            "CurrentThemeLabel",
-            panelRoot.transform,
-            runtimeFont,
-            16,
-            FontStyle.Normal,
-            TextAnchor.UpperLeft,
-            new Color(0.76f, 0.84f, 0.93f));
-        RectTransform currentThemeRect = currentThemeText.rectTransform;
-        currentThemeRect.anchorMin = new Vector2(0f, 1f);
-        currentThemeRect.anchorMax = new Vector2(1f, 1f);
-        currentThemeRect.pivot = new Vector2(0f, 1f);
-        currentThemeRect.offsetMin = new Vector2(14f, -60f);
-        currentThemeRect.offsetMax = new Vector2(-14f, -36f);
-
-        CreateButton(
-            "DayButton",
-            panelRoot.transform,
-            runtimeFont,
-            "Day",
-            new Vector2(56f, -90f),
-            new Color(0.24f, 0.60f, 0.80f),
-            SetDayTheme,
-            out dayButtonImage);
-
-        CreateButton(
-            "NightButton",
-            panelRoot.transform,
-            runtimeFont,
-            "Night",
-            new Vector2(154f, -90f),
-            new Color(0.22f, 0.26f, 0.42f),
-            SetNightTheme,
-            out nightButtonImage);
-
-        CreateButton(
-            "RainButton",
-            panelRoot.transform,
-            runtimeFont,
-            "Rain",
-            new Vector2(252f, -90f),
-            new Color(0.28f, 0.42f, 0.52f),
-            SetRainTheme,
-            out rainButtonImage);
+        panelRoot = null;
+        currentThemeText = null;
+        dayButton = null;
+        nightButton = null;
+        rainButton = null;
+        undeadButton = null;
+        dayButtonImage = null;
+        nightButtonImage = null;
+        rainButtonImage = null;
+        undeadButtonImage = null;
+        undeadButtonLabel = null;
+        uiBound = false;
     }
 
     private void RefreshUiState()
@@ -214,14 +259,117 @@ public class EnvironmentThemeDebugPanel : MonoBehaviour
                 : "Current: Missing Controller";
         }
 
-        if (environmentController == null)
+        if (environmentController != null)
         {
-            return;
+            ApplyButtonState(dayButtonImage, environmentController.ActiveThemeType == EnvironmentThemeType.Day, new Color(0.24f, 0.60f, 0.80f));
+            ApplyButtonState(nightButtonImage, environmentController.ActiveThemeType == EnvironmentThemeType.Night, new Color(0.22f, 0.26f, 0.42f));
+            ApplyButtonState(rainButtonImage, environmentController.ActiveThemeType == EnvironmentThemeType.Rain, new Color(0.28f, 0.42f, 0.52f));
         }
 
-        ApplyButtonState(dayButtonImage, environmentController.ActiveThemeType == EnvironmentThemeType.Day, new Color(0.24f, 0.60f, 0.80f));
-        ApplyButtonState(nightButtonImage, environmentController.ActiveThemeType == EnvironmentThemeType.Night, new Color(0.22f, 0.26f, 0.42f));
-        ApplyButtonState(rainButtonImage, environmentController.ActiveThemeType == EnvironmentThemeType.Rain, new Color(0.28f, 0.42f, 0.52f));
+        if (undeadButtonImage != null)
+        {
+            ApplyButtonState(undeadButtonImage, GameplayDebugFlags.Undead, new Color(0.34f, 0.18f, 0.18f));
+        }
+
+        if (undeadButtonLabel != null)
+        {
+            undeadButtonLabel.text = GameplayDebugFlags.Undead ? "Undead ON" : "Undead OFF";
+        }
+    }
+
+    private void BuildUi(Transform canvasTransform)
+    {
+        Font runtimeFont = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+
+        GameObject createdPanelRoot = FindOrCreateUiObject(PanelRootName, canvasTransform);
+        RectTransform panelRect = createdPanelRoot.GetComponent<RectTransform>();
+        panelRect.anchorMin = new Vector2(1f, 1f);
+        panelRect.anchorMax = new Vector2(1f, 1f);
+        panelRect.pivot = new Vector2(1f, 1f);
+        panelRect.sizeDelta = new Vector2(308f, 176f);
+        panelRect.anchoredPosition = panelAnchoredPosition;
+
+        Image panelBackground = createdPanelRoot.GetComponent<Image>() ?? createdPanelRoot.AddComponent<Image>();
+        panelBackground.color = new Color(0.07f, 0.10f, 0.15f, 0.84f);
+
+        Text titleText = CreateText(
+            "TitleLabel",
+            createdPanelRoot.transform,
+            runtimeFont,
+            18,
+            FontStyle.Bold,
+            TextAnchor.UpperLeft,
+            new Color(0.94f, 0.97f, 1f));
+        titleText.text = "Environment Theme";
+        RectTransform titleRect = titleText.rectTransform;
+        titleRect.anchorMin = new Vector2(0f, 1f);
+        titleRect.anchorMax = new Vector2(1f, 1f);
+        titleRect.pivot = new Vector2(0f, 1f);
+        titleRect.offsetMin = new Vector2(14f, -34f);
+        titleRect.offsetMax = new Vector2(-14f, -10f);
+
+        Text createdCurrentThemeText = CreateText(
+            "CurrentThemeLabel",
+            createdPanelRoot.transform,
+            runtimeFont,
+            16,
+            FontStyle.Normal,
+            TextAnchor.UpperLeft,
+            new Color(0.76f, 0.84f, 0.93f));
+        RectTransform currentThemeRect = createdCurrentThemeText.rectTransform;
+        currentThemeRect.anchorMin = new Vector2(0f, 1f);
+        currentThemeRect.anchorMax = new Vector2(1f, 1f);
+        currentThemeRect.pivot = new Vector2(0f, 1f);
+        currentThemeRect.offsetMin = new Vector2(14f, -60f);
+        currentThemeRect.offsetMax = new Vector2(-14f, -36f);
+
+        CreateButton(
+            "DayButton",
+            createdPanelRoot.transform,
+            runtimeFont,
+            "Day",
+            new Vector2(56f, -90f),
+            new Vector2(86f, 34f),
+            new Color(0.24f, 0.60f, 0.80f),
+            SetDayTheme,
+            out _,
+            out _);
+
+        CreateButton(
+            "NightButton",
+            createdPanelRoot.transform,
+            runtimeFont,
+            "Night",
+            new Vector2(154f, -90f),
+            new Vector2(86f, 34f),
+            new Color(0.22f, 0.26f, 0.42f),
+            SetNightTheme,
+            out _,
+            out _);
+
+        CreateButton(
+            "RainButton",
+            createdPanelRoot.transform,
+            runtimeFont,
+            "Rain",
+            new Vector2(252f, -90f),
+            new Vector2(86f, 34f),
+            new Color(0.28f, 0.42f, 0.52f),
+            SetRainTheme,
+            out _,
+            out _);
+
+        CreateButton(
+            "UndeadButton",
+            createdPanelRoot.transform,
+            runtimeFont,
+            "Undead OFF",
+            new Vector2(154f, -132f),
+            new Vector2(184f, 34f),
+            new Color(0.34f, 0.18f, 0.18f),
+            ToggleUndead,
+            out _,
+            out _);
     }
 
     private static void ApplyButtonState(Image image, bool isActive, Color baseColor)
@@ -236,15 +384,23 @@ public class EnvironmentThemeDebugPanel : MonoBehaviour
             : baseColor;
     }
 
+    private static T FindUiComponent<T>(Transform root, string relativePath) where T : Component
+    {
+        Transform target = root != null ? root.Find(relativePath) : null;
+        return target != null ? target.GetComponent<T>() : null;
+    }
+
     private static void CreateButton(
         string name,
         Transform parent,
         Font font,
         string label,
         Vector2 anchoredPosition,
+        Vector2 size,
         Color color,
         UnityEngine.Events.UnityAction onClick,
-        out Image buttonImage)
+        out Image buttonImage,
+        out Text labelText)
     {
         GameObject buttonObject = FindOrCreateUiObject(name, parent);
         buttonImage = buttonObject.GetComponent<Image>() ?? buttonObject.AddComponent<Image>();
@@ -259,10 +415,10 @@ public class EnvironmentThemeDebugPanel : MonoBehaviour
         buttonRect.anchorMin = new Vector2(0f, 1f);
         buttonRect.anchorMax = new Vector2(0f, 1f);
         buttonRect.pivot = new Vector2(0.5f, 0.5f);
-        buttonRect.sizeDelta = new Vector2(86f, 34f);
+        buttonRect.sizeDelta = size;
         buttonRect.anchoredPosition = anchoredPosition;
 
-        Text labelText = CreateText(
+        labelText = CreateText(
             $"{name}Label",
             buttonObject.transform,
             font,
@@ -309,7 +465,14 @@ public class EnvironmentThemeDebugPanel : MonoBehaviour
                 return existing.gameObject;
             }
 
-            Object.Destroy(existing.gameObject);
+            if (Application.isPlaying)
+            {
+                Object.Destroy(existing.gameObject);
+            }
+            else
+            {
+                Object.DestroyImmediate(existing.gameObject);
+            }
         }
 
         GameObject created = new(name, typeof(RectTransform));

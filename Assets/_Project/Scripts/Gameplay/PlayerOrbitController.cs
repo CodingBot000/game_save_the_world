@@ -1,51 +1,41 @@
-using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.InputSystem;
+using UnityEngine.Serialization;
 
 [DefaultExecutionOrder(0)]
 public class PlayerOrbitController : MonoBehaviour
 {
-    private const float DefaultHorizontalScreenSpeed = 0.35f;
-    private const float DefaultVerticalScreenSpeed = 0.35f;
-    private const float DefaultDepthSpeed = 10f;
-    private const float DefaultMinViewportX = 0.12f;
-    private const float DefaultMaxViewportX = 0.88f;
-    private const float DefaultMinViewportY = 0.16f;
-    private const float DefaultMaxViewportY = 0.84f;
-    private const float DefaultMinCameraDepth = 6f;
-    private const float DefaultMaxCameraDepth = 18f;
+    private const float DefaultStrafeSpeed = 8f;
+    private const float DefaultAltitudeSpeed = 8f;
+    private const float DefaultForwardSpeed = 10f;
 
     [SerializeField] private bool deriveRotationOffsetFromSceneRotation = true;
-    [SerializeField] private float horizontalScreenSpeed = 0.35f;
-    [SerializeField] private float verticalScreenSpeed = 0.35f;
-    [SerializeField] private float depthSpeed = 10f;
-    [SerializeField] private float minViewportX = 0.12f;
-    [SerializeField] private float maxViewportX = 0.88f;
-    [SerializeField] private float minViewportY = 0.16f;
-    [SerializeField] private float maxViewportY = 0.84f;
-    [SerializeField] private float minCameraDepth = 6f;
-    [SerializeField] private float maxCameraDepth = 18f;
+    [FormerlySerializedAs("horizontalScreenSpeed")]
+    [SerializeField] private float strafeSpeed = 8f;
+    [FormerlySerializedAs("verticalScreenSpeed")]
+    [SerializeField] private float altitudeSpeed = 8f;
+    [FormerlySerializedAs("depthSpeed")]
+    [SerializeField] private float forwardSpeed = 10f;
+    [Tooltip("One-time guard for upgrading old viewport-based movement speeds to world-space speeds.")]
+    [SerializeField] private bool movementSpeedsMigratedToWorldSpace;
+    [SerializeField] private PlayerMovementBounds movementBounds;
     [SerializeField] private string visualTiltRootName = "PlayerVisualRoot";
     [SerializeField] private float maxVisualTiltAngle = 30f;
     [SerializeField] private float visualTiltDuration = 0.3f;
 
     private Transform orbitCenter;
     private Transform lookTarget;
-    private ArenaCameraRig cameraRig;
-    private Camera orbitCamera;
-    private PlayerMoveGuide moveGuide;
     private Transform visualTiltRoot;
-    private Vector3[] localVisualSamplePoints;
     private bool inputEnabled = true;
     private Quaternion lookRotationOffset = Quaternion.identity;
     private Quaternion visualTiltBaseLocalRotation = Quaternion.identity;
     private Vector2 currentVisualTilt;
     private Vector2 movementInput;
-    private float viewportX;
-    private float viewportY;
-    private float cameraDepth;
+    private Vector3 previousWorldPosition;
+    private bool hasPreviousWorldPosition;
 
     public float CurrentDistance { get; private set; }
+    public Vector3 CurrentWorldVelocity { get; private set; }
     public Vector3 OrbitCenterPosition => orbitCenter != null ? orbitCenter.position : Vector3.zero;
     public Vector3 OutwardDirection
     {
@@ -61,14 +51,15 @@ public class PlayerOrbitController : MonoBehaviour
     {
         EnsureRuntimeDefaults();
         CacheVisualTiltRoot();
-        CacheVisualSamplePoints();
+        ResetVelocityTracking();
     }
 
     private void LateUpdate()
     {
-        if (orbitCenter == null || cameraRig == null)
+        if (lookTarget == null && orbitCenter == null)
         {
             UpdateVisualTilt(Vector2.zero);
+            UpdateWorldVelocity();
             return;
         }
 
@@ -83,18 +74,22 @@ public class PlayerOrbitController : MonoBehaviour
 
         RepositionImmediate();
         UpdateVisualTilt(movementInput);
+        UpdateWorldVelocity();
     }
 
-    public void Configure(Transform center, Transform targetToLookAt, ArenaCameraRig rig)
+    public void Configure(Transform center, Transform targetToLookAt, PlayerMovementBounds bounds)
     {
         EnsureRuntimeDefaults();
         CacheVisualTiltRoot();
-        CacheVisualSamplePoints();
         orbitCenter = center;
         lookTarget = targetToLookAt;
-        cameraRig = rig;
-        orbitCamera = rig != null ? rig.GetComponent<Camera>() : null;
-        moveGuide = rig != null ? rig.GetComponentInChildren<PlayerMoveGuide>(true) : null;
+        movementBounds = bounds;
+        ResetVelocityTracking();
+    }
+
+    public void RefreshVisualBindings()
+    {
+        CacheVisualTiltRoot();
     }
 
     public void SetInputEnabled(bool enabled)
@@ -104,46 +99,31 @@ public class PlayerOrbitController : MonoBehaviour
 
     public void AdoptScenePlacement(Vector3 worldPosition)
     {
-        if (cameraRig == null)
-        {
-            transform.position = worldPosition;
-            return;
-        }
-
         if (deriveRotationOffsetFromSceneRotation)
         {
             Quaternion desiredLookRotation = GetDesiredLookRotation(worldPosition);
             lookRotationOffset = Quaternion.Inverse(desiredLookRotation) * transform.rotation;
         }
 
-        if (orbitCamera == null)
-        {
-            transform.position = worldPosition;
-            return;
-        }
-
-        Vector3 viewport = orbitCamera.WorldToViewportPoint(worldPosition);
-        viewportX = viewport.x;
-        viewportY = viewport.y;
-        cameraDepth = viewport.z;
-
-        ClampToMovementBounds();
-
+        transform.position = movementBounds != null
+            ? movementBounds.ClampWorldPosition(worldPosition)
+            : worldPosition;
         RepositionImmediate();
+        ResetVelocityTracking();
     }
 
     public void RepositionImmediate()
     {
-        if (orbitCamera == null)
+        if (movementBounds != null)
         {
-            return;
+            transform.position = movementBounds.ClampWorldPosition(transform.position);
         }
 
-        Vector3 desiredPosition = GetDesiredPosition(viewportX, viewportY, cameraDepth);
-        transform.position = desiredPosition;
-        transform.rotation = GetDesiredLookRotation(desiredPosition) * lookRotationOffset;
+        transform.rotation = GetDesiredLookRotation(transform.position) * lookRotationOffset;
         CurrentDistance = orbitCenter != null
-            ? Vector3.Distance(new Vector3(transform.position.x, 0f, transform.position.z), new Vector3(orbitCenter.position.x, 0f, orbitCenter.position.z))
+            ? Vector3.Distance(
+                new Vector3(transform.position.x, 0f, transform.position.z),
+                new Vector3(orbitCenter.position.x, 0f, orbitCenter.position.z))
             : 0f;
     }
 
@@ -173,35 +153,31 @@ public class PlayerOrbitController : MonoBehaviour
             altitude -= 1f;
         }
 
-        movementInput = Vector2.ClampMagnitude(new Vector2(horizontal, altitude), 1f);
-
-        float depth = 0f;
+        float forward = 0f;
         if (keyboard != null && keyboard.qKey.isPressed)
         {
-            depth += 1f;
+            forward += 1f;
         }
 
         if (keyboard != null && keyboard.zKey.isPressed)
         {
-            depth -= 1f;
+            forward -= 1f;
         }
 
-        if (Mathf.Abs(horizontal) > 0.001f)
+        movementInput = Vector2.ClampMagnitude(new Vector2(horizontal, altitude), 1f);
+
+        ResolveMovementAxes(out Vector3 right, out Vector3 up, out Vector3 forwardAxis);
+        Vector3 movementDelta =
+            right * (horizontal * strafeSpeed * Time.deltaTime) +
+            up * (altitude * altitudeSpeed * Time.deltaTime) +
+            forwardAxis * (forward * forwardSpeed * Time.deltaTime);
+
+        if (movementDelta.sqrMagnitude <= 0.000001f)
         {
-            viewportX += horizontal * horizontalScreenSpeed * Time.deltaTime;
+            return;
         }
 
-        if (Mathf.Abs(altitude) > 0.001f)
-        {
-            viewportY += altitude * verticalScreenSpeed * Time.deltaTime;
-        }
-
-        if (Mathf.Abs(depth) > 0.001f)
-        {
-            cameraDepth += depth * depthSpeed * Time.deltaTime;
-        }
-
-        ClampToMovementBounds();
+        transform.position += movementDelta;
     }
 
     private void CacheVisualTiltRoot()
@@ -233,11 +209,6 @@ public class PlayerOrbitController : MonoBehaviour
         visualTiltRoot.localRotation = visualTiltBaseLocalRotation * Quaternion.Euler(currentVisualTilt.x, 0f, currentVisualTilt.y);
     }
 
-    private Vector3 GetDesiredPosition(float proposedViewportX, float proposedViewportY, float proposedCameraDepth)
-    {
-        return orbitCamera.ViewportToWorldPoint(new Vector3(proposedViewportX, proposedViewportY, proposedCameraDepth));
-    }
-
     private Quaternion GetDesiredLookRotation(Vector3 worldPosition)
     {
         Vector3 lookPoint = lookTarget != null ? lookTarget.position : orbitCenter != null ? orbitCenter.position : worldPosition + Vector3.forward;
@@ -251,183 +222,84 @@ public class PlayerOrbitController : MonoBehaviour
         return Quaternion.LookRotation(flatLook.normalized, Vector3.up);
     }
 
-    private void ClampToMovementBounds()
+    private void ResolveMovementAxes(out Vector3 right, out Vector3 up, out Vector3 forward)
     {
-        float localMinViewportX = minViewportX;
-        float localMaxViewportX = maxViewportX;
-        float localMinViewportY = minViewportY;
-        float localMaxViewportY = maxViewportY;
-        float localMinCameraDepth = minCameraDepth;
-        float localMaxCameraDepth = maxCameraDepth;
-
-        if (moveGuide != null)
+        if (movementBounds != null)
         {
-            moveGuide.GetMovementBounds(out Rect viewportRect, out float minimumDepth, out float maximumDepth);
-            localMinViewportX = viewportRect.xMin;
-            localMaxViewportX = viewportRect.xMax;
-            localMinViewportY = viewportRect.yMin;
-            localMaxViewportY = viewportRect.yMax;
-            localMinCameraDepth = minimumDepth;
-            localMaxCameraDepth = maximumDepth;
-        }
-
-        cameraDepth = Mathf.Clamp(cameraDepth, localMinCameraDepth, localMaxCameraDepth);
-
-        for (int i = 0; i < 2; i++)
-        {
-            Vector3 worldPosition = GetDesiredPosition(viewportX, viewportY, cameraDepth);
-            Quaternion worldRotation = GetDesiredLookRotation(worldPosition) * lookRotationOffset;
-            GetViewportPadding(worldPosition, worldRotation, out float leftPadding, out float rightPadding, out float bottomPadding, out float topPadding);
-
-            float paddedMinX = localMinViewportX + leftPadding;
-            float paddedMaxX = localMaxViewportX - rightPadding;
-            float paddedMinY = localMinViewportY + bottomPadding;
-            float paddedMaxY = localMaxViewportY - topPadding;
-
-            if (paddedMaxX < paddedMinX)
-            {
-                float centerX = (localMinViewportX + localMaxViewportX) * 0.5f;
-                paddedMinX = centerX;
-                paddedMaxX = centerX;
-            }
-
-            if (paddedMaxY < paddedMinY)
-            {
-                float centerY = (localMinViewportY + localMaxViewportY) * 0.5f;
-                paddedMinY = centerY;
-                paddedMaxY = centerY;
-            }
-
-            viewportX = Mathf.Clamp(viewportX, paddedMinX, paddedMaxX);
-            viewportY = Mathf.Clamp(viewportY, paddedMinY, paddedMaxY);
-        }
-    }
-
-    private void CacheVisualSamplePoints()
-    {
-        List<Vector3> points = new();
-        MeshFilter[] meshFilters = GetComponentsInChildren<MeshFilter>(true);
-        for (int i = 0; i < meshFilters.Length; i++)
-        {
-            MeshFilter meshFilter = meshFilters[i];
-            if (meshFilter == null || meshFilter.sharedMesh == null)
-            {
-                continue;
-            }
-
-            Renderer renderer = meshFilter.GetComponent<Renderer>();
-            if (renderer == null)
-            {
-                continue;
-            }
-
-            Bounds meshBounds = meshFilter.sharedMesh.bounds;
-            Vector3 center = meshBounds.center;
-            Vector3 extents = meshBounds.extents;
-
-            Vector3[] samplePoints =
-            {
-                center,
-                center + new Vector3(-extents.x, -extents.y, -extents.z),
-                center + new Vector3(-extents.x, -extents.y, extents.z),
-                center + new Vector3(-extents.x, extents.y, -extents.z),
-                center + new Vector3(-extents.x, extents.y, extents.z),
-                center + new Vector3(extents.x, -extents.y, -extents.z),
-                center + new Vector3(extents.x, -extents.y, extents.z),
-                center + new Vector3(extents.x, extents.y, -extents.z),
-                center + new Vector3(extents.x, extents.y, extents.z),
-            };
-
-            for (int j = 0; j < samplePoints.Length; j++)
-            {
-                Vector3 worldPoint = meshFilter.transform.TransformPoint(samplePoints[j]);
-                points.Add(transform.InverseTransformPoint(worldPoint));
-            }
-        }
-
-        if (points.Count == 0)
-        {
-            points.Add(Vector3.zero);
-        }
-
-        localVisualSamplePoints = points.ToArray();
-    }
-
-    private void GetViewportPadding(Vector3 worldPosition, Quaternion worldRotation, out float leftPadding, out float rightPadding, out float bottomPadding, out float topPadding)
-    {
-        leftPadding = 0f;
-        rightPadding = 0f;
-        bottomPadding = 0f;
-        topPadding = 0f;
-
-        if (orbitCamera == null)
-        {
+            movementBounds.GetAxes(out right, out up, out forward);
             return;
         }
 
-        if (localVisualSamplePoints == null || localVisualSamplePoints.Length == 0)
-        {
-            return;
-        }
-
-        Vector3 pivotViewport = orbitCamera.WorldToViewportPoint(worldPosition);
-        Vector3 rootScale = transform.lossyScale;
-        Matrix4x4 localToWorld = Matrix4x4.TRS(worldPosition, worldRotation, rootScale);
-
-        float minX = float.PositiveInfinity;
-        float maxX = float.NegativeInfinity;
-        float minY = float.PositiveInfinity;
-        float maxY = float.NegativeInfinity;
-
-        for (int i = 0; i < localVisualSamplePoints.Length; i++)
-        {
-            Vector3 sampleWorld = localToWorld.MultiplyPoint3x4(localVisualSamplePoints[i]);
-            Vector3 sampleViewport = orbitCamera.WorldToViewportPoint(sampleWorld);
-            minX = Mathf.Min(minX, sampleViewport.x);
-            maxX = Mathf.Max(maxX, sampleViewport.x);
-            minY = Mathf.Min(minY, sampleViewport.y);
-            maxY = Mathf.Max(maxY, sampleViewport.y);
-        }
-
-        leftPadding = Mathf.Max(0f, pivotViewport.x - minX);
-        rightPadding = Mathf.Max(0f, maxX - pivotViewport.x);
-        bottomPadding = Mathf.Max(0f, pivotViewport.y - minY);
-        topPadding = Mathf.Max(0f, maxY - pivotViewport.y);
+        right = Vector3.right;
+        up = Vector3.up;
+        forward = Vector3.forward;
     }
 
     private void EnsureRuntimeDefaults()
     {
-        if (horizontalScreenSpeed <= 0.01f)
+        MigrateLegacyMovementSpeedsIfNeeded();
+
+        if (strafeSpeed <= 0.01f)
         {
-            horizontalScreenSpeed = DefaultHorizontalScreenSpeed;
+            strafeSpeed = DefaultStrafeSpeed;
         }
 
-        if (verticalScreenSpeed <= 0.01f)
+        if (altitudeSpeed <= 0.01f)
         {
-            verticalScreenSpeed = DefaultVerticalScreenSpeed;
+            altitudeSpeed = DefaultAltitudeSpeed;
         }
 
-        if (depthSpeed <= 0.01f)
+        if (forwardSpeed <= 0.01f)
         {
-            depthSpeed = DefaultDepthSpeed;
+            forwardSpeed = DefaultForwardSpeed;
+        }
+    }
+
+    private void MigrateLegacyMovementSpeedsIfNeeded()
+    {
+        if (movementSpeedsMigratedToWorldSpace)
+        {
+            return;
         }
 
-        if (maxViewportX <= minViewportX + 0.01f)
+        // The old camera-viewport controller used sub-1.0 speeds like 0.35.
+        // In fixed world-space movement those values feel almost stationary, so
+        // upgrade them once to sensible world-space defaults.
+        if (strafeSpeed > 0.01f && strafeSpeed < 1f)
         {
-            minViewportX = DefaultMinViewportX;
-            maxViewportX = DefaultMaxViewportX;
+            strafeSpeed = DefaultStrafeSpeed;
         }
 
-        if (maxViewportY <= minViewportY + 0.01f)
+        if (altitudeSpeed > 0.01f && altitudeSpeed < 1f)
         {
-            minViewportY = DefaultMinViewportY;
-            maxViewportY = DefaultMaxViewportY;
+            altitudeSpeed = DefaultAltitudeSpeed;
         }
 
-        if (maxCameraDepth <= minCameraDepth + 0.01f)
+        if (forwardSpeed > 0.01f && forwardSpeed < 1f)
         {
-            minCameraDepth = DefaultMinCameraDepth;
-            maxCameraDepth = DefaultMaxCameraDepth;
+            forwardSpeed = DefaultForwardSpeed;
         }
+
+        movementSpeedsMigratedToWorldSpace = true;
+    }
+
+    private void UpdateWorldVelocity()
+    {
+        if (!hasPreviousWorldPosition)
+        {
+            ResetVelocityTracking();
+            return;
+        }
+
+        float deltaTime = Mathf.Max(Time.deltaTime, 0.0001f);
+        CurrentWorldVelocity = (transform.position - previousWorldPosition) / deltaTime;
+        previousWorldPosition = transform.position;
+    }
+
+    private void ResetVelocityTracking()
+    {
+        previousWorldPosition = transform.position;
+        CurrentWorldVelocity = Vector3.zero;
+        hasPreviousWorldPosition = true;
     }
 }
