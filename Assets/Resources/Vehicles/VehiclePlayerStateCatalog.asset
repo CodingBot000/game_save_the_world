@@ -21,7 +21,7 @@ MonoBehaviour:
     brokenRecoverThreshold: 36
     hullDamageMultiplierWhenBroken: 1.25
   vehicles:
-  - vehicleId: helicopter_1
+  - vehicleId: viper_0414
     hullHp: 100
     armorHp: 120
     repairRate: 8

@@ -17,7 +17,7 @@ public class PlayerCombatController : MonoBehaviour
     [SerializeField] private float invulnerabilityDuration = 0.5f;
     [SerializeField] private float hitRadius = 1.4f;
     [SerializeField] private Collider[] damageHurtboxes = Array.Empty<Collider>();
-    [SerializeField] private bool showDamageHurtboxDebugVisual = true;
+    [SerializeField] private bool showDamageHurtboxDebugVisual = false;
     [SerializeField] private Color damageHurtboxDebugColor = new(0.1f, 1f, 0.25f, 0.92f);
     [SerializeField] private float damageHurtboxDebugScaleMultiplier = 1.12f;
     [SerializeField] private Transform muzzle;
