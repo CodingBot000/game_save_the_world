@@ -110,6 +110,5 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: e039c393e942081448899fba2f1355de, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  missile_prefab: {fileID: 6573806827650273376, guid: ae0129ce5de34144cb564b2205e6be07,
-    type: 3}
+  missile_prefab: {fileID: 0}
   target: {fileID: 0}

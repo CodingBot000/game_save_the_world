@@ -233,20 +233,25 @@ public class HomingMissileController : MonoBehaviour
         visualRoot.transform.SetParent(transform, false);
         visualRoot.transform.localPosition = Vector3.zero;
         visualRoot.transform.localRotation = Quaternion.identity;
+        bool hasCustomVisual = false;
 
         if (visualTemplate != null)
         {
             GameObject customVisual = InstantiateTemplate(visualTemplate, visualRoot.transform);
             if (customVisual == null)
             {
-                Debug.LogWarning($"Missile visual template failed to instantiate: {visualTemplate.name}", this);
+                string templateName = string.IsNullOrWhiteSpace(visualTemplate.name) ? "<unnamed>" : visualTemplate.name;
+                Debug.LogWarning(
+                    $"Missile visual template failed to instantiate. Template='{templateName}', Type='{visualTemplate.GetType().Name}'",
+                    this);
             }
             else
             {
-                customVisual.name = "MissileVisual";
+                customVisual.name = "MissileSkin";
                 customVisual.transform.localPosition = Vector3.zero;
                 customVisual.transform.localRotation = Quaternion.Euler(templateLocalEulerAngles);
                 ApplyTemplateVisualAppearance(customVisual);
+                hasCustomVisual = true;
                 if (!NormalizeCustomVisualScale(customVisual.transform))
                 {
                     customVisual.transform.localScale = customVisual.transform.localScale * visualScale;
@@ -256,12 +261,83 @@ public class HomingMissileController : MonoBehaviour
         }
         else
         {
-            Debug.LogWarning("Missile visual template is missing. Missile will render without a body mesh.", this);
+            Debug.LogWarning("Missile visual template is missing. Using gameplay shell only.", this);
+        }
+
+        if (!hasCustomVisual)
+        {
+            CreateGameplayShell(visualRoot.transform);
         }
 
         exhaustAnchor = ResolveExhaustAnchor(visualRoot.transform);
         EnsureTrailRenderer();
         EnsureSmokeTrail();
+    }
+
+    private void CreateGameplayShell(Transform parent)
+    {
+        GameObject shellRoot = new("MissileGameplayShell");
+        shellRoot.transform.SetParent(parent, false);
+        shellRoot.transform.localPosition = Vector3.zero;
+        shellRoot.transform.localRotation = Quaternion.identity;
+        shellRoot.transform.localScale = Vector3.one * GetGameplayShellScale();
+
+        Material bodyMaterial = CreateRuntimeMaterial(
+            "RuntimeMissileShellMaterial",
+            new Color(0.76f, 0.8f, 0.86f, 1f),
+            false,
+            "Universal Render Pipeline/Unlit",
+            "Sprites/Default",
+            "Universal Render Pipeline/Lit",
+            "Standard");
+
+        Material accentMaterial = CreateRuntimeMaterial(
+            "RuntimeMissileShellAccentMaterial",
+            new Color(0.98f, 0.62f, 0.2f, 1f),
+            false,
+            "Universal Render Pipeline/Unlit",
+            "Sprites/Default",
+            "Universal Render Pipeline/Lit",
+            "Standard");
+
+        GameObject body = GameObject.CreatePrimitive(PrimitiveType.Capsule);
+        body.name = "MissileVisual";
+        body.transform.SetParent(shellRoot.transform, false);
+        body.transform.localPosition = Vector3.zero;
+        body.transform.localRotation = Quaternion.Euler(90f, 0f, 0f);
+        body.transform.localScale = new Vector3(0.13f, 0.42f, 0.13f);
+        Collider bodyCollider = body.GetComponent<Collider>();
+        if (bodyCollider != null)
+        {
+            Destroy(bodyCollider);
+        }
+
+        ApplyMaterial(body.GetComponent<Renderer>(), bodyMaterial);
+
+        GameObject nose = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+        nose.name = "MissileNose";
+        nose.transform.SetParent(shellRoot.transform, false);
+        nose.transform.localPosition = new Vector3(0f, 0f, 0.38f);
+        nose.transform.localRotation = Quaternion.identity;
+        nose.transform.localScale = new Vector3(0.1f, 0.1f, 0.16f);
+        Collider noseCollider = nose.GetComponent<Collider>();
+        if (noseCollider != null)
+        {
+            Destroy(noseCollider);
+        }
+
+        ApplyMaterial(nose.GetComponent<Renderer>(), accentMaterial ?? bodyMaterial);
+
+        CreateFin(shellRoot.transform, accentMaterial ?? bodyMaterial, "ShellFinTop", new Vector3(0f, 0.06f, -0.2f), new Vector3(0.02f, 0.12f, 0.14f));
+        CreateFin(shellRoot.transform, accentMaterial ?? bodyMaterial, "ShellFinBottom", new Vector3(0f, -0.06f, -0.2f), new Vector3(0.02f, 0.12f, 0.14f));
+        CreateFin(shellRoot.transform, accentMaterial ?? bodyMaterial, "ShellFinLeft", new Vector3(-0.06f, 0f, -0.2f), new Vector3(0.12f, 0.02f, 0.14f));
+        CreateFin(shellRoot.transform, accentMaterial ?? bodyMaterial, "ShellFinRight", new Vector3(0.06f, 0f, -0.2f), new Vector3(0.12f, 0.02f, 0.14f));
+    }
+
+    private float GetGameplayShellScale()
+    {
+        // Keep the shell readable without overpowering the decorative missile skin.
+        return Mathf.Clamp(0.55f + visualScale * 0.08f, 0.7f, 1.1f);
     }
 
     private void CreateDefaultVisual(Transform parent)
@@ -452,8 +528,20 @@ public class HomingMissileController : MonoBehaviour
             return null;
         }
 
+        int childCountBefore = parent != null ? parent.childCount : 0;
         Object instance = Instantiate((Object)template, parent);
-        return ResolveInstantiatedGameObject(instance);
+        GameObject resolved = ResolveInstantiatedGameObject(instance);
+        if (resolved != null)
+        {
+            return resolved;
+        }
+
+        if (parent != null && parent.childCount > childCountBefore)
+        {
+            return parent.GetChild(parent.childCount - 1).gameObject;
+        }
+
+        return null;
     }
 
     private static GameObject InstantiateTemplate(GameObject template, Vector3 position, Quaternion rotation)
