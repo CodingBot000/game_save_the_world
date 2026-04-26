@@ -123,7 +123,7 @@ public class GarageScenePresenter : MonoBehaviour
             return;
         }
 
-        // GarageScene 바로 실행시 에러 방지를 위한 방어코드.
+        // VehicleSelectScene 바로 실행시 에러 방지를 위한 방어코드.
         EnsureEventSystem();
         EnsureFallbackDisplayCamera();
     }

@@ -7,14 +7,14 @@ using UnityEngine.UI;
 
 public static class OverlaySceneLayoutBuilder
 {
-    private const string GarageScenePath = "Assets/Scenes/GarageScene.unity";
+    private const string VehicleSelectScenePath = "Assets/Scenes/VehicleSelectScene.unity";
     private const string CharacterScenePath = "Assets/Scenes/CharacterScene.unity";
 
-    [MenuItem("Tools/Titan Destroyer/Rebuild Garage Authored Layout")]
-    public static void RebuildGarageLayout()
+    [MenuItem("Tools/Titan Destroyer/Rebuild Vehicle Select Authored Layout")]
+    public static void RebuildVehicleSelectLayout()
     {
-        Scene scene = EditorSceneManager.OpenScene(GarageScenePath, OpenSceneMode.Single);
-        Transform root = EnsureRoot(scene, "GarageSceneRoot");
+        Scene scene = EditorSceneManager.OpenScene(VehicleSelectScenePath, OpenSceneMode.Single);
+        Transform root = EnsureRoot(scene, "VehicleSelectSceneRoot");
 
         GarageScenePresenter presenter = root.GetComponent<GarageScenePresenter>() ?? root.gameObject.AddComponent<GarageScenePresenter>();
         GarageSceneView view = root.GetComponent<GarageSceneView>() ?? root.gameObject.AddComponent<GarageSceneView>();
@@ -264,10 +264,10 @@ public static class OverlaySceneLayoutBuilder
         EditorSceneManager.SaveScene(scene);
     }
 
-    [MenuItem("Tools/Titan Destroyer/Rebuild Garage And Character Authored Layouts")]
-    public static void RebuildGarageAndCharacterLayouts()
+    [MenuItem("Tools/Titan Destroyer/Rebuild Vehicle Select And Character Authored Layouts")]
+    public static void RebuildVehicleSelectAndCharacterLayouts()
     {
-        RebuildGarageLayout();
+        RebuildVehicleSelectLayout();
         RebuildCharacterLayout();
     }
 

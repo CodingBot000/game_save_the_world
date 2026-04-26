@@ -131,7 +131,7 @@ GameObject:
   - component: {fileID: 100102}
   - component: {fileID: 100103}
   m_Layer: 0
-  m_Name: GarageSceneRoot
+  m_Name: VehicleSelectSceneRoot
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
