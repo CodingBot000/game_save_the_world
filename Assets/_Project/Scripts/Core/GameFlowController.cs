@@ -2,6 +2,7 @@ using UnityEngine.SceneManagement;
 
 public static class GameFlowController
 {
+    private const string GarageScenePath = "Assets/Scenes/GarageScene.unity";
     private const string VehicleSelectScenePath = "Assets/Scenes/VehicleSelectScene.unity";
     private const string CharacterScenePath = "Assets/Scenes/CharacterScene.unity";
 
@@ -11,8 +12,8 @@ public static class GameFlowController
     public const string StageSelectSceneName = "StageSelectScene";
     public const string StageStepSelectSceneName = "StageStepSelectScene";
     public const string BattleSceneName = "BattleArena";
+    public const string GarageSceneName = "GarageScene";
     public const string VehicleSelectSceneName = "VehicleSelectScene";
-    public const string GarageSceneName = VehicleSelectSceneName;
     public const string CharacterSceneName = "CharacterScene";
 
     public static GameMode CurrentMode { get; private set; } = GameMode.Single;
@@ -52,7 +53,7 @@ public static class GameFlowController
 
     public static void LoadGarage()
     {
-        LoadVehicleSelect();
+        LoadAdditiveScene(GarageScenePath);
     }
 
     public static void LoadVehicleSelect()
@@ -67,7 +68,7 @@ public static class GameFlowController
 
     public static void CloseGarage()
     {
-        CloseVehicleSelect();
+        CloseScene(GarageScenePath);
     }
 
     public static void CloseVehicleSelect()
