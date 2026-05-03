@@ -22,6 +22,8 @@ public class BattleController : MonoBehaviour
     [SerializeField] private GameObject bossProjectileTemplate;
     [SerializeField] private GameObject allyPlaceholder;
     [SerializeField] private GameObject backgroundRoot;
+    [SerializeField] private BattleBackgroundHost backgroundHost;
+    [SerializeField] private Transform stageVisualRoot;
     [SerializeField] private EnvironmentThemeDebugPanel environmentThemeDebugPanel;
     [SerializeField] private PlayerMoveGuide playerMoveGuide;
 
@@ -36,6 +38,7 @@ public class BattleController : MonoBehaviour
         ApplySelectedPlayerVehicleVisual();
         ApplyModeConfiguration();
         PositionSceneActors();
+        ConfigureBackground();
         WireRuntime();
     }
 
@@ -119,17 +122,14 @@ public class BattleController : MonoBehaviour
         bossProjectileTemplate ??= FindSceneObject("BossProjectileTemplate");
         allyPlaceholder ??= FindSceneObject("AllyPlaceholder");
         backgroundRoot ??= FindSceneObject("BackgroundRoot");
+        backgroundHost ??= backgroundRoot != null ? backgroundRoot.GetComponent<BattleBackgroundHost>() : FindSceneComponent<BattleBackgroundHost>();
+        stageVisualRoot ??= FindSceneTransform("StageVisualRoot");
         environmentThemeDebugPanel ??= FindSceneComponent<EnvironmentThemeDebugPanel>();
         playerMoveGuide ??= FindSceneComponent<PlayerMoveGuide>();
     }
 
     private void ApplyModeConfiguration()
     {
-        if (backgroundRoot != null)
-        {
-            backgroundRoot.SetActive(false);
-        }
-
         if (playerMoveGuide != null)
         {
             playerMoveGuide.gameObject.SetActive(false);
@@ -269,6 +269,18 @@ public class BattleController : MonoBehaviour
         {
             bossController.CaptureBasePose();
         }
+    }
+
+    private void ConfigureBackground()
+    {
+        if (backgroundHost == null)
+        {
+            return;
+        }
+
+        // BattleController only provides the stage rotation source.
+        // The background host owns the concrete background implementation.
+        backgroundHost.BindStageRotationSource(stageVisualRoot);
     }
 
     private void WireRuntime()

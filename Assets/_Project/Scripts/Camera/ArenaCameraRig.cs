@@ -8,6 +8,8 @@ public class ArenaCameraRig : MonoBehaviour
     private const float DefaultHeight = 12f;
     private const float DefaultOrbitSpeedDegrees = 14f;
     private const float DefaultPositionLerpSpeed = 8f;
+    // Temporary: keep the battle camera from rotating. Set this to false to restore orbit behavior.
+    private static readonly bool TemporarilyDisableCameraOrbit = true;
 
     [SerializeField] private bool deriveRuntimeOffsetFromScenePlacement = true;
     [Header("Debug")]
@@ -77,6 +79,11 @@ public class ArenaCameraRig : MonoBehaviour
     private void LateUpdate()
     {
         if (orbitCenter == null)
+        {
+            return;
+        }
+
+        if (TemporarilyDisableCameraOrbit)
         {
             return;
         }

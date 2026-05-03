@@ -1,8 +1,16 @@
 using UnityEngine;
 
 [ExecuteAlways]
+[DefaultExecutionOrder(500)]
 public class BackgroundParallaxLayer : MonoBehaviour
 {
+    // Temporary: hard-stop only synced parallax rotation driven by the stage/camera.
+    // Set this to false to restore synced parallax layer rotation.
+    // Cloud pattern rotation is handled independently in LateUpdate and is not affected by this flag.
+    private static readonly bool TemporarilyDisableSyncedLayerRotation = true;
+    private static readonly bool TemporarilyAllowFarCloudScroll = true;
+    private const float TemporaryFarCloudScrollSpeedScale = 0.5f;
+
     private static readonly int TopColorId = Shader.PropertyToID("_TopColor");
     private static readonly int HorizonColorId = Shader.PropertyToID("_HorizonColor");
     private static readonly int BottomColorId = Shader.PropertyToID("_BottomColor");
@@ -23,6 +31,8 @@ public class BackgroundParallaxLayer : MonoBehaviour
     [SerializeField] private BackgroundLayerKind layerKind = BackgroundLayerKind.Sky;
     [SerializeField] private Transform rotationRoot;
     [SerializeField] private Renderer targetRenderer;
+    [SerializeField] private float farCloudPatternDegreesPerSecond = 4f;
+    [SerializeField] private float midCloudPatternDegreesPerSecond = 6f;
 
     private Material runtimeMaterial;
     private Quaternion baseLocalRotation = Quaternion.identity;
@@ -121,6 +131,11 @@ public class BackgroundParallaxLayer : MonoBehaviour
 
     public void SyncWithWorldRotation(float worldRotationDelta)
     {
+        if (TemporarilyDisableSyncedLayerRotation)
+        {
+            return;
+        }
+
         CacheReferences();
         if (rotationRoot == null || Mathf.Abs(worldRotationDelta) <= Mathf.Epsilon)
         {
@@ -133,7 +148,18 @@ public class BackgroundParallaxLayer : MonoBehaviour
 
     public void Tick(float deltaTime, bool useSharedMaterial)
     {
-        if (deltaTime <= 0f || currentScrollVelocity.sqrMagnitude <= 0.000001f)
+        Vector2 scrollVelocity = currentScrollVelocity;
+        if (TemporarilyDisableSyncedLayerRotation)
+        {
+            if (!TemporarilyAllowFarCloudScroll || layerKind != BackgroundLayerKind.FarClouds)
+            {
+                return;
+            }
+
+            scrollVelocity *= TemporaryFarCloudScrollSpeedScale;
+        }
+
+        if (deltaTime <= 0f || scrollVelocity.sqrMagnitude <= 0.000001f)
         {
             return;
         }
@@ -144,7 +170,50 @@ public class BackgroundParallaxLayer : MonoBehaviour
             return;
         }
 
-        accumulatedScroll += currentScrollVelocity * deltaTime;
+        accumulatedScroll += scrollVelocity * deltaTime;
+        ApplyScrollOffset(material);
+    }
+
+    private void LateUpdate()
+    {
+        if (!Application.isPlaying)
+        {
+            return;
+        }
+
+        float patternSpeed = GetAlwaysCloudPatternSpeed();
+        if (Mathf.Abs(patternSpeed) <= Mathf.Epsilon)
+        {
+            return;
+        }
+
+        ScrollCloudPattern(Time.unscaledDeltaTime, patternSpeed);
+    }
+
+    private float GetAlwaysCloudPatternSpeed()
+    {
+        return layerKind switch
+        {
+            BackgroundLayerKind.FarClouds => farCloudPatternDegreesPerSecond,
+            BackgroundLayerKind.MidClouds => midCloudPatternDegreesPerSecond,
+            _ => 0f
+        };
+    }
+
+    private void ScrollCloudPattern(float deltaTime, float degreesPerSecond)
+    {
+        if (deltaTime <= 0f)
+        {
+            return;
+        }
+
+        Material material = GetWritableMaterial(false);
+        if (material == null)
+        {
+            return;
+        }
+
+        accumulatedScroll.x += degreesPerSecond / 360f * deltaTime;
         ApplyScrollOffset(material);
     }
 

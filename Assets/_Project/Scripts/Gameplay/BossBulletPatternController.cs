@@ -277,6 +277,7 @@ public class BossBulletPatternController : MonoBehaviour
         {
             Vector3 origin = attackController.CurrentFireOrigin;
             Vector3 target = playerCombatController.HitPoint;
+            attackController.PlayQuickAttackAnimation();
             SpawnSpread(origin, target, Mathf.Max(1, pattern.projectileCount), pattern.spreadAngle, projectileSpeed, projectileDamage);
 
             if (burstIndex + 1 < Mathf.Max(1, pattern.burstCount))
@@ -306,6 +307,7 @@ public class BossBulletPatternController : MonoBehaviour
         {
             Vector3 origin = attackController.CurrentFireOrigin;
             Vector3 target = playerCombatController.HitPoint;
+            attackController.PlayQuickAttackAnimation();
             attackController.SpawnProjectile(origin, target - origin, projectileSpeed, projectileDamage);
 
             if (shotIndex + 1 < Mathf.Max(1, pattern.projectileCount))
@@ -324,6 +326,8 @@ public class BossBulletPatternController : MonoBehaviour
         float projectileSpeed = ResolvePrimarySpeed(pattern);
         float projectileDamage = ResolvePrimaryDamage(pattern);
 
+        attackController.PlayHeavyAttackAnimation();
+
         for (int i = 0; i < projectileCount; i++)
         {
             float angle = startAngle + angleStep * i;
@@ -338,6 +342,7 @@ public class BossBulletPatternController : MonoBehaviour
     private IEnumerator ExecuteFallingBomb(BossBulletPatternDefinition pattern)
     {
         Vector3 target = playerCombatController.HitPoint;
+        attackController.PlayHeavyAttackAnimation();
         GameObject warning = CreateLaneTelegraph(target, pattern);
         yield return new WaitForSeconds(pattern.telegraphDuration);
 
@@ -365,6 +370,7 @@ public class BossBulletPatternController : MonoBehaviour
     {
         Vector3 origin = attackController.CurrentFireOrigin;
         Vector3 target = playerCombatController.HitPoint;
+        attackController.PlayQuickAttackAnimation();
         ProjectileController projectile = attackController.SpawnProjectile(
             origin,
             target - origin,

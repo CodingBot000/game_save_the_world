@@ -48,6 +48,8 @@ MonoBehaviour:
   layerKind: 4
   rotationRoot: {fileID: 8882530614657092846}
   targetRenderer: {fileID: 4521548421480207413}
+  farCloudPatternDegreesPerSecond: 4
+  midCloudPatternDegreesPerSecond: 6
 --- !u!1 &1032327041884355842
 GameObject:
   m_ObjectHideFlags: 0
@@ -96,6 +98,8 @@ MonoBehaviour:
   layerKind: 0
   rotationRoot: {fileID: 6003662661581466818}
   targetRenderer: {fileID: 5928415497377040003}
+  farCloudPatternDegreesPerSecond: 4
+  midCloudPatternDegreesPerSecond: 6
 --- !u!1 &2635321792922125359
 GameObject:
   m_ObjectHideFlags: 0
@@ -144,6 +148,8 @@ MonoBehaviour:
   layerKind: 2
   rotationRoot: {fileID: 4704954035712125778}
   targetRenderer: {fileID: 3086741497293405292}
+  farCloudPatternDegreesPerSecond: 4
+  midCloudPatternDegreesPerSecond: 6
 --- !u!1 &4852833740284150153
 GameObject:
   m_ObjectHideFlags: 0
@@ -514,6 +520,7 @@ GameObject:
   m_Component:
   - component: {fileID: 2403324477382161051}
   - component: {fileID: 1534385662829862886}
+  - component: {fileID: 586421630741441529}
   m_Layer: 0
   m_Name: BattleArenaBackgroundRoot
   m_TagString: Untagged
@@ -558,6 +565,7 @@ MonoBehaviour:
   nightTheme: {fileID: 11400000, guid: 42dca7a4f5f954643b7718c521b17834, type: 2}
   rainTheme: {fileID: 11400000, guid: e1fa1f2546d514f11b5f7069333cd6a0, type: 2}
   initialTheme: 0
+  motionEnabled: 0
   rotationTrackingMode: 0
   rotationReference: {fileID: 0}
   rotationPivot: {fileID: 0}
@@ -574,6 +582,26 @@ MonoBehaviour:
   - {fileID: 5751814300587794440}
   - {fileID: 7962876703814700881}
   - {fileID: 2795350790320952109}
+--- !u!114 &586421630741441529
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 6126971226130372742}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 3b68997ba7d148d585cfb62fa09b7d2d, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::BattleBackgroundHost
+  environmentBackground: {fileID: 1534385662829862886}
+  autoFindEnvironmentBackground: 1
+  stageRotationSource: {fileID: 0}
+  autoFindStageRotationSource: 1
+  stageRotationSourceName: StageVisualRoot
+  bindStageRotationToParallax: 1
+  defaultTheme: 0
+  applyDefaultThemeOnEnable: 1
 --- !u!1 &6564479736147166658
 GameObject:
   m_ObjectHideFlags: 0
@@ -5548,6 +5576,8 @@ MonoBehaviour:
   layerKind: 1
   rotationRoot: {fileID: 328218895655005972}
   targetRenderer: {fileID: 8137682881053369674}
+  farCloudPatternDegreesPerSecond: 4
+  midCloudPatternDegreesPerSecond: 6
 --- !u!1 &8908964236795161856
 GameObject:
   m_ObjectHideFlags: 0
@@ -5596,3 +5626,5 @@ MonoBehaviour:
   layerKind: 3
   rotationRoot: {fileID: 1324926165943671144}
   targetRenderer: {fileID: 6875923045967884615}
+  farCloudPatternDegreesPerSecond: 4
+  midCloudPatternDegreesPerSecond: 6

@@ -66,6 +66,8 @@ public class GarageLoadoutScenePresenter : MonoBehaviour
             return;
         }
 
+        ApplyBackgroundCover();
+
         if (view != null && view.HelicopterPreviewAnchor != null)
         {
             view.HelicopterPreviewAnchor.Rotate(Vector3.up, previewYawSpeed * Time.unscaledDeltaTime, Space.World);
@@ -85,6 +87,57 @@ public class GarageLoadoutScenePresenter : MonoBehaviour
         }
     }
 
+    private void ConfigureBackgroundImage()
+    {
+        if (view.BackgroundImage == null)
+        {
+            return;
+        }
+
+        view.BackgroundImage.raycastTarget = false;
+        view.BackgroundImage.preserveAspect = true;
+        if (view.BackgroundImage.sprite != null)
+        {
+            view.BackgroundImage.color = Color.white;
+        }
+
+        ApplyBackgroundCover();
+    }
+
+    private void ApplyBackgroundCover()
+    {
+        if (view == null || view.BackgroundImage == null || view.BackgroundImage.sprite == null)
+        {
+            return;
+        }
+
+        RectTransform backgroundRect = view.BackgroundImage.rectTransform;
+        RectTransform parentRect = backgroundRect.parent as RectTransform;
+        Vector2 containerSize = parentRect != null ? parentRect.rect.size : new Vector2(Screen.width, Screen.height);
+        if (containerSize.x <= 0.01f || containerSize.y <= 0.01f)
+        {
+            containerSize = new Vector2(Screen.width, Screen.height);
+        }
+
+        Vector2 spriteSize = view.BackgroundImage.sprite.rect.size;
+        if (containerSize.x <= 0.01f || containerSize.y <= 0.01f || spriteSize.x <= 0.01f || spriteSize.y <= 0.01f)
+        {
+            return;
+        }
+
+        float containerAspect = containerSize.x / containerSize.y;
+        float spriteAspect = spriteSize.x / spriteSize.y;
+        Vector2 coverSize = containerAspect > spriteAspect
+            ? new Vector2(containerSize.x, containerSize.x / spriteAspect)
+            : new Vector2(containerSize.y * spriteAspect, containerSize.y);
+
+        backgroundRect.anchorMin = new Vector2(0.5f, 0.5f);
+        backgroundRect.anchorMax = new Vector2(0.5f, 0.5f);
+        backgroundRect.pivot = new Vector2(0.5f, 0.5f);
+        backgroundRect.anchoredPosition = Vector2.zero;
+        backgroundRect.sizeDelta = coverSize;
+    }
+
     private void BindView()
     {
         if (view == null || !view.IsConfigured)
@@ -102,6 +155,8 @@ public class GarageLoadoutScenePresenter : MonoBehaviour
         scaler.referenceResolution = new Vector2(1920f, 1080f);
         scaler.screenMatchMode = CanvasScaler.ScreenMatchMode.MatchWidthOrHeight;
         scaler.matchWidthOrHeight = 0.5f;
+
+        ConfigureBackgroundImage();
 
         view.CloseButton.onClick.RemoveAllListeners();
         view.CloseButton.onClick.AddListener(CloseScene);

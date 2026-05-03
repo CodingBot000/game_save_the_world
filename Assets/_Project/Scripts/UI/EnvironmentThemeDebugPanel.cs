@@ -17,6 +17,7 @@ public class EnvironmentThemeDebugPanel : MonoBehaviour
     [Header("Scene References")]
     [SerializeField] private Canvas targetCanvas;
     [SerializeField] private EnvironmentBackgroundController environmentController;
+    [SerializeField] private ArenaCameraRig arenaCameraRig;
 
     private GameObject panelRoot;
     private Text currentThemeText;
@@ -24,11 +25,14 @@ public class EnvironmentThemeDebugPanel : MonoBehaviour
     private Button nightButton;
     private Button rainButton;
     private Button undeadButton;
+    private Button rotateButton;
     private Image dayButtonImage;
     private Image nightButtonImage;
     private Image rainButtonImage;
     private Image undeadButtonImage;
+    private Image rotateButtonImage;
     private Text undeadButtonLabel;
+    private Text rotateButtonLabel;
     private bool uiBound;
 
     private void Awake()
@@ -107,6 +111,18 @@ public class EnvironmentThemeDebugPanel : MonoBehaviour
         RefreshUiState();
     }
 
+    public void ToggleRotate()
+    {
+        ResolveReferences();
+        if (arenaCameraRig == null && environmentController == null)
+        {
+            return;
+        }
+
+        SetRotateEnabled(!IsRotateEnabled());
+        RefreshUiState();
+    }
+
     public void SetDebugPanelVisible(bool visible)
     {
         showDebugPanel = visible;
@@ -162,6 +178,11 @@ public class EnvironmentThemeDebugPanel : MonoBehaviour
         {
             environmentController = FindAnyObjectByType<EnvironmentBackgroundController>();
         }
+
+        if (arenaCameraRig == null)
+        {
+            arenaCameraRig = FindAnyObjectByType<ArenaCameraRig>();
+        }
     }
 
     private void EnsureUiReferences()
@@ -177,6 +198,12 @@ public class EnvironmentThemeDebugPanel : MonoBehaviour
             return;
         }
 
+        if (panelTransform.Find("RotateButton/RotateButtonLabel") == null)
+        {
+            BuildUi(targetCanvas.transform);
+            panelTransform = targetCanvas.transform.Find(PanelRootName);
+        }
+
         panelRoot = panelTransform.gameObject;
         currentThemeText = FindUiComponent<Text>(panelTransform, "CurrentThemeLabel");
 
@@ -189,6 +216,9 @@ public class EnvironmentThemeDebugPanel : MonoBehaviour
         undeadButton = FindUiComponent<Button>(panelTransform, "UndeadButton");
         undeadButtonImage = FindUiComponent<Image>(panelTransform, "UndeadButton");
         undeadButtonLabel = FindUiComponent<Text>(panelTransform, "UndeadButton/UndeadButtonLabel");
+        rotateButton = FindUiComponent<Button>(panelTransform, "RotateButton");
+        rotateButtonImage = FindUiComponent<Image>(panelTransform, "RotateButton");
+        rotateButtonLabel = FindUiComponent<Text>(panelTransform, "RotateButton/RotateButtonLabel");
 
         if (dayButton != null)
         {
@@ -214,6 +244,12 @@ public class EnvironmentThemeDebugPanel : MonoBehaviour
             undeadButton.onClick.AddListener(ToggleUndead);
         }
 
+        if (rotateButton != null)
+        {
+            rotateButton.onClick.RemoveListener(ToggleRotate);
+            rotateButton.onClick.AddListener(ToggleRotate);
+        }
+
         uiBound =
             panelRoot != null &&
             currentThemeText != null &&
@@ -221,7 +257,9 @@ public class EnvironmentThemeDebugPanel : MonoBehaviour
             nightButton != null &&
             rainButton != null &&
             undeadButton != null &&
-            undeadButtonLabel != null;
+            undeadButtonLabel != null &&
+            rotateButton != null &&
+            rotateButtonLabel != null;
     }
 
     private void ClearUiReferences()
@@ -232,11 +270,14 @@ public class EnvironmentThemeDebugPanel : MonoBehaviour
         nightButton = null;
         rainButton = null;
         undeadButton = null;
+        rotateButton = null;
         dayButtonImage = null;
         nightButtonImage = null;
         rainButtonImage = null;
         undeadButtonImage = null;
+        rotateButtonImage = null;
         undeadButtonLabel = null;
+        rotateButtonLabel = null;
         uiBound = false;
     }
 
@@ -275,6 +316,37 @@ public class EnvironmentThemeDebugPanel : MonoBehaviour
         {
             undeadButtonLabel.text = GameplayDebugFlags.Undead ? "Undead ON" : "Undead OFF";
         }
+
+        bool rotateEnabled = IsRotateEnabled();
+        if (rotateButtonImage != null)
+        {
+            ApplyButtonState(rotateButtonImage, rotateEnabled, new Color(0.18f, 0.34f, 0.48f));
+        }
+
+        if (rotateButtonLabel != null)
+        {
+            rotateButtonLabel.text = rotateEnabled ? "Rotate ON" : "Rotate OFF";
+        }
+    }
+
+    private bool IsRotateEnabled()
+    {
+        bool cameraRotationEnabled = arenaCameraRig == null || !arenaCameraRig.FreezeOrbitWithBoolToggle;
+        bool backgroundMotionEnabled = environmentController == null || environmentController.MotionEnabled;
+        return cameraRotationEnabled && backgroundMotionEnabled;
+    }
+
+    private void SetRotateEnabled(bool enabled)
+    {
+        if (arenaCameraRig != null)
+        {
+            arenaCameraRig.FreezeOrbitWithBoolToggle = !enabled;
+        }
+
+        if (environmentController != null)
+        {
+            environmentController.MotionEnabled = enabled;
+        }
     }
 
     private void BuildUi(Transform canvasTransform)
@@ -286,7 +358,7 @@ public class EnvironmentThemeDebugPanel : MonoBehaviour
         panelRect.anchorMin = new Vector2(1f, 1f);
         panelRect.anchorMax = new Vector2(1f, 1f);
         panelRect.pivot = new Vector2(1f, 1f);
-        panelRect.sizeDelta = new Vector2(308f, 176f);
+        panelRect.sizeDelta = new Vector2(420f, 176f);
         panelRect.anchoredPosition = panelAnchoredPosition;
 
         Image panelBackground = createdPanelRoot.GetComponent<Image>() ?? createdPanelRoot.AddComponent<Image>();
@@ -368,6 +440,18 @@ public class EnvironmentThemeDebugPanel : MonoBehaviour
             new Vector2(184f, 34f),
             new Color(0.34f, 0.18f, 0.18f),
             ToggleUndead,
+            out _,
+            out _);
+
+        CreateButton(
+            "RotateButton",
+            createdPanelRoot.transform,
+            runtimeFont,
+            "Rotate OFF",
+            new Vector2(334f, -132f),
+            new Vector2(136f, 34f),
+            new Color(0.18f, 0.34f, 0.48f),
+            ToggleRotate,
             out _,
             out _);
     }

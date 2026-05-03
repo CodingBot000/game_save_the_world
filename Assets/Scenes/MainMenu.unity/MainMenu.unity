@@ -171,6 +171,8 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::MenuPresenter
   autoBuildUi: 1
+  inputLockDuration: 0.35
+  backgroundTexture: {fileID: 2800000, guid: de4a80dc5d28f472a9a5e7acf4480bda, type: 3}
 --- !u!114 &75124122
 MonoBehaviour:
   m_ObjectHideFlags: 0

@@ -7,6 +7,7 @@ public class MenuPresenter : MonoBehaviour
 {
     [SerializeField] private bool autoBuildUi = true;
     [SerializeField] private float inputLockDuration = 0.35f;
+    [SerializeField] private Texture2D backgroundTexture;
 
     private Canvas canvas;
     private bool uiBuilt;
@@ -113,8 +114,10 @@ public class MenuPresenter : MonoBehaviour
         GameObject backdrop = FindOrCreateUiObject("Backdrop", root.transform);
         Image backdropImage = backdrop.GetComponent<Image>() ?? backdrop.AddComponent<Image>();
         backdropImage.color = new Color(0.08f, 0.11f, 0.16f, 0.92f);
+        backdropImage.raycastTarget = false;
         RectTransform backdropRect = backdrop.GetComponent<RectTransform>();
         SimpleUiFactory.StretchFull(backdropRect);
+        ConfigureBackdropTexture(backdrop.transform);
 
         Image rightTopPanel = SimpleUiFactory.CreateImage("RightTopPanel", root.transform, new Color(0.07f, 0.1f, 0.15f, 0.68f));
         SimpleUiFactory.SetAnchoredLayout(
@@ -341,5 +344,36 @@ public class MenuPresenter : MonoBehaviour
     private static GameObject FindOrCreateUiObject(string name, Transform parent)
     {
         return SimpleUiFactory.FindOrCreateUiObject(name, parent);
+    }
+
+    private void ConfigureBackdropTexture(Transform backdropTransform)
+    {
+        Transform existing = backdropTransform.Find("BackdropTexture");
+        RawImage image;
+
+        if (existing != null)
+        {
+            image = existing.GetComponent<RawImage>() ?? existing.gameObject.AddComponent<RawImage>();
+        }
+        else
+        {
+            GameObject imageObject = new GameObject("BackdropTexture", typeof(RectTransform), typeof(RawImage), typeof(AspectRatioFitter));
+            imageObject.transform.SetParent(backdropTransform, false);
+            image = imageObject.GetComponent<RawImage>();
+        }
+
+        RectTransform imageRect = image.rectTransform;
+        SimpleUiFactory.StretchFull(imageRect);
+        imageRect.pivot = new Vector2(0.5f, 0.5f);
+
+        AspectRatioFitter fitter = image.GetComponent<AspectRatioFitter>() ?? image.gameObject.AddComponent<AspectRatioFitter>();
+        fitter.aspectMode = AspectRatioFitter.AspectMode.EnvelopeParent;
+        fitter.aspectRatio = backgroundTexture == null
+            ? 1f
+            : Mathf.Max(0.01f, backgroundTexture.width / (float)backgroundTexture.height);
+
+        image.texture = backgroundTexture;
+        image.color = backgroundTexture == null ? new Color(1f, 1f, 1f, 0f) : Color.white;
+        image.raycastTarget = false;
     }
 }

@@ -13,6 +13,7 @@ using UnityEngine.UI;
 public static class GarageSceneLayoutBuilder
 {
     private const string GarageScenePath = "Assets/Scenes/GarageScene.unity";
+    private const string GarageBackgroundPath = "Assets/Art/UI/Garage/Backgrounds/garage_background.png";
     private const string MainMenuScenePath = "Assets/Scenes/MainMenu.unity/MainMenu.unity";
     private const string RequestMarkerPath = "Temp/GarageSceneBuildRequested";
 
@@ -58,8 +59,17 @@ public static class GarageSceneLayoutBuilder
         Canvas canvas = CreateCanvas();
         Image backgroundImage = CreateImage(canvas.transform, "HangarBackground", new Color(0.08f, 0.09f, 0.1f, 1f));
         StretchFull(backgroundImage.rectTransform);
-
-        CreateHangarPlaceholder(backgroundImage.transform);
+        Sprite backgroundSprite = AssetDatabase.LoadAssetAtPath<Sprite>(GarageBackgroundPath);
+        if (backgroundSprite != null)
+        {
+            backgroundImage.sprite = backgroundSprite;
+            backgroundImage.color = Color.white;
+            backgroundImage.preserveAspect = true;
+        }
+        else
+        {
+            CreateHangarPlaceholder(backgroundImage.transform);
+        }
 
         Image shade = CreateImage(canvas.transform, "HangarShade", new Color(0.01f, 0.015f, 0.018f, 0.32f));
         StretchFull(shade.rectTransform);

@@ -4,6 +4,10 @@ using UnityEngine.Rendering;
 [DefaultExecutionOrder(400)]
 public class EnvironmentBackgroundController : MonoBehaviour
 {
+    // Temporary: keep battle background rotation disabled. FarClouds scroll can still run per layer.
+    // Set this to false to restore EnvironmentBackgroundController-driven synced motion.
+    private static readonly bool TemporarilyDisableBackgroundMotion = true;
+
     private enum RotationTrackingMode
     {
         CameraOrbitAroundPivot = 0,
@@ -18,6 +22,7 @@ public class EnvironmentBackgroundController : MonoBehaviour
     [SerializeField] private EnvironmentThemeType initialTheme = EnvironmentThemeType.Day;
 
     [Header("Rotation Sync")]
+    [SerializeField] private bool motionEnabled = false;
     [SerializeField] private RotationTrackingMode rotationTrackingMode = RotationTrackingMode.CameraOrbitAroundPivot;
     [SerializeField] private Transform rotationReference;
     [SerializeField] private Transform rotationPivot;
@@ -37,6 +42,21 @@ public class EnvironmentBackgroundController : MonoBehaviour
     private float lastTrackedAngle;
 
     public EnvironmentThemeType ActiveThemeType => activeTheme != null ? activeTheme.themeType : initialTheme;
+
+    public bool MotionEnabled
+    {
+        get => motionEnabled;
+        set
+        {
+            if (motionEnabled == value)
+            {
+                return;
+            }
+
+            motionEnabled = value;
+            ResetTrackedAngle();
+        }
+    }
 
     public void AssignThemeAssets(EnvironmentThemeData day, EnvironmentThemeData night, EnvironmentThemeData rain, EnvironmentThemeType defaultTheme)
     {
@@ -78,6 +98,31 @@ public class EnvironmentBackgroundController : MonoBehaviour
     public void SetRainTheme()
     {
         SetTheme(EnvironmentThemeType.Rain);
+    }
+
+    public void UseCameraOrbitReference(Transform reference, Transform pivot)
+    {
+        rotationTrackingMode = RotationTrackingMode.CameraOrbitAroundPivot;
+        rotationReference = reference;
+        rotationPivot = pivot;
+        ResetTrackedAngle();
+    }
+
+    public void UseTransformYawReference(Transform reference)
+    {
+        rotationTrackingMode = RotationTrackingMode.TransformYawDelta;
+        rotationReference = reference;
+        rotationPivot = null;
+        ResetTrackedAngle();
+    }
+
+    public void UseManualRotation(float degreesPerSecond)
+    {
+        rotationTrackingMode = RotationTrackingMode.ManualDegreesPerSecond;
+        manualDegreesPerSecond = degreesPerSecond;
+        rotationReference = null;
+        rotationPivot = null;
+        ResetTrackedAngle();
     }
 
     public void SyncWithWorldRotation(float worldRotationDelta)
@@ -132,6 +177,11 @@ public class EnvironmentBackgroundController : MonoBehaviour
         AutoAssignReferences();
         RefreshChildReferences();
         ApplyTheme(GetTheme(initialTheme), !Application.isPlaying);
+        if (TemporarilyDisableBackgroundMotion)
+        {
+            ResetLayerMotion();
+        }
+
         ResetTrackedAngle();
     }
 
@@ -142,20 +192,26 @@ public class EnvironmentBackgroundController : MonoBehaviour
             return;
         }
 
+        if (TemporarilyDisableBackgroundMotion)
+        {
+            ResetTrackedAngle();
+            TickLayerScroll(Time.deltaTime);
+            return;
+        }
+
+        if (!motionEnabled)
+        {
+            ResetTrackedAngle();
+            return;
+        }
+
         float worldRotationDelta = GetWorldRotationDelta();
         if (Mathf.Abs(worldRotationDelta) > Mathf.Epsilon)
         {
             SyncWithWorldRotation(worldRotationDelta);
         }
 
-        float deltaTime = Time.deltaTime;
-        for (int i = 0; i < layers.Length; i++)
-        {
-            if (layers[i] != null)
-            {
-                layers[i].Tick(deltaTime, false);
-            }
-        }
+        TickLayerScroll(Time.deltaTime);
     }
 
     private void OnValidate()
@@ -427,5 +483,37 @@ public class EnvironmentBackgroundController : MonoBehaviour
     {
         hasTrackedAngle = false;
         lastTrackedAngle = 0f;
+    }
+
+    private void ResetLayerMotion()
+    {
+        if (layers == null)
+        {
+            return;
+        }
+
+        for (int i = 0; i < layers.Length; i++)
+        {
+            if (layers[i] != null)
+            {
+                layers[i].ResetMotion();
+            }
+        }
+    }
+
+    private void TickLayerScroll(float deltaTime)
+    {
+        if (layers == null)
+        {
+            return;
+        }
+
+        for (int i = 0; i < layers.Length; i++)
+        {
+            if (layers[i] != null)
+            {
+                layers[i].Tick(deltaTime, false);
+            }
+        }
     }
 }

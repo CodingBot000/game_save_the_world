@@ -99,6 +99,7 @@ public static class InstallBattleArenaBackground
         try
         {
             EnvironmentBackgroundController controller = root.AddComponent<EnvironmentBackgroundController>();
+            root.AddComponent<BattleBackgroundHost>();
             controller.AssignThemeAssets(dayTheme, nightTheme, rainTheme, EnvironmentThemeType.Day);
 
             CreateShellLayer(root.transform, "Sky Layer", "SkyShell", BackgroundLayerKind.Sky, skyMaterial, new Vector3(240f, 210f, 240f));
