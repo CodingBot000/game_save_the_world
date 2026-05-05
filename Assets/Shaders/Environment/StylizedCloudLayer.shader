@@ -7,6 +7,9 @@ Shader "TitanDestroyer/Environment/StylizedCloudLayer"
         _MainTex ("Cloud Texture", 2D) = "white" {}
         _UseTexture ("Use Texture", Float) = 0
         _TextureOpacity ("Texture Opacity", Range(0, 1)) = 1
+        _TextureTiling ("Texture Tiling", Vector) = (1, 1, 0, 0)
+        _TextureOffset ("Texture Offset", Vector) = (0, 0, 0, 0)
+        _ClampTextureV ("Clamp Texture V", Float) = 1
         _ScrollOffset ("Scroll Offset", Vector) = (0, 0, 0, 0)
         _PatternScale ("Pattern Scale", Float) = 4
         _Coverage ("Coverage", Range(0, 1)) = 0.55
@@ -62,6 +65,9 @@ Shader "TitanDestroyer/Environment/StylizedCloudLayer"
                 float _Opacity;
                 float _UseTexture;
                 float _TextureOpacity;
+                float4 _TextureTiling;
+                float4 _TextureOffset;
+                float _ClampTextureV;
                 float4 _ScrollOffset;
                 float _PatternScale;
                 float _Coverage;
@@ -127,7 +133,16 @@ Shader "TitanDestroyer/Environment/StylizedCloudLayer"
                 float2 uv = SphericalUv(input.directionOS);
                 if (_UseTexture > 0.5)
                 {
-                    float2 textureUv = uv + _ScrollOffset.xy;
+                    float textureTilingX = max(abs(_TextureTiling.x), 0.0001);
+                    float textureTilingY = max(abs(_TextureTiling.y), 0.0001);
+                    float2 textureUv;
+                    textureUv.x = (uv.x + _ScrollOffset.x) * textureTilingX + _TextureOffset.x;
+                    textureUv.y = (uv.y - 0.5) * textureTilingY + 0.5 + _TextureOffset.y;
+                    if (_ClampTextureV > 0.5)
+                    {
+                        textureUv.y = saturate(textureUv.y);
+                    }
+
                     half4 textureColor = SAMPLE_TEXTURE2D(_MainTex, sampler_MainTex, textureUv);
                     half alpha = saturate(textureColor.a * _TextureOpacity);
                     clip(alpha - 0.001);
