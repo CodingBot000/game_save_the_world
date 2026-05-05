@@ -4,6 +4,9 @@ Shader "TitanDestroyer/Environment/StylizedCloudLayer"
     {
         [HDR] _Tint ("Tint", Color) = (1, 1, 1, 1)
         _Opacity ("Opacity", Range(0, 1)) = 0.5
+        _MainTex ("Cloud Texture", 2D) = "white" {}
+        _UseTexture ("Use Texture", Float) = 0
+        _TextureOpacity ("Texture Opacity", Range(0, 1)) = 1
         _ScrollOffset ("Scroll Offset", Vector) = (0, 0, 0, 0)
         _PatternScale ("Pattern Scale", Float) = 4
         _Coverage ("Coverage", Range(0, 1)) = 0.55
@@ -40,6 +43,9 @@ Shader "TitanDestroyer/Environment/StylizedCloudLayer"
 
             static const float TwoPi = 6.28318530718;
 
+            TEXTURE2D(_MainTex);
+            SAMPLER(sampler_MainTex);
+
             struct Attributes
             {
                 float4 positionOS : POSITION;
@@ -54,6 +60,8 @@ Shader "TitanDestroyer/Environment/StylizedCloudLayer"
             CBUFFER_START(UnityPerMaterial)
                 half4 _Tint;
                 float _Opacity;
+                float _UseTexture;
+                float _TextureOpacity;
                 float4 _ScrollOffset;
                 float _PatternScale;
                 float _Coverage;
@@ -117,6 +125,15 @@ Shader "TitanDestroyer/Environment/StylizedCloudLayer"
             half4 Frag(Varyings input) : SV_Target
             {
                 float2 uv = SphericalUv(input.directionOS);
+                if (_UseTexture > 0.5)
+                {
+                    float2 textureUv = uv + _ScrollOffset.xy;
+                    half4 textureColor = SAMPLE_TEXTURE2D(_MainTex, sampler_MainTex, textureUv);
+                    half alpha = saturate(textureColor.a * _TextureOpacity);
+                    clip(alpha - 0.001);
+                    return half4(textureColor.rgb * _Tint.rgb * _Intensity, alpha);
+                }
+
                 float2 noiseUv = uv * _PatternScale + _ScrollOffset.xy;
                 float cloudNoise = Fbm(noiseUv);
 
