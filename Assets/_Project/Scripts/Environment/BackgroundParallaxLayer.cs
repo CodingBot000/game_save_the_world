@@ -31,7 +31,7 @@ public class BackgroundParallaxLayer : MonoBehaviour
     [SerializeField] private BackgroundLayerKind layerKind = BackgroundLayerKind.Sky;
     [SerializeField] private Transform rotationRoot;
     [SerializeField] private Renderer targetRenderer;
-    [SerializeField] private float farCloudPatternDegreesPerSecond = 4f;
+    [SerializeField] private float farCloudPatternDegreesPerSecond = -4f;
     [SerializeField] private float midCloudPatternDegreesPerSecond = 6f;
 
     private Material runtimeMaterial;

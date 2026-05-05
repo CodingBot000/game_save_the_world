@@ -25,7 +25,7 @@ MonoBehaviour:
     tint: {r: 0.57, g: 0.62, b: 0.69, a: 1}
     opacity: 0.4
     rotationMultiplier: 0.15
-    scrollVelocity: {x: 0.0023, y: 0.0001}
+    scrollVelocity: {x: -0.0023, y: 0.0001}
     patternScale: 4.8
     coverage: 0.56
     softness: 0.17

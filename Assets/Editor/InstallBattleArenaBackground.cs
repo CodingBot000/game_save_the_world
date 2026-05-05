@@ -389,7 +389,7 @@ public static class InstallBattleArenaBackground
         theme.farClouds.tint = new Color(0.93f, 0.96f, 0.99f, 1f);
         theme.farClouds.opacity = 0.38f;
         theme.farClouds.rotationMultiplier = 0.15f;
-        theme.farClouds.scrollVelocity = new Vector2(0.0018f, 0.0001f);
+        theme.farClouds.scrollVelocity = new Vector2(-0.0018f, 0.0001f);
         theme.farClouds.patternScale = 4.2f;
         theme.farClouds.coverage = 0.54f;
         theme.farClouds.softness = 0.15f;
@@ -458,7 +458,7 @@ public static class InstallBattleArenaBackground
         theme.farClouds.tint = new Color(0.25f, 0.31f, 0.42f, 1f);
         theme.farClouds.opacity = 0.24f;
         theme.farClouds.rotationMultiplier = 0.12f;
-        theme.farClouds.scrollVelocity = new Vector2(0.0011f, 0.00006f);
+        theme.farClouds.scrollVelocity = new Vector2(-0.0011f, 0.00006f);
         theme.farClouds.patternScale = 4.6f;
         theme.farClouds.coverage = 0.58f;
         theme.farClouds.softness = 0.18f;
@@ -529,7 +529,7 @@ public static class InstallBattleArenaBackground
         theme.farClouds.tint = new Color(0.57f, 0.62f, 0.69f, 1f);
         theme.farClouds.opacity = 0.4f;
         theme.farClouds.rotationMultiplier = 0.15f;
-        theme.farClouds.scrollVelocity = new Vector2(0.0023f, 0.0001f);
+        theme.farClouds.scrollVelocity = new Vector2(-0.0023f, 0.0001f);
         theme.farClouds.patternScale = 4.8f;
         theme.farClouds.coverage = 0.56f;
         theme.farClouds.softness = 0.17f;

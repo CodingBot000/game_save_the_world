@@ -5576,7 +5576,7 @@ MonoBehaviour:
   layerKind: 1
   rotationRoot: {fileID: 328218895655005972}
   targetRenderer: {fileID: 8137682881053369674}
-  farCloudPatternDegreesPerSecond: 4
+  farCloudPatternDegreesPerSecond: -4
   midCloudPatternDegreesPerSecond: 6
 --- !u!1 &8908964236795161856
 GameObject:
