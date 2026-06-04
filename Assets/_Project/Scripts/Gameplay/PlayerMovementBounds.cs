@@ -46,6 +46,21 @@ public class PlayerMovementBounds : MonoBehaviour
         return transform.TransformPoint(localCenter + clampedLocalOffset);
     }
 
+    public Vector3 ClampWorldPositionToPlane(Vector3 worldPosition, float localDepth)
+    {
+        Vector3 localPosition = transform.InverseTransformPoint(worldPosition) - localCenter;
+        Vector3 clampedLocalOffset = new(
+            Mathf.Clamp(localPosition.x, -Mathf.Abs(halfExtents.x), Mathf.Abs(halfExtents.x)),
+            Mathf.Clamp(localPosition.y, -Mathf.Abs(halfExtents.y), Mathf.Abs(halfExtents.y)),
+            Mathf.Clamp(localDepth, -Mathf.Abs(halfExtents.z), Mathf.Abs(halfExtents.z)));
+        return transform.TransformPoint(localCenter + clampedLocalOffset);
+    }
+
+    public float GetLocalDepth(Vector3 worldPosition)
+    {
+        return (transform.InverseTransformPoint(worldPosition) - localCenter).z;
+    }
+
     public void GetAxes(out Vector3 right, out Vector3 up, out Vector3 forward)
     {
         right = Vector3.ProjectOnPlane(transform.right, Vector3.up);

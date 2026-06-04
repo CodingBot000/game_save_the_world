@@ -9,6 +9,7 @@ using UnityEditor.SceneManagement;
 public class HUDPresenter : MonoBehaviour
 {
     private const string HudRootName = "GeneratedHUD";
+    private const string ControlHintText = "A / D left-right   W / S up-down   Space / Left click fire   Right click / Missile button fire missile   R restart";
 
     public event Action RetryRequested;
     public event Action QuitRequested;
@@ -210,6 +211,11 @@ public class HUDPresenter : MonoBehaviour
             missionFailedOverlay.SetActive(false);
         }
 
+        if (hintText != null)
+        {
+            hintText.text = ControlHintText;
+        }
+
         RefreshDebugPanelState();
         uiBuilt = true;
         EditorUtility.SetDirty(canvas.gameObject);
@@ -251,6 +257,11 @@ public class HUDPresenter : MonoBehaviour
         if (missionFailedOverlay != null)
         {
             missionFailedOverlay.SetActive(false);
+        }
+
+        if (hintText != null)
+        {
+            hintText.text = ControlHintText;
         }
 
         RefreshDebugPanelState();
@@ -530,7 +541,7 @@ public class HUDPresenter : MonoBehaviour
         hintRect.pivot = new Vector2(0.5f, 0f);
         hintRect.sizeDelta = new Vector2(960f, 32f);
         hintRect.anchoredPosition = new Vector2(0f, 18f);
-        createdHintText.text = "A / D strafe   W / S up-down   Q / Z forward-back   Space / Left click fire   Right click / Missile button fire missile   R restart";
+        createdHintText.text = ControlHintText;
 
         GameObject createdDebugPanelRoot = FindOrCreateUiObject("DebugPanelRoot", runtimeHudRoot.transform);
         Image createdDebugPanelImage = createdDebugPanelRoot.GetComponent<Image>() ?? createdDebugPanelRoot.AddComponent<Image>();

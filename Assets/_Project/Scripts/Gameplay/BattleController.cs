@@ -178,9 +178,9 @@ public class BattleController : MonoBehaviour
         Vector3 localScale = DefaultPlayerVehicleLocalScale;
         Transform preservedDamageHurtbox = PreserveDamageHurtbox(playerVisualRoot);
 
-        if (playerVisualRoot.childCount > 0)
+        Transform templateVisual = FindVehicleVisualTemplate(playerVisualRoot);
+        if (templateVisual != null)
         {
-            Transform templateVisual = playerVisualRoot.GetChild(0);
             localPosition = templateVisual.localPosition;
             localRotation = templateVisual.localRotation;
             localScale = templateVisual.localScale;
@@ -203,6 +203,27 @@ public class BattleController : MonoBehaviour
         {
             playerCombatController.RefreshVisualBindings();
         }
+    }
+
+    private static Transform FindVehicleVisualTemplate(Transform playerVisualRoot)
+    {
+        if (playerVisualRoot == null)
+        {
+            return null;
+        }
+
+        for (int i = 0; i < playerVisualRoot.childCount; i++)
+        {
+            Transform child = playerVisualRoot.GetChild(i);
+            if (child == null || child.name == DamageHurtboxName)
+            {
+                continue;
+            }
+
+            return child;
+        }
+
+        return null;
     }
 
     private static Transform PreserveDamageHurtbox(Transform playerVisualRoot)
@@ -261,7 +282,7 @@ public class BattleController : MonoBehaviour
     {
         if (playerOrbitController != null && bossController != null)
         {
-            playerOrbitController.Configure(bossController.OrbitCenter, bossController.AimPoint, playerMovementBounds);
+            playerOrbitController.Configure(bossController.OrbitCenter, bossController.AimPoint, playerMovementBounds, playerMoveGuide);
             playerOrbitController.AdoptScenePlacement(playerOrbitController.transform.position);
         }
 
@@ -309,7 +330,7 @@ public class BattleController : MonoBehaviour
             string modeLabel = GameFlowController.CurrentMode == GameMode.MultiPlaceholder
                 ? "Co-op placeholder mode"
                 : "Single battle mode";
-            hudPresenter.SetStatusMessage($"{modeLabel}. A/D strafe. W/S altitude. Q/Z forward-back.");
+            hudPresenter.SetStatusMessage($"{modeLabel}. A/D left-right. W/S up-down.");
         }
     }
 
