@@ -102,6 +102,28 @@ public class PlayerCombatController : MonoBehaviour
     public bool MissileInputAvailable => MissileSystemAvailable && (GameplayDebugFlags.IgnoreMissileCooldown || missileCooldownRemaining <= 0f);
     public float MissileCooldownRemaining => Mathf.Max(0f, missileCooldownRemaining);
     public float MissileCooldownDuration => Mathf.Max(0.01f, missileCooldown);
+    public float DebugFireCooldown => fireCooldown;
+    public float DebugProjectileSpeed => projectileSpeed;
+    public float DebugProjectileDamage => projectileDamage;
+    public float DebugInvulnerabilityDuration => invulnerabilityDuration;
+    public float DebugArmorRepairRate => armorRepairRate;
+    public float DebugArmorRepairDelay => armorRepairDelay;
+    public float DebugBrokenRecoverThreshold => brokenRecoverThreshold;
+    public float DebugHullDamageMultiplierWhenBroken => hullDamageMultiplierWhenBroken;
+    public float DebugMissileCooldown => missileCooldown;
+    public float DebugMissileDamage => missileDamage;
+    public float DebugMissileLaunchSpeed => missileLaunchSpeed;
+    public float DebugMissileCruiseSpeed => missileCruiseSpeed;
+    public float DebugMissileAcceleration => missileAcceleration;
+    public float DebugMissileTurnRate => missileTurnRate;
+    public float DebugMissileLockOnDelay => missileLockOnDelay;
+    public float DebugMissileStraightPhaseDuration => missileStraightPhaseDuration;
+    public float DebugMissileStraightPhaseDistance => missileStraightPhaseDistance;
+    public float DebugMissileTurnPhaseDuration => missileTurnPhaseDuration;
+    public float DebugMissileBoostPhaseDuration => missileBoostPhaseDuration;
+    public float DebugMissileLifetime => missileLifetime;
+    public float DebugMissileHitRadius => missileHitRadius;
+    public bool DebugShowDamageHurtbox => showDamageHurtboxDebugVisual;
 
     public string GetMissileUnavailableReason()
     {
@@ -218,8 +240,142 @@ public class PlayerCombatController : MonoBehaviour
         combatEnabled = enabled;
     }
 
+    public void ApplyRuntimeStats(PlayerRuntimeStats stats, bool refillDefense)
+    {
+        SetFireCooldownForDebug(stats.FireCooldown);
+        SetProjectileSpeedForDebug(stats.ProjectileSpeed);
+        SetProjectileDamageForDebug(stats.ProjectileDamage);
+        SetInvulnerabilityDurationForDebug(stats.InvulnerabilityDuration);
+        SetHitRadiusForDebug(stats.PlayerHitRadius);
+        SetMissileTuningForDebug(
+            stats.MissileCooldown,
+            stats.MissileDamage,
+            stats.MissileLaunchSpeed,
+            stats.MissileCruiseSpeed,
+            stats.MissileAcceleration,
+            stats.MissileTurnRate,
+            stats.MissileLockOnDelay,
+            stats.MissileStraightPhaseDuration,
+            stats.MissileStraightPhaseDistance,
+            stats.MissileTurnPhaseDuration,
+            stats.MissileBoostPhaseDuration,
+            stats.MissileLifetime,
+            stats.MissileHitRadius);
+        SetDefenseTuningForDebug(
+            stats.MaxHull,
+            stats.MaxArmor,
+            stats.RepairRate,
+            stats.RepairDelay,
+            stats.BrokenRecoverThreshold,
+            stats.HullDamageMultiplierWhenBroken,
+            refillDefense);
+    }
+
+    public void SetFireCooldownForDebug(float value)
+    {
+        fireCooldown = Mathf.Max(0f, value);
+    }
+
+    public void SetProjectileSpeedForDebug(float value)
+    {
+        projectileSpeed = Mathf.Max(0f, value);
+    }
+
+    public void SetProjectileDamageForDebug(float value)
+    {
+        projectileDamage = Mathf.Max(0f, value);
+    }
+
+    public void SetInvulnerabilityDurationForDebug(float value)
+    {
+        invulnerabilityDuration = Mathf.Max(0f, value);
+    }
+
+    public void SetHitRadiusForDebug(float value)
+    {
+        hitRadius = Mathf.Max(0f, value);
+    }
+
+    public void SetMissileTuningForDebug(
+        float cooldown,
+        float damage,
+        float launchSpeed,
+        float cruiseSpeed,
+        float acceleration,
+        float turnRate,
+        float lockOnDelay,
+        float straightPhaseDuration,
+        float straightPhaseDistance,
+        float turnPhaseDuration,
+        float boostPhaseDuration,
+        float lifetime,
+        float projectileHitRadius)
+    {
+        missileCooldown = Mathf.Max(0f, cooldown);
+        missileDamage = Mathf.Max(0f, damage);
+        missileLaunchSpeed = Mathf.Max(0f, launchSpeed);
+        missileCruiseSpeed = Mathf.Max(0f, cruiseSpeed);
+        missileAcceleration = Mathf.Max(0f, acceleration);
+        missileTurnRate = Mathf.Max(0f, turnRate);
+        missileLockOnDelay = Mathf.Max(0f, lockOnDelay);
+        missileStraightPhaseDuration = Mathf.Max(0f, straightPhaseDuration);
+        missileStraightPhaseDistance = Mathf.Max(0f, straightPhaseDistance);
+        missileTurnPhaseDuration = Mathf.Max(0f, turnPhaseDuration);
+        missileBoostPhaseDuration = Mathf.Max(0f, boostPhaseDuration);
+        missileLifetime = Mathf.Max(0f, lifetime);
+        missileHitRadius = Mathf.Max(0f, projectileHitRadius);
+    }
+
+    public void SetDefenseTuningForDebug(
+        float hull,
+        float armor,
+        float repairRate,
+        float repairDelay,
+        float recoverThreshold,
+        float hullDamageMultiplier,
+        bool refill)
+    {
+        maxHull = Mathf.Max(1f, hull);
+        maxArmor = Mathf.Max(0f, armor);
+        armorRepairRate = Mathf.Max(0f, repairRate);
+        armorRepairDelay = Mathf.Max(0f, repairDelay);
+        brokenRecoverThreshold = Mathf.Clamp(recoverThreshold, 0f, maxArmor);
+        hullDamageMultiplierWhenBroken = Mathf.Max(0f, hullDamageMultiplier);
+
+        if (refill)
+        {
+            RefillForDebug();
+            return;
+        }
+
+        currentHull = Mathf.Clamp(currentHull, 0f, maxHull);
+        currentArmor = Mathf.Clamp(currentArmor, 0f, maxArmor);
+        armorBroken = maxArmor > 0f && currentArmor < brokenRecoverThreshold;
+    }
+
+    public void RefillForDebug()
+    {
+        currentHull = maxHull;
+        currentArmor = maxArmor;
+        armorBroken = currentArmor <= 0f;
+        armorRepairCooldownRemaining = armorRepairDelay;
+        invulnerabilityRemaining = 0f;
+    }
+
+    public void SetDamageHurtboxDebugVisibleForDebug(bool visible)
+    {
+        showDamageHurtboxDebugVisual = visible;
+        ResolveDamageHurtboxes();
+        UpdateDamageHurtboxDebugVisuals();
+    }
+
     public bool ApplyDamage(float damage)
     {
+        if (GameplayDebugFlags.Undead && damage > 0f)
+        {
+            return true;
+        }
+
         if (!IsAlive || invulnerabilityRemaining > 0f || damage <= 0f)
         {
             return false;

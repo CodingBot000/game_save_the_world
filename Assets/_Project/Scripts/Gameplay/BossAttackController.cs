@@ -28,6 +28,10 @@ public class BossAttackController : MonoBehaviour
 
     public float BaseProjectileSpeed => projectileSpeed;
     public float BaseProjectileDamage => projectileDamage;
+    public float DebugBaseAttackInterval => baseAttackInterval;
+    public float DebugEnragedAttackInterval => enragedAttackInterval;
+    public int DebugSpreadShotCount => spreadShotCount;
+    public float DebugSpreadAngle => spreadAngle;
     public float CurrentAttackInterval => Mathf.Lerp(enragedAttackInterval, baseAttackInterval, bossController != null ? bossController.HealthRatio : 1f);
     public Vector3 CurrentFireOrigin => firePoint != null ? firePoint.position : (bossController != null ? bossController.HitPoint : transform.position);
     public Vector3 CurrentBossCenter => bossController != null ? bossController.HitPoint : transform.position;
@@ -101,6 +105,25 @@ public class BossAttackController : MonoBehaviour
         {
             bulletPatternController.Configure(this, owner, boss, player);
         }
+    }
+
+    public void SetAttackTimingForDebug(float baseInterval, float enragedInterval)
+    {
+        baseAttackInterval = Mathf.Max(0f, baseInterval);
+        enragedAttackInterval = Mathf.Max(0f, enragedInterval);
+        attackTimer = Mathf.Min(attackTimer, CurrentAttackInterval);
+    }
+
+    public void SetProjectileTuningForDebug(float speed, float damage)
+    {
+        projectileSpeed = Mathf.Max(0f, speed);
+        projectileDamage = Mathf.Max(0f, damage);
+    }
+
+    public void SetLegacySpreadForDebug(int shotCount, float angle)
+    {
+        spreadShotCount = Mathf.Max(1, shotCount);
+        spreadAngle = Mathf.Max(0f, angle);
     }
 
     public void PlayQuickAttackAnimation()

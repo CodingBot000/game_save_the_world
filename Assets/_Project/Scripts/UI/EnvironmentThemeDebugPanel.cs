@@ -108,6 +108,12 @@ public class EnvironmentThemeDebugPanel : MonoBehaviour
     public void ToggleUndead()
     {
         GameplayDebugFlags.Undead = !GameplayDebugFlags.Undead;
+        if (GameplayDebugFlags.Undead)
+        {
+            PlayerCombatController playerCombat = FindAnyObjectByType<PlayerCombatController>();
+            playerCombat?.RefillForDebug();
+        }
+
         RefreshUiState();
     }
 

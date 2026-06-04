@@ -36,6 +36,9 @@ public class PlayerMovementBounds : MonoBehaviour
         { 3, 7 }
     };
 
+    public Vector3 DebugHalfExtents => halfExtents;
+    public bool DebugShowRuntimeGuide => showRuntimeGuide;
+
     public Vector3 ClampWorldPosition(Vector3 worldPosition)
     {
         Vector3 localPosition = transform.InverseTransformPoint(worldPosition) - localCenter;
@@ -59,6 +62,21 @@ public class PlayerMovementBounds : MonoBehaviour
     public float GetLocalDepth(Vector3 worldPosition)
     {
         return (transform.InverseTransformPoint(worldPosition) - localCenter).z;
+    }
+
+    public void SetHalfExtentsForDebug(Vector3 value)
+    {
+        halfExtents = new Vector3(
+            Mathf.Max(0f, value.x),
+            Mathf.Max(0f, value.y),
+            Mathf.Max(0f, value.z));
+        UpdateRuntimeGuide();
+    }
+
+    public void SetRuntimeGuideVisibleForDebug(bool visible)
+    {
+        showRuntimeGuide = visible;
+        UpdateRuntimeGuide();
     }
 
     public void GetAxes(out Vector3 right, out Vector3 up, out Vector3 forward)

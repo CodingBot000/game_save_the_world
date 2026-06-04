@@ -1,6 +1,6 @@
 public static class GameplayDebugFlags
 {
     // Runtime debug toggles that any gameplay script can branch on.
-    public static bool IgnoreMissileCooldown = true;
+    public static bool IgnoreMissileCooldown = false;
     public static bool Undead = false;
 }

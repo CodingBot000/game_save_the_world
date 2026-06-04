@@ -80,6 +80,11 @@ public class PlayerOrbitController : MonoBehaviour
 
     public float CurrentDistance { get; private set; }
     public Vector3 CurrentWorldVelocity { get; private set; }
+    public float DebugStrafeSpeed => strafeSpeed;
+    public float DebugAltitudeSpeed => altitudeSpeed;
+    public float DebugForwardSpeed => forwardSpeed;
+    public float DebugMaxVisualTiltAngle => maxVisualTiltAngle;
+    public float DebugVisualTiltDuration => visualTiltDuration;
     public Vector3 OrbitCenterPosition => orbitCenter != null ? orbitCenter.position : Vector3.zero;
     public Vector3 OutwardDirection
     {
@@ -159,6 +164,19 @@ public class PlayerOrbitController : MonoBehaviour
     public void SetInputEnabled(bool enabled)
     {
         inputEnabled = enabled;
+    }
+
+    public void SetMovementSpeedsForDebug(float strafe, float altitude, float forward)
+    {
+        strafeSpeed = Mathf.Max(0f, strafe);
+        altitudeSpeed = Mathf.Max(0f, altitude);
+        forwardSpeed = Mathf.Max(0f, forward);
+    }
+
+    public void SetVisualTiltForDebug(float maxAngle, float duration)
+    {
+        maxVisualTiltAngle = Mathf.Max(0f, maxAngle);
+        visualTiltDuration = Mathf.Max(0f, duration);
     }
 
     public void AdoptScenePlacement(Vector3 worldPosition)

@@ -61,6 +61,18 @@ public class BossBulletPatternController : MonoBehaviour
     private int nextPatternIndex;
     private float spiralRotationDegrees;
 
+    public float DebugStartupDelay => startupDelay;
+    public float DebugAimedBurstShotInterval => aimedBurstShotInterval;
+    public float DebugWarningLineThickness => warningLineThickness;
+    public IReadOnlyList<BossBulletPatternDefinition> DebugPatternSequence
+    {
+        get
+        {
+            EnsureDefaultPatterns();
+            return patternSequence;
+        }
+    }
+
     private void Reset()
     {
         EnsureDefaultPatterns();
@@ -85,6 +97,128 @@ public class BossBulletPatternController : MonoBehaviour
         bossController = boss;
         playerCombatController = player;
         attackCooldownRemaining = Mathf.Max(attackCooldownRemaining, startupDelay);
+    }
+
+    public void SetTimingForDebug(float initialStartupDelay, float fallbackAimedBurstShotInterval, float telegraphLineThickness)
+    {
+        startupDelay = Mathf.Max(0f, initialStartupDelay);
+        aimedBurstShotInterval = Mathf.Max(0f, fallbackAimedBurstShotInterval);
+        warningLineThickness = Mathf.Max(0f, telegraphLineThickness);
+        attackCooldownRemaining = Mathf.Max(0f, attackCooldownRemaining);
+    }
+
+    public void SetPatternEnabledForDebug(int patternIndex, bool value)
+    {
+        BossBulletPatternDefinition pattern = GetPatternForDebug(patternIndex);
+        if (pattern != null)
+        {
+            pattern.enabled = value;
+        }
+    }
+
+    public void SetPatternFloatForDebug(int patternIndex, BossPatternTuningKey key, float value)
+    {
+        BossBulletPatternDefinition pattern = GetPatternForDebug(patternIndex);
+        if (pattern == null)
+        {
+            return;
+        }
+
+        float clampedValue = Mathf.Max(0f, value);
+        switch (key)
+        {
+            case BossPatternTuningKey.MinHealthRatio:
+                pattern.minHealthRatio = Mathf.Clamp01(clampedValue);
+                break;
+            case BossPatternTuningKey.MaxHealthRatio:
+                pattern.maxHealthRatio = Mathf.Clamp01(clampedValue);
+                break;
+            case BossPatternTuningKey.CooldownMultiplier:
+                pattern.cooldownMultiplier = clampedValue;
+                break;
+            case BossPatternTuningKey.BurstInterval:
+                pattern.burstInterval = clampedValue;
+                break;
+            case BossPatternTuningKey.SpreadAngle:
+                pattern.spreadAngle = clampedValue;
+                break;
+            case BossPatternTuningKey.SpeedMultiplier:
+                pattern.speedMultiplier = clampedValue;
+                break;
+            case BossPatternTuningKey.SecondarySpeedMultiplier:
+                pattern.secondarySpeedMultiplier = clampedValue;
+                break;
+            case BossPatternTuningKey.DamageMultiplier:
+                pattern.damageMultiplier = clampedValue;
+                break;
+            case BossPatternTuningKey.SecondaryDamageMultiplier:
+                pattern.secondaryDamageMultiplier = clampedValue;
+                break;
+            case BossPatternTuningKey.RingRotationStep:
+                pattern.ringRotationStep = clampedValue;
+                break;
+            case BossPatternTuningKey.TelegraphDuration:
+                pattern.telegraphDuration = clampedValue;
+                break;
+            case BossPatternTuningKey.FlashingDuration:
+                pattern.flashingDuration = clampedValue;
+                break;
+            case BossPatternTuningKey.WarningWidth:
+                pattern.warningWidth = clampedValue;
+                break;
+            case BossPatternTuningKey.WarningHeight:
+                pattern.warningHeight = clampedValue;
+                break;
+            case BossPatternTuningKey.WarningDepth:
+                pattern.warningDepth = clampedValue;
+                break;
+            case BossPatternTuningKey.OverheadHeight:
+                pattern.overheadHeight = clampedValue;
+                break;
+            case BossPatternTuningKey.SplitDistance:
+                pattern.splitDistance = clampedValue;
+                break;
+        }
+    }
+
+    public void SetPatternIntForDebug(int patternIndex, BossPatternTuningKey key, int value)
+    {
+        BossBulletPatternDefinition pattern = GetPatternForDebug(patternIndex);
+        if (pattern == null)
+        {
+            return;
+        }
+
+        int clampedValue = Mathf.Max(1, value);
+        switch (key)
+        {
+            case BossPatternTuningKey.ProjectileCount:
+                pattern.projectileCount = clampedValue;
+                break;
+            case BossPatternTuningKey.SecondaryProjectileCount:
+                pattern.secondaryProjectileCount = clampedValue;
+                break;
+            case BossPatternTuningKey.BurstCount:
+                pattern.burstCount = clampedValue;
+                break;
+        }
+    }
+
+    public void CancelActivePatternForDebug()
+    {
+        CancelActivePattern();
+        CleanupTelegraphs();
+    }
+
+    private BossBulletPatternDefinition GetPatternForDebug(int patternIndex)
+    {
+        EnsureDefaultPatterns();
+        if (patternSequence == null || patternIndex < 0 || patternIndex >= patternSequence.Count)
+        {
+            return null;
+        }
+
+        return patternSequence[patternIndex];
     }
 
     private void Update()

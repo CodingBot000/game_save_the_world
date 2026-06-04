@@ -28,6 +28,8 @@ public class BossController : MonoBehaviour
     public Transform AimPoint => aimPoint != null ? aimPoint : transform;
     public Transform OrbitCenter => transform;
     public Vector3 HitPoint => AimPoint != null ? AimPoint.position : transform.position + Vector3.up * 5f;
+    public float DebugIdleBobAmplitude => idleBobAmplitude;
+    public float DebugIdleBobSpeed => idleBobSpeed;
 
     private void Awake()
     {
@@ -66,6 +68,33 @@ public class BossController : MonoBehaviour
     {
         maxHealth = encounterMaxHealth;
         currentHealth = encounterMaxHealth;
+    }
+
+    public void SetMaxHealthForDebug(float value, bool refill)
+    {
+        maxHealth = Mathf.Max(1f, value);
+        currentHealth = refill ? maxHealth : Mathf.Clamp(currentHealth, 0f, maxHealth);
+    }
+
+    public void SetCurrentHealthForDebug(float value)
+    {
+        currentHealth = Mathf.Clamp(value, 0f, maxHealth);
+    }
+
+    public void FullHealForDebug()
+    {
+        currentHealth = maxHealth;
+    }
+
+    public void SetHitRadiusForDebug(float value)
+    {
+        hitRadius = Mathf.Max(0f, value);
+    }
+
+    public void SetIdleBobForDebug(float amplitude, float speed)
+    {
+        idleBobAmplitude = Mathf.Max(0f, amplitude);
+        idleBobSpeed = Mathf.Max(0f, speed);
     }
 
     public void AdoptSceneRotation(Vector3 worldTarget)

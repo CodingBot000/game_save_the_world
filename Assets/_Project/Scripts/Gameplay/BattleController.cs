@@ -363,13 +363,31 @@ public class BattleController : MonoBehaviour
 
     private void HandlePlayerDied()
     {
-        // Keep undead handling at the final defeat gate so the rest of the combat code
-        // stays unchanged while debug sessions can bypass the mission-failed flow.
         if (GameplayDebugFlags.Undead)
         {
+            if (playerCombatController != null)
+            {
+                playerCombatController.RefillForDebug();
+                playerCombatController.SetCombatEnabled(true);
+            }
+
+            if (playerOrbitController != null)
+            {
+                playerOrbitController.SetInputEnabled(true);
+            }
+
+            if (bossAttackController != null)
+            {
+                bossAttackController.enabled = true;
+            }
+
+            battleActive = true;
+            awaitingDefeatChoice = false;
+
             if (hudPresenter != null)
             {
-                hudPresenter.SetStatusMessage("Undead debug active. Mission fail suppressed.");
+                hudPresenter.HideMissionFailedOverlay();
+                hudPresenter.SetStatusMessage("Undead debug active. Damage ignored.");
             }
 
             return;
