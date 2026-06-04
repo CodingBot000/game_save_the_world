@@ -492,10 +492,10 @@ public class PlayerOrbitController : MonoBehaviour
             return;
         }
 
-        Vector3 sourcePosition = visualPoseRoot != null ? visualPoseRoot.position : transform.position;
-        Vector3 viewportPoint = movementCamera.WorldToViewportPoint(sourcePosition);
-        float clampedX = Mathf.Clamp01(viewportPoint.x);
-        float clampedY = Mathf.Clamp01(viewportPoint.y);
+        Vector3 viewportPoint = movementCamera.WorldToViewportPoint(transform.position);
+        Rect effectiveViewportRect = GetEffectiveMovementViewportRect();
+        float clampedX = Mathf.Clamp(viewportPoint.x, effectiveViewportRect.xMin, effectiveViewportRect.xMax);
+        float clampedY = Mathf.Clamp(viewportPoint.y, effectiveViewportRect.yMin, effectiveViewportRect.yMax);
 
         screenSpaceVisualRect.anchoredPosition = new Vector2(clampedX * Screen.width, clampedY * Screen.height);
         screenSpaceVisualRect.sizeDelta = screenSpaceVisualImageSize;
@@ -746,7 +746,7 @@ public class PlayerOrbitController : MonoBehaviour
 
     private void CaptureCameraPlane(Vector3 viewportPoint)
     {
-        movementViewportRect = playerMoveGuide != null ? playerMoveGuide.ViewportRect : DefaultViewportRect;
+        movementViewportRect = GetEffectiveMovementViewportRect();
         if (playerMoveGuide != null)
         {
             cameraPlaneDepth = Mathf.Max(movementCamera.nearClipPlane + 0.01f, playerMoveGuide.PreviewDepth);
@@ -785,8 +785,56 @@ public class PlayerOrbitController : MonoBehaviour
             return false;
         }
 
-        movementViewportRect = playerMoveGuide != null ? playerMoveGuide.ViewportRect : DefaultViewportRect;
+        movementViewportRect = GetEffectiveMovementViewportRect();
         return true;
+    }
+
+    private Rect GetEffectiveMovementViewportRect()
+    {
+        Rect configuredRect = playerMoveGuide != null ? playerMoveGuide.ViewportRect : DefaultViewportRect;
+        if (!useScreenSpaceVisual || Screen.width <= 0 || Screen.height <= 0)
+        {
+            return configuredRect;
+        }
+
+        Vector2 visualSize = GetScreenSpaceVisualSize();
+        float minX = Mathf.Max(configuredRect.xMin, Mathf.Clamp01((visualSize.x * 0.5f) / Screen.width));
+        float maxX = Mathf.Min(configuredRect.xMax, Mathf.Clamp01(1f - (visualSize.x * 0.5f) / Screen.width));
+        float minY = Mathf.Max(configuredRect.yMin, Mathf.Clamp01((visualSize.y * 0.5f) / Screen.height));
+        float maxY = Mathf.Min(configuredRect.yMax, Mathf.Clamp01(1f - (visualSize.y * 0.5f) / Screen.height));
+
+        if (minX > maxX)
+        {
+            float centerX = Mathf.Clamp((configuredRect.xMin + configuredRect.xMax) * 0.5f, 0f, 1f);
+            minX = centerX;
+            maxX = centerX;
+        }
+
+        if (minY > maxY)
+        {
+            float centerY = Mathf.Clamp((configuredRect.yMin + configuredRect.yMax) * 0.5f, 0f, 1f);
+            minY = centerY;
+            maxY = centerY;
+        }
+
+        return Rect.MinMaxRect(minX, minY, maxX, maxY);
+    }
+
+    private Vector2 GetScreenSpaceVisualSize()
+    {
+        Vector2 visualSize = screenSpaceVisualImageSize;
+        if (screenSpaceVisualRect != null)
+        {
+            Vector2 rectSize = screenSpaceVisualRect.sizeDelta;
+            if (rectSize.x > 1f && rectSize.y > 1f)
+            {
+                visualSize = rectSize;
+            }
+        }
+
+        visualSize.x = Mathf.Max(0f, visualSize.x);
+        visualSize.y = Mathf.Max(0f, visualSize.y);
+        return visualSize;
     }
 
     private void UpdateVisualTilt(Vector2 input)
