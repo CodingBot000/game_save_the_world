@@ -24,6 +24,9 @@ public class PlayerOrbitController : MonoBehaviour
     [SerializeField] private bool useCameraPlaneMovement = true;
     [SerializeField] private PlayerMovementBounds movementBounds;
     [SerializeField] private PlayerMoveGuide playerMoveGuide;
+    [Tooltip("Starts the helicopter at a normalized camera viewport position instead of the authored world position.")]
+    [SerializeField] private bool useInitialViewportPlacement = true;
+    [SerializeField] private Vector2 initialViewportPosition = new(0.28f, 0.5f);
     [SerializeField] private string visualTiltRootName = "PlayerVisualRoot";
     [Tooltip("Keeps the visual helicopter pose independent from the movement anchor rotation.")]
     [SerializeField] private bool lockVisualRootToCamera = true;
@@ -127,6 +130,12 @@ public class PlayerOrbitController : MonoBehaviour
         ReleaseScreenSpaceVisualTexture();
     }
 
+    private void OnValidate()
+    {
+        initialViewportPosition.x = Mathf.Clamp01(initialViewportPosition.x);
+        initialViewportPosition.y = Mathf.Clamp01(initialViewportPosition.y);
+    }
+
     public void Configure(Transform center, Transform targetToLookAt, PlayerMovementBounds bounds, PlayerMoveGuide moveGuide = null)
     {
         EnsureRuntimeDefaults();
@@ -155,6 +164,15 @@ public class PlayerOrbitController : MonoBehaviour
     public void AdoptScenePlacement(Vector3 worldPosition)
     {
         CaptureRootRotation(worldPosition);
+
+        if (TryResolveInitialViewportPlacement(worldPosition, out Vector3 initialWorldPosition))
+        {
+            transform.position = initialWorldPosition;
+            RepositionImmediate();
+            ResetVelocityTracking();
+            return;
+        }
+
         CaptureMovementPlane(worldPosition);
 
         transform.position = ClampToMovementPlane(worldPosition);
@@ -804,6 +822,25 @@ public class PlayerOrbitController : MonoBehaviour
         }
 
         CaptureCameraPlane(movementCamera.WorldToViewportPoint(worldPosition));
+        return true;
+    }
+
+    private bool TryResolveInitialViewportPlacement(Vector3 referenceWorldPosition, out Vector3 initialWorldPosition)
+    {
+        initialWorldPosition = default;
+        if (!useInitialViewportPlacement || !TryResolveCameraPlane())
+        {
+            return false;
+        }
+
+        Vector3 referenceViewportPoint = movementCamera.WorldToViewportPoint(referenceWorldPosition);
+        CaptureCameraPlane(new Vector3(
+            initialViewportPosition.x,
+            initialViewportPosition.y,
+            referenceViewportPoint.z));
+
+        initialWorldPosition = movementCamera.ViewportToWorldPoint(
+            new Vector3(viewportPosition.x, viewportPosition.y, cameraPlaneDepth));
         return true;
     }
 
