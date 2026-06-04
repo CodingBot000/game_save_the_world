@@ -33,9 +33,10 @@ public class PlayerOrbitController : MonoBehaviour
     [SerializeField] private float screenSpaceVisualDepth = 10f;
     [SerializeField] private float screenSpaceVisualScaleMultiplier = 0.65f;
     [SerializeField] private int screenSpaceVisualTextureSize = 512;
-    [SerializeField] private Vector2 screenSpaceVisualImageSize = new(520f, 360f);
+    [SerializeField] private Vector2 screenSpaceVisualImageSize = new(780f, 540f);
     [SerializeField] private float screenSpaceVisualRenderOrthographicSize = 0.45f;
     [SerializeField] private float screenSpaceVisualFramePadding = 1.15f;
+    [SerializeField] private Vector2 screenSpaceVisualEdgePadding = new(12f, 12f);
     [Tooltip("Tilts only the visible helicopter model toward movement input; the movement anchor stays locked to the 2D plane.")]
     [SerializeField] private bool enableVisualTilt = true;
     [SerializeField] private float maxVisualTiltAngle = 12f;
@@ -52,6 +53,7 @@ public class PlayerOrbitController : MonoBehaviour
     private RawImage screenSpaceVisualImage;
     private RectTransform screenSpaceVisualRect;
     private RenderTexture screenSpaceVisualTexture;
+    private Rect screenSpaceVisualContentRect = new(0f, 0f, 1f, 1f);
     private bool inputEnabled = true;
     private Quaternion sceneBaseRotation = Quaternion.identity;
     private Quaternion visualTiltBaseLocalRotation = Quaternion.identity;
@@ -493,6 +495,7 @@ public class PlayerOrbitController : MonoBehaviour
         }
 
         Vector3 viewportPoint = movementCamera.WorldToViewportPoint(transform.position);
+        UpdateScreenSpaceVisualContentRect();
         Rect effectiveViewportRect = GetEffectiveMovementViewportRect();
         float clampedX = Mathf.Clamp(viewportPoint.x, effectiveViewportRect.xMin, effectiveViewportRect.xMax);
         float clampedY = Mathf.Clamp(viewportPoint.y, effectiveViewportRect.yMin, effectiveViewportRect.yMax);
@@ -531,6 +534,66 @@ public class PlayerOrbitController : MonoBehaviour
                 0.02f,
                 10f);
         }
+
+        UpdateScreenSpaceVisualContentRect();
+    }
+
+    private void UpdateScreenSpaceVisualContentRect()
+    {
+        screenSpaceVisualContentRect = new Rect(0f, 0f, 1f, 1f);
+        if (screenSpaceVisualRenderCamera == null || screenSpaceVisualInstance == null)
+        {
+            return;
+        }
+
+        Renderer[] renderers = screenSpaceVisualInstance.GetComponentsInChildren<Renderer>(true);
+        bool hasProjectedBounds = false;
+        float minX = 1f;
+        float minY = 1f;
+        float maxX = 0f;
+        float maxY = 0f;
+
+        for (int i = 0; i < renderers.Length; i++)
+        {
+            Renderer renderer = renderers[i];
+            if (renderer == null || !renderer.enabled)
+            {
+                continue;
+            }
+
+            Bounds bounds = renderer.bounds;
+            Vector3 min = bounds.min;
+            Vector3 max = bounds.max;
+            for (int cornerIndex = 0; cornerIndex < 8; cornerIndex++)
+            {
+                Vector3 corner = new(
+                    (cornerIndex & 1) == 0 ? min.x : max.x,
+                    (cornerIndex & 2) == 0 ? min.y : max.y,
+                    (cornerIndex & 4) == 0 ? min.z : max.z);
+                Vector3 viewportPoint = screenSpaceVisualRenderCamera.WorldToViewportPoint(corner);
+                minX = Mathf.Min(minX, viewportPoint.x);
+                minY = Mathf.Min(minY, viewportPoint.y);
+                maxX = Mathf.Max(maxX, viewportPoint.x);
+                maxY = Mathf.Max(maxY, viewportPoint.y);
+                hasProjectedBounds = true;
+            }
+        }
+
+        if (!hasProjectedBounds)
+        {
+            return;
+        }
+
+        minX = Mathf.Clamp01(minX);
+        minY = Mathf.Clamp01(minY);
+        maxX = Mathf.Clamp01(maxX);
+        maxY = Mathf.Clamp01(maxY);
+        if (minX >= maxX || minY >= maxY)
+        {
+            return;
+        }
+
+        screenSpaceVisualContentRect = Rect.MinMaxRect(minX, minY, maxX, maxY);
     }
 
     private static bool TryGetEnabledRendererBounds(Transform root, out Bounds bounds)
@@ -798,10 +861,18 @@ public class PlayerOrbitController : MonoBehaviour
         }
 
         Vector2 visualSize = GetScreenSpaceVisualSize();
-        float minX = Mathf.Max(configuredRect.xMin, Mathf.Clamp01((visualSize.x * 0.5f) / Screen.width));
-        float maxX = Mathf.Min(configuredRect.xMax, Mathf.Clamp01(1f - (visualSize.x * 0.5f) / Screen.width));
-        float minY = Mathf.Max(configuredRect.yMin, Mathf.Clamp01((visualSize.y * 0.5f) / Screen.height));
-        float maxY = Mathf.Min(configuredRect.yMax, Mathf.Clamp01(1f - (visualSize.y * 0.5f) / Screen.height));
+        Rect contentRect = screenSpaceVisualContentRect;
+        float leftExtent = Mathf.Max(0f, (0.5f - contentRect.xMin) * visualSize.x);
+        float rightExtent = Mathf.Max(0f, (contentRect.xMax - 0.5f) * visualSize.x);
+        float bottomExtent = Mathf.Max(0f, (0.5f - contentRect.yMin) * visualSize.y);
+        float topExtent = Mathf.Max(0f, (contentRect.yMax - 0.5f) * visualSize.y);
+
+        float horizontalPadding = Mathf.Max(0f, screenSpaceVisualEdgePadding.x);
+        float verticalPadding = Mathf.Max(0f, screenSpaceVisualEdgePadding.y);
+        float minX = Mathf.Clamp01((leftExtent + horizontalPadding) / Screen.width);
+        float maxX = Mathf.Clamp01(1f - (rightExtent + horizontalPadding) / Screen.width);
+        float minY = Mathf.Max(configuredRect.yMin, Mathf.Clamp01((bottomExtent + verticalPadding) / Screen.height));
+        float maxY = Mathf.Min(configuredRect.yMax, Mathf.Clamp01(1f - (topExtent + verticalPadding) / Screen.height));
 
         if (minX > maxX)
         {
@@ -950,9 +1021,18 @@ public class PlayerOrbitController : MonoBehaviour
             screenSpaceVisualTextureSize = 512;
         }
 
-        if (screenSpaceVisualImageSize.x <= 1f || screenSpaceVisualImageSize.y <= 1f)
+        bool usingLegacyVisualSize =
+            Mathf.Approximately(screenSpaceVisualImageSize.x, 520f) &&
+            Mathf.Approximately(screenSpaceVisualImageSize.y, 360f);
+        bool usingPreviousRaisedVisualSize =
+            Mathf.Approximately(screenSpaceVisualImageSize.x, 676f) &&
+            Mathf.Approximately(screenSpaceVisualImageSize.y, 468f);
+        if (screenSpaceVisualImageSize.x <= 1f ||
+            screenSpaceVisualImageSize.y <= 1f ||
+            usingLegacyVisualSize ||
+            usingPreviousRaisedVisualSize)
         {
-            screenSpaceVisualImageSize = new Vector2(520f, 360f);
+            screenSpaceVisualImageSize = new Vector2(780f, 540f);
         }
 
         if (screenSpaceVisualRenderOrthographicSize <= 0.01f)
