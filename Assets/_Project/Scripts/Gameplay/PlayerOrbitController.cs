@@ -36,10 +36,10 @@ public class PlayerOrbitController : MonoBehaviour
     [SerializeField] private Vector2 screenSpaceVisualImageSize = new(520f, 360f);
     [SerializeField] private float screenSpaceVisualRenderOrthographicSize = 0.45f;
     [SerializeField] private float screenSpaceVisualFramePadding = 1.15f;
-    [Tooltip("Disabled by default so the helicopter stays locked to the 2D movement plane.")]
-    [SerializeField] private bool enableVisualTilt;
-    [SerializeField] private float maxVisualTiltAngle = 30f;
-    [SerializeField] private float visualTiltDuration = 0.3f;
+    [Tooltip("Tilts only the visible helicopter model toward movement input; the movement anchor stays locked to the 2D plane.")]
+    [SerializeField] private bool enableVisualTilt = true;
+    [SerializeField] private float maxVisualTiltAngle = 12f;
+    [SerializeField] private float visualTiltDuration = 0.18f;
 
     private Transform orbitCenter;
     private Transform lookTarget;
@@ -57,6 +57,7 @@ public class PlayerOrbitController : MonoBehaviour
     private Quaternion visualTiltBaseLocalRotation = Quaternion.identity;
     private Quaternion lockedVisualWorldRotation = Quaternion.identity;
     private Quaternion lockedVisualCameraRelativeRotation = Quaternion.identity;
+    private Quaternion screenSpaceVisualBaseLocalRotation = Quaternion.identity;
     private Vector2 currentVisualTilt;
     private Vector2 movementInput;
     private Vector3 previousWorldPosition;
@@ -293,9 +294,13 @@ public class PlayerOrbitController : MonoBehaviour
 
     private void ApplyLockedVisualPose(Quaternion visualTiltOffset)
     {
-        if (screenSpaceVisualActive)
+        if (screenSpaceVisualRoot != null || screenSpaceVisualInstance != null)
         {
-            return;
+            ApplyScreenSpaceVisualPose(visualTiltOffset);
+            if (screenSpaceVisualActive)
+            {
+                return;
+            }
         }
 
         Transform target = visualPoseRoot != null ? visualPoseRoot : visualTiltRoot;
@@ -322,6 +327,25 @@ public class PlayerOrbitController : MonoBehaviour
         }
 
         target.rotation = baseWorldRotation * visualTiltOffset;
+    }
+
+    private void ApplyScreenSpaceVisualPose(Quaternion visualTiltOffset)
+    {
+        bool appliedToScreenRoot = false;
+        if (screenSpaceVisualRoot != null)
+        {
+            screenSpaceVisualRoot.localRotation = visualTiltOffset;
+            appliedToScreenRoot = true;
+        }
+
+        if (screenSpaceVisualInstance == null)
+        {
+            return;
+        }
+
+        screenSpaceVisualInstance.localRotation = appliedToScreenRoot
+            ? screenSpaceVisualBaseLocalRotation
+            : screenSpaceVisualBaseLocalRotation * visualTiltOffset;
     }
 
     private void EnsureScreenSpaceVisualReady()
@@ -376,9 +400,10 @@ public class PlayerOrbitController : MonoBehaviour
         visualClone.name = $"{sourceVisual.name}_ScreenVisual";
         screenSpaceVisualInstance = visualClone.transform;
         screenSpaceVisualInstance.localPosition = Vector3.zero;
-        screenSpaceVisualInstance.localRotation = hasLockedVisualPose
+        screenSpaceVisualBaseLocalRotation = hasLockedVisualPose
             ? lockedVisualCameraRelativeRotation
             : Quaternion.Inverse(movementCamera.transform.rotation) * sourceVisual.rotation;
+        screenSpaceVisualInstance.localRotation = screenSpaceVisualBaseLocalRotation;
         screenSpaceVisualInstance.localScale = sourceVisual.localScale * Mathf.Max(0.01f, screenSpaceVisualScaleMultiplier);
 
         int visualLayer = ResolveScreenSpaceVisualLayer();
@@ -782,6 +807,13 @@ public class PlayerOrbitController : MonoBehaviour
         }
 
         float clampedMaxAngle = Mathf.Max(0f, maxVisualTiltAngle);
+        if (clampedMaxAngle <= 0.001f)
+        {
+            currentVisualTilt = Vector2.zero;
+            ApplyLockedVisualPose(Quaternion.identity);
+            return;
+        }
+
         float clampedDuration = Mathf.Max(0.01f, visualTiltDuration);
         float tiltSpeed = clampedMaxAngle / clampedDuration;
         Vector2 clampedInput = Vector2.ClampMagnitude(input, 1f);
@@ -832,7 +864,7 @@ public class PlayerOrbitController : MonoBehaviour
         MigrateLegacyMovementSpeedsIfNeeded();
         useScreenSpaceVisual = true;
         lockVisualRootToCamera = true;
-        enableVisualTilt = false;
+        enableVisualTilt = true;
         screenSpaceVisualScaleMultiplier = 0.65f;
 
         if (strafeSpeed <= 0.01f)
@@ -883,6 +915,16 @@ public class PlayerOrbitController : MonoBehaviour
         if (screenSpaceVisualFramePadding < 1f)
         {
             screenSpaceVisualFramePadding = 1.15f;
+        }
+
+        if (maxVisualTiltAngle <= 0.001f || maxVisualTiltAngle > 18f)
+        {
+            maxVisualTiltAngle = 12f;
+        }
+
+        if (visualTiltDuration <= 0.01f || visualTiltDuration > 0.25f)
+        {
+            visualTiltDuration = 0.18f;
         }
     }
 
