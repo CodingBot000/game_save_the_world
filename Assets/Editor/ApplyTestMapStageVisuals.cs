@@ -17,6 +17,7 @@ public static class ApplyTestMapStageVisuals
     private const string BossVisualRootName = "BossVisualRoot";
     private const string PlayerVisualRootName = "PlayerVisualRoot";
     private const string AllyVisualRootName = "AllyVisualRoot";
+    private const string StageVisualInstanceName = "StageVisual_TestMap";
 
     private static readonly Vector3 StageLocalPosition = new(0f, 2f, 0f);
     private static readonly Vector3 StageLocalEulerAngles = Vector3.zero;
@@ -80,6 +81,11 @@ public static class ApplyTestMapStageVisuals
         Transform bossVisualRoot = EnsureChild(bossRoot, BossVisualRootName);
         Transform playerVisualRoot = EnsureChild(playerRoot, PlayerVisualRootName);
         Transform allyVisualRoot = allyRoot != null ? EnsureChild(allyRoot, AllyVisualRootName) : null;
+        LocalTransformSnapshot stageVisualTransform = CaptureLocalTransform(
+            FindChild(stageVisualRoot, StageVisualInstanceName),
+            StageLocalPosition,
+            StageLocalEulerAngles,
+            StageLocalScale);
 
         ResetLocal(stageVisualRoot, Vector3.zero, Vector3.zero, Vector3.one);
         ResetLocal(bossVisualRoot, Vector3.zero, Vector3.zero, Vector3.one);
@@ -97,7 +103,14 @@ public static class ApplyTestMapStageVisuals
             ClearChildren(allyVisualRoot);
         }
 
-        InstantiateMountedVisual(stageVisualAsset, stageVisualRoot, "StageVisual_TestMap", StageLocalPosition, StageLocalEulerAngles, StageLocalScale);
+        GameObject stageVisual = InstantiateMountedVisual(
+            stageVisualAsset,
+            stageVisualRoot,
+            StageVisualInstanceName,
+            StageLocalPosition,
+            StageLocalEulerAngles,
+            StageLocalScale);
+        stageVisualTransform.ApplyTo(stageVisual.transform);
         GameObject bossVisual = InstantiateMountedVisual(bossVisualAsset, bossVisualRoot, "BossVisual_TestMap", BossLocalPosition, BossLocalEulerAngles, BossLocalScale);
         InstantiateMountedVisual(playerVisualAsset, playerVisualRoot, "PlayerVisual_Vehicle", PlayerLocalPosition, PlayerLocalEulerAngles, PlayerLocalScale);
         if (allyVisualRoot != null)
@@ -243,11 +256,42 @@ public static class ApplyTestMapStageVisuals
         return instance;
     }
 
+    private static LocalTransformSnapshot CaptureLocalTransform(Transform target, Vector3 fallbackPosition, Vector3 fallbackEulerAngles, Vector3 fallbackScale)
+    {
+        if (target == null)
+        {
+            return new LocalTransformSnapshot(fallbackPosition, Quaternion.Euler(fallbackEulerAngles), fallbackScale);
+        }
+
+        return new LocalTransformSnapshot(target.localPosition, target.localRotation, target.localScale);
+    }
+
     private static void ResetLocal(Transform target, Vector3 localPosition, Vector3 localEulerAngles, Vector3 localScale)
     {
         target.localPosition = localPosition;
         target.localRotation = Quaternion.Euler(localEulerAngles);
         target.localScale = localScale;
+    }
+
+    private readonly struct LocalTransformSnapshot
+    {
+        private readonly Vector3 localPosition;
+        private readonly Quaternion localRotation;
+        private readonly Vector3 localScale;
+
+        public LocalTransformSnapshot(Vector3 localPosition, Quaternion localRotation, Vector3 localScale)
+        {
+            this.localPosition = localPosition;
+            this.localRotation = localRotation;
+            this.localScale = localScale;
+        }
+
+        public void ApplyTo(Transform target)
+        {
+            target.localPosition = localPosition;
+            target.localRotation = localRotation;
+            target.localScale = localScale;
+        }
     }
 
     private static Material GetOrCreateMaterial(string materialPath, Color color)
