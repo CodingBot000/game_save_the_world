@@ -37,11 +37,13 @@ public class SpecialAttackDiagonalImage : RawImage
 
     private void AddUpperCoverFill(VertexHelper vertexHelper, Rect rect)
     {
+        Vector2 imageCenter = new(1f / 3f, 2f / 3f);
+        Vector2 imageSize = ResolveCenteredImageSize(rect, imageCenter);
         for (int i = 0; i <= FillSegmentCount; i++)
         {
             float y = i / (float)FillSegmentCount;
-            AddVertex(vertexHelper, rect, 0f, y, 0f, y);
-            AddVertex(vertexHelper, rect, y, y, 1f, y);
+            AddVertex(vertexHelper, rect, imageCenter, imageSize, 0f, y);
+            AddVertex(vertexHelper, rect, imageCenter, imageSize, y, y);
         }
 
         AddCoverFillTriangles(vertexHelper);
@@ -49,14 +51,38 @@ public class SpecialAttackDiagonalImage : RawImage
 
     private void AddLowerCoverFill(VertexHelper vertexHelper, Rect rect)
     {
+        Vector2 imageCenter = new(2f / 3f, 1f / 3f);
+        Vector2 imageSize = ResolveCenteredImageSize(rect, imageCenter);
         for (int i = 0; i <= FillSegmentCount; i++)
         {
             float y = i / (float)FillSegmentCount;
-            AddVertex(vertexHelper, rect, y, y, 0f, y);
-            AddVertex(vertexHelper, rect, 1f, y, 1f, y);
+            AddVertex(vertexHelper, rect, imageCenter, imageSize, y, y);
+            AddVertex(vertexHelper, rect, imageCenter, imageSize, 1f, y);
         }
 
         AddCoverFillTriangles(vertexHelper);
+    }
+
+    private Vector2 ResolveCenteredImageSize(Rect rect, Vector2 imageCenter)
+    {
+        float textureAspect = texture != null && texture.height > 0
+            ? texture.width / (float)texture.height
+            : 1f;
+        float rectAspect = rect.height > 0.01f ? rect.width / rect.height : textureAspect;
+        float normalizedAspect = textureAspect / Mathf.Max(0.01f, rectAspect);
+
+        float requiredWidth = Mathf.Max(imageCenter.x, 1f - imageCenter.x) * 2f;
+        float requiredHeight = Mathf.Max(imageCenter.y, 1f - imageCenter.y) * 2f;
+        if (requiredWidth / requiredHeight < normalizedAspect)
+        {
+            requiredWidth = requiredHeight * normalizedAspect;
+        }
+        else
+        {
+            requiredHeight = requiredWidth / normalizedAspect;
+        }
+
+        return new Vector2(requiredWidth, requiredHeight);
     }
 
     private static void AddCoverFillTriangles(VertexHelper vertexHelper)
@@ -73,8 +99,17 @@ public class SpecialAttackDiagonalImage : RawImage
         }
     }
 
-    private void AddVertex(VertexHelper vertexHelper, Rect rect, float normalizedX, float normalizedY, float u, float v)
+    private void AddVertex(
+        VertexHelper vertexHelper,
+        Rect rect,
+        Vector2 imageCenter,
+        Vector2 imageSize,
+        float normalizedX,
+        float normalizedY)
     {
+        float u = (normalizedX - imageCenter.x) / imageSize.x + 0.5f;
+        float v = (normalizedY - imageCenter.y) / imageSize.y + 0.5f;
+
         UIVertex vertex = UIVertex.simpleVert;
         vertex.color = color;
         vertex.position = new Vector3(

@@ -8,9 +8,14 @@ using UnityEngine.UI;
 public class PlayerOrbitController : MonoBehaviour
 {
     private const string DamageHurtboxName = "CrashObserver";
+    private const string ScreenSpaceVisualRenderCameraName = "PlayerScreenSpaceVisualRenderCamera";
+    private const string ScreenSpaceVisualRootName = "PlayerScreenSpaceVisualRoot";
+    private const string ScreenSpaceVisualCanvasName = "PlayerScreenSpaceVisualCanvas";
+    private const string ScreenSpaceVisualImageName = "PlayerScreenSpaceVisualImage";
     private const float DefaultStrafeSpeed = 8f;
     private const float DefaultAltitudeSpeed = 8f;
     private const float DefaultForwardSpeed = 10f;
+    private const float MinUniformVisualScale = 0.01f;
     private static readonly Rect DefaultViewportRect = Rect.MinMaxRect(0.08f, 0.1f, 0.92f, 0.9f);
 
     [FormerlySerializedAs("horizontalScreenSpeed")]
@@ -84,6 +89,12 @@ public class PlayerOrbitController : MonoBehaviour
     private Quaternion cinematicVisualDisplayRotation = Quaternion.identity;
     private Quaternion cinematicReturnDisplayRotation = Quaternion.identity;
 
+    [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
+    private static void ClearScreenSpaceVisualObjectsBeforeSceneLoad()
+    {
+        ClearRuntimeScreenSpaceVisualObjects();
+    }
+
     public float CurrentDistance { get; private set; }
     public Vector3 CurrentWorldVelocity { get; private set; }
     public float DebugStrafeSpeed => strafeSpeed;
@@ -104,6 +115,7 @@ public class PlayerOrbitController : MonoBehaviour
 
     private void Awake()
     {
+        ClearRuntimeScreenSpaceVisualObjects();
         EnsureRuntimeDefaults();
         CaptureRootRotation(transform.position);
         CaptureMovementPlane(transform.position);
@@ -138,7 +150,7 @@ public class PlayerOrbitController : MonoBehaviour
 
     private void OnDestroy()
     {
-        ReleaseScreenSpaceVisualTexture();
+        DisposeScreenSpaceVisualOutput();
     }
 
     private void OnValidate()
@@ -165,6 +177,21 @@ public class PlayerOrbitController : MonoBehaviour
     {
         CacheVisualTiltRoot();
         ResetVisualTiltImmediate();
+    }
+
+    public static void ClearRuntimeScreenSpaceVisualObjects()
+    {
+        GameObject[] existingObjects = Resources.FindObjectsOfTypeAll<GameObject>();
+        for (int i = 0; i < existingObjects.Length; i++)
+        {
+            GameObject existingObject = existingObjects[i];
+            if (!IsRuntimeScreenSpaceVisualObject(existingObject))
+            {
+                continue;
+            }
+
+            HideAndDestroyRuntimeObject(existingObject);
+        }
     }
 
     public void SetInputEnabled(bool enabled)
@@ -511,27 +538,19 @@ public class PlayerOrbitController : MonoBehaviour
         Transform sourceVisual = visualPoseRoot != null ? visualPoseRoot : visualTiltRoot;
         if (!Application.isPlaying || !useScreenSpaceVisual || sourceVisual == null || !TryResolveCameraPlane())
         {
-            screenSpaceVisualActive = false;
-            if (screenSpaceVisualImage != null)
-            {
-                screenSpaceVisualImage.enabled = false;
-            }
-
+            DisableScreenSpaceVisualOutput();
             SetRenderersEnabled(sourceVisual, true);
             return;
         }
 
         if (!EnsureScreenSpaceVisualOutput())
         {
-            screenSpaceVisualActive = false;
-            if (screenSpaceVisualImage != null)
-            {
-                screenSpaceVisualImage.enabled = false;
-            }
-
+            DisableScreenSpaceVisualOutput();
             SetRenderersEnabled(sourceVisual, true);
             return;
         }
+
+        ClearScreenSpaceVisualTexture();
 
         for (int i = screenSpaceVisualRoot.childCount - 1; i >= 0; i--)
         {
@@ -546,18 +565,20 @@ public class PlayerOrbitController : MonoBehaviour
             ? lockedVisualCameraRelativeRotation
             : Quaternion.Inverse(movementCamera.transform.rotation) * sourceVisual.rotation;
         screenSpaceVisualInstance.localRotation = screenSpaceVisualBaseLocalRotation;
-        screenSpaceVisualInstance.localScale = sourceVisual.localScale * Mathf.Max(0.01f, screenSpaceVisualScaleMultiplier);
+        screenSpaceVisualInstance.localScale =
+            Vector3.one * (ResolveUniformScale(sourceVisual.lossyScale) * Mathf.Max(0.01f, screenSpaceVisualScaleMultiplier));
 
         int visualLayer = ResolveScreenSpaceVisualLayer();
         SetLayerRecursively(visualClone, visualLayer);
         DisableColliders(visualClone.transform);
         SetRenderersEnabled(screenSpaceVisualInstance, true);
+        DisableScreenSpaceRuntimeEffects(screenSpaceVisualInstance);
         SetRenderersEnabled(FindDeepChild(visualClone.transform, DamageHurtboxName), false);
         FrameScreenSpaceVisualInstance();
         SetRenderersEnabled(sourceVisual, false);
 
         screenSpaceVisualActive = true;
-        screenSpaceVisualImage.enabled = true;
+        SetScreenSpaceVisualImageVisible(true);
         UpdateScreenSpaceVisual();
     }
 
@@ -573,11 +594,12 @@ public class PlayerOrbitController : MonoBehaviour
 
         if (screenSpaceVisualRenderCamera == null)
         {
-            GameObject cameraObject = new("PlayerScreenSpaceVisualRenderCamera");
+            GameObject cameraObject = new(ScreenSpaceVisualRenderCameraName);
             screenSpaceVisualRenderCamera = cameraObject.AddComponent<Camera>();
         }
 
-        screenSpaceVisualRenderCamera.enabled = true;
+        screenSpaceVisualRenderCamera.gameObject.SetActive(true);
+        screenSpaceVisualRenderCamera.enabled = false;
         screenSpaceVisualRenderCamera.orthographic = true;
         screenSpaceVisualRenderCamera.orthographicSize = Mathf.Max(0.01f, screenSpaceVisualRenderOrthographicSize);
         screenSpaceVisualRenderCamera.nearClipPlane = 0.01f;
@@ -586,12 +608,17 @@ public class PlayerOrbitController : MonoBehaviour
         screenSpaceVisualRenderCamera.backgroundColor = new Color(0f, 0f, 0f, 0f);
         screenSpaceVisualRenderCamera.cullingMask = 1 << visualLayer;
         screenSpaceVisualRenderCamera.targetTexture = screenSpaceVisualTexture;
+        if (screenSpaceVisualTexture != null && screenSpaceVisualTexture.height > 0)
+        {
+            screenSpaceVisualRenderCamera.aspect = (float)screenSpaceVisualTexture.width / screenSpaceVisualTexture.height;
+        }
+
         screenSpaceVisualRenderCamera.transform.SetPositionAndRotation(new Vector3(10000f, 10000f, 10000f), Quaternion.identity);
         screenSpaceVisualRenderCamera.transform.localScale = Vector3.one;
 
         if (screenSpaceVisualRoot == null)
         {
-            GameObject rootObject = new("PlayerScreenSpaceVisualRoot");
+            GameObject rootObject = new(ScreenSpaceVisualRootName);
             screenSpaceVisualRoot = rootObject.transform;
         }
 
@@ -602,21 +629,24 @@ public class PlayerOrbitController : MonoBehaviour
 
         if (screenSpaceVisualCanvas == null)
         {
-            GameObject canvasObject = new("PlayerScreenSpaceVisualCanvas");
+            GameObject canvasObject = new(ScreenSpaceVisualCanvasName);
             screenSpaceVisualCanvas = canvasObject.AddComponent<Canvas>();
             screenSpaceVisualCanvas.renderMode = RenderMode.ScreenSpaceOverlay;
             screenSpaceVisualCanvas.sortingOrder = -10;
         }
+        screenSpaceVisualCanvas.gameObject.SetActive(true);
+        screenSpaceVisualCanvas.enabled = true;
 
         if (screenSpaceVisualImage == null)
         {
-            GameObject imageObject = new("PlayerScreenSpaceVisualImage");
+            GameObject imageObject = new(ScreenSpaceVisualImageName);
             imageObject.transform.SetParent(screenSpaceVisualCanvas.transform, false);
             screenSpaceVisualImage = imageObject.AddComponent<RawImage>();
             screenSpaceVisualImage.raycastTarget = false;
             screenSpaceVisualRect = imageObject.GetComponent<RectTransform>();
         }
 
+        screenSpaceVisualImage.gameObject.SetActive(true);
         screenSpaceVisualImage.texture = screenSpaceVisualTexture;
         screenSpaceVisualImage.color = Color.white;
         screenSpaceVisualImage.raycastTarget = false;
@@ -642,6 +672,7 @@ public class PlayerOrbitController : MonoBehaviour
 
         screenSpaceVisualRect.anchoredPosition = new Vector2(clampedX * Screen.width, clampedY * Screen.height);
         screenSpaceVisualRect.sizeDelta = screenSpaceVisualImageSize;
+        RenderScreenSpaceVisualFrame();
     }
 
     private void FrameScreenSpaceVisualInstance()
@@ -769,16 +800,22 @@ public class PlayerOrbitController : MonoBehaviour
 
     private void EnsureScreenSpaceVisualTexture()
     {
-        int textureSize = Mathf.Clamp(screenSpaceVisualTextureSize, 64, 2048);
+        Vector2Int textureSize = ResolveScreenSpaceVisualTextureSize();
         if (screenSpaceVisualTexture != null &&
-            screenSpaceVisualTexture.width == textureSize &&
-            screenSpaceVisualTexture.height == textureSize)
+            screenSpaceVisualTexture.width == textureSize.x &&
+            screenSpaceVisualTexture.height == textureSize.y)
         {
+            if (!screenSpaceVisualTexture.IsCreated())
+            {
+                screenSpaceVisualTexture.Create();
+                ClearScreenSpaceVisualTexture();
+            }
+
             return;
         }
 
         ReleaseScreenSpaceVisualTexture();
-        screenSpaceVisualTexture = new RenderTexture(textureSize, textureSize, 16, RenderTextureFormat.ARGB32)
+        screenSpaceVisualTexture = new RenderTexture(textureSize.x, textureSize.y, 16, RenderTextureFormat.ARGB32)
         {
             name = "PlayerScreenSpaceVisualTexture",
             antiAliasing = 2,
@@ -786,6 +823,73 @@ public class PlayerOrbitController : MonoBehaviour
             autoGenerateMips = false
         };
         screenSpaceVisualTexture.Create();
+        ClearScreenSpaceVisualTexture();
+    }
+
+    private void ClearScreenSpaceVisualTexture()
+    {
+        if (screenSpaceVisualTexture == null)
+        {
+            return;
+        }
+
+        RenderTexture previous = RenderTexture.active;
+        RenderTexture.active = screenSpaceVisualTexture;
+        GL.Clear(true, true, Color.clear);
+        RenderTexture.active = previous;
+    }
+
+    private void RenderScreenSpaceVisualFrame()
+    {
+        if (screenSpaceVisualRenderCamera == null ||
+            screenSpaceVisualTexture == null ||
+            screenSpaceVisualInstance == null)
+        {
+            return;
+        }
+
+        if (!screenSpaceVisualTexture.IsCreated())
+        {
+            screenSpaceVisualTexture.Create();
+        }
+
+        screenSpaceVisualRenderCamera.enabled = false;
+        screenSpaceVisualRenderCamera.targetTexture = screenSpaceVisualTexture;
+        ClearScreenSpaceVisualTexture();
+        screenSpaceVisualRenderCamera.Render();
+    }
+
+    private Vector2Int ResolveScreenSpaceVisualTextureSize()
+    {
+        int baseSize = Mathf.Clamp(screenSpaceVisualTextureSize, 64, 2048);
+        float imageWidth = Mathf.Max(1f, screenSpaceVisualImageSize.x);
+        float imageHeight = Mathf.Max(1f, screenSpaceVisualImageSize.y);
+        float aspect = Mathf.Clamp(imageWidth / imageHeight, 0.1f, 10f);
+
+        int width = Mathf.Clamp(Mathf.RoundToInt(baseSize * aspect), 64, 2048);
+        int height = baseSize;
+        if (width >= 2048)
+        {
+            width = 2048;
+            height = Mathf.Clamp(Mathf.RoundToInt(width / aspect), 64, 2048);
+        }
+
+        return new Vector2Int(width, height);
+    }
+
+    private static float ResolveUniformScale(Vector3 scale)
+    {
+        float x = Mathf.Abs(scale.x);
+        float y = Mathf.Abs(scale.y);
+        float z = Mathf.Abs(scale.z);
+        float uniformScale = Mathf.Sqrt((x * x + y * y + z * z) / 3f);
+
+        if (uniformScale <= MinUniformVisualScale)
+        {
+            uniformScale = Mathf.Max(x, y, z, MinUniformVisualScale);
+        }
+
+        return uniformScale;
     }
 
     private void ReleaseScreenSpaceVisualTexture()
@@ -793,6 +897,11 @@ public class PlayerOrbitController : MonoBehaviour
         if (screenSpaceVisualImage != null && screenSpaceVisualImage.texture == screenSpaceVisualTexture)
         {
             screenSpaceVisualImage.texture = null;
+        }
+
+        if (screenSpaceVisualRenderCamera != null && screenSpaceVisualRenderCamera.targetTexture == screenSpaceVisualTexture)
+        {
+            screenSpaceVisualRenderCamera.targetTexture = null;
         }
 
         if (screenSpaceVisualTexture == null)
@@ -811,6 +920,99 @@ public class PlayerOrbitController : MonoBehaviour
         }
 
         screenSpaceVisualTexture = null;
+    }
+
+    private void DisableScreenSpaceVisualOutput()
+    {
+        screenSpaceVisualActive = false;
+        ClearScreenSpaceVisualTexture();
+        SetScreenSpaceVisualImageVisible(false);
+
+        if (screenSpaceVisualRenderCamera != null)
+        {
+            screenSpaceVisualRenderCamera.enabled = false;
+        }
+    }
+
+    private void DisposeScreenSpaceVisualOutput()
+    {
+        DisableScreenSpaceVisualOutput();
+        ReleaseScreenSpaceVisualTexture();
+
+        if (screenSpaceVisualCanvas != null)
+        {
+            HideAndDestroyRuntimeObject(screenSpaceVisualCanvas.gameObject);
+        }
+
+        if (screenSpaceVisualRenderCamera != null)
+        {
+            HideAndDestroyRuntimeObject(screenSpaceVisualRenderCamera.gameObject);
+        }
+
+        screenSpaceVisualCanvas = null;
+        screenSpaceVisualImage = null;
+        screenSpaceVisualRect = null;
+        screenSpaceVisualRenderCamera = null;
+        screenSpaceVisualRoot = null;
+        screenSpaceVisualInstance = null;
+    }
+
+    private void SetScreenSpaceVisualImageVisible(bool visible)
+    {
+        if (screenSpaceVisualCanvas != null)
+        {
+            screenSpaceVisualCanvas.gameObject.SetActive(visible);
+            screenSpaceVisualCanvas.enabled = visible;
+        }
+
+        if (screenSpaceVisualImage != null)
+        {
+            screenSpaceVisualImage.gameObject.SetActive(visible);
+            screenSpaceVisualImage.enabled = visible;
+            if (!visible)
+            {
+                screenSpaceVisualImage.texture = null;
+            }
+            else
+            {
+                screenSpaceVisualImage.texture = screenSpaceVisualTexture;
+            }
+        }
+    }
+
+    private static bool IsRuntimeScreenSpaceVisualObject(GameObject target)
+    {
+        if (target == null || !target.scene.IsValid())
+        {
+            return false;
+        }
+
+        return target.name == ScreenSpaceVisualRenderCameraName ||
+               target.name == ScreenSpaceVisualCanvasName;
+    }
+
+    private static void HideAndDestroyRuntimeObject(GameObject target)
+    {
+        if (target == null || !target.scene.IsValid())
+        {
+            return;
+        }
+
+        Renderer[] renderers = target.GetComponentsInChildren<Renderer>(true);
+        for (int i = 0; i < renderers.Length; i++)
+        {
+            renderers[i].enabled = false;
+        }
+
+        target.SetActive(false);
+        if (Application.isPlaying)
+        {
+            Destroy(target);
+        }
+        else
+        {
+            DestroyImmediate(target);
+        }
     }
 
     private int ResolveScreenSpaceVisualLayer()
@@ -844,6 +1046,34 @@ public class PlayerOrbitController : MonoBehaviour
         for (int i = 0; i < colliders.Length; i++)
         {
             colliders[i].enabled = false;
+        }
+    }
+
+    private static void DisableScreenSpaceRuntimeEffects(Transform root)
+    {
+        if (root == null)
+        {
+            return;
+        }
+
+        ParticleSystem[] particleSystems = root.GetComponentsInChildren<ParticleSystem>(true);
+        for (int i = 0; i < particleSystems.Length; i++)
+        {
+            particleSystems[i].Stop(true, ParticleSystemStopBehavior.StopEmittingAndClear);
+            particleSystems[i].Clear(true);
+
+            ParticleSystemRenderer renderer = particleSystems[i].GetComponent<ParticleSystemRenderer>();
+            if (renderer != null)
+            {
+                renderer.enabled = false;
+            }
+        }
+
+        TrailRenderer[] trailRenderers = root.GetComponentsInChildren<TrailRenderer>(true);
+        for (int i = 0; i < trailRenderers.Length; i++)
+        {
+            trailRenderers[i].Clear();
+            trailRenderers[i].enabled = false;
         }
     }
 

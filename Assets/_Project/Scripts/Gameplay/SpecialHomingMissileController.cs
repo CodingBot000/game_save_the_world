@@ -149,7 +149,7 @@ public class SpecialHomingMissileController : MonoBehaviour
     {
         if (battleController == null)
         {
-            Destroy(gameObject);
+            DestroyMissile();
             return;
         }
 
@@ -157,7 +157,7 @@ public class SpecialHomingMissileController : MonoBehaviour
         remainingLifetime -= deltaTime;
         if (remainingLifetime <= 0f || transform.position.magnitude > 150f || transform.position.y < -20f)
         {
-            Destroy(gameObject);
+            DestroyMissile();
             return;
         }
 
@@ -171,8 +171,14 @@ public class SpecialHomingMissileController : MonoBehaviour
         if (hit)
         {
             SpawnImpactEffect();
-            Destroy(gameObject);
+            DestroyMissile();
         }
+    }
+
+    private void DestroyMissile()
+    {
+        ClearRuntimeTrail();
+        Destroy(gameObject);
     }
 
     private void UpdateFlight(float deltaTime)
@@ -1076,6 +1082,7 @@ public class SpecialHomingMissileController : MonoBehaviour
 
     private void OnDestroy()
     {
+        ClearRuntimeTrail();
         DetachSmokeEffect();
 
         for (int i = 0; i < runtimeMaterials.Count; i++)
@@ -1085,6 +1092,28 @@ public class SpecialHomingMissileController : MonoBehaviour
                 Destroy(runtimeMaterials[i]);
             }
         }
+    }
+
+    private void OnDisable()
+    {
+        ClearRuntimeTrail();
+    }
+
+    private void ClearRuntimeTrail()
+    {
+        if (trailRenderer == null)
+        {
+            TryGetComponent(out trailRenderer);
+        }
+
+        if (trailRenderer == null)
+        {
+            return;
+        }
+
+        trailRenderer.emitting = false;
+        trailRenderer.Clear();
+        trailRenderer.enabled = false;
     }
 
     private void DetachSmokeEffect()
@@ -1120,6 +1149,13 @@ public class CartoonSmokePuff : MonoBehaviour
     private const int VerticesPerCircle = 4;
     private const int TrianglesPerCircle = 6;
     private const float FadeStartProgress = 0.2f;
+    private static readonly string[] RuntimeSmokeObjectNamePrefixes =
+    {
+        "CartoonSmokePuff",
+        "SmokeTrail",
+        "PlayerMissileRuntime",
+        "PlayerSpecialMissileRuntime",
+    };
     private static readonly Queue<CartoonSmokePuff> Pool = new();
     private static Mesh sharedMesh;
     private static Material sharedMaterial;
@@ -1136,18 +1172,212 @@ public class CartoonSmokePuff : MonoBehaviour
     private Color color;
     private Vector3 driftVelocity;
 
+    [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+    private static void ResetStaticState()
+    {
+        Pool.Clear();
+        cachedCamera = null;
+    }
+
+    [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
+    private static void ClearLeftoverPuffs()
+    {
+        ClearAllRuntimeSmokeObjects();
+    }
+
+    [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
+    private static void ClearSceneLoadedPuffs()
+    {
+        ClearAllRuntimeSmokeObjects();
+    }
+
+    public static void ClearAllRuntimeSmokeObjects()
+    {
+        Pool.Clear();
+        cachedCamera = null;
+
+        HomingMissileController[] homingMissiles = Resources.FindObjectsOfTypeAll<HomingMissileController>();
+        for (int i = 0; i < homingMissiles.Length; i++)
+        {
+            if (homingMissiles[i] != null)
+            {
+                HideAndDestroyRuntimeObject(homingMissiles[i].gameObject);
+            }
+        }
+
+        SpecialHomingMissileController[] specialMissiles = Resources.FindObjectsOfTypeAll<SpecialHomingMissileController>();
+        for (int i = 0; i < specialMissiles.Length; i++)
+        {
+            if (specialMissiles[i] != null)
+            {
+                HideAndDestroyRuntimeObject(specialMissiles[i].gameObject);
+            }
+        }
+
+        CartoonSmokePuff[] existingPuffs = Resources.FindObjectsOfTypeAll<CartoonSmokePuff>();
+        for (int i = 0; i < existingPuffs.Length; i++)
+        {
+            if (existingPuffs[i] != null)
+            {
+                HideAndDestroyRuntimeObject(existingPuffs[i].gameObject);
+            }
+        }
+
+        TrailRenderer[] existingTrails = Resources.FindObjectsOfTypeAll<TrailRenderer>();
+        for (int i = 0; i < existingTrails.Length; i++)
+        {
+            TrailRenderer trail = existingTrails[i];
+            if (!IsRuntimeMissileTrail(trail))
+            {
+                continue;
+            }
+
+            trail.emitting = false;
+            trail.Clear();
+            trail.enabled = false;
+            HideAndDestroyRuntimeObject(trail.gameObject);
+        }
+
+        GameObject[] existingObjects = Resources.FindObjectsOfTypeAll<GameObject>();
+        for (int i = 0; i < existingObjects.Length; i++)
+        {
+            GameObject existingObject = existingObjects[i];
+            if (!IsRuntimeSmokeObject(existingObject))
+            {
+                continue;
+            }
+
+            HideAndDestroyRuntimeObject(existingObject);
+        }
+    }
+
     public static void Spawn(Vector3 position, float size, float duration, Color puffColor, Vector3 drift)
     {
-        CartoonSmokePuff puff = Pool.Count > 0 ? Pool.Dequeue() : CreatePuff();
+        CartoonSmokePuff puff = GetPooledPuff();
         puff.gameObject.SetActive(true);
         puff.transform.position = position;
         puff.Initialize(size, duration, puffColor, drift);
     }
 
+    private static CartoonSmokePuff GetPooledPuff()
+    {
+        while (Pool.Count > 0)
+        {
+            CartoonSmokePuff pooledPuff = Pool.Dequeue();
+            if (pooledPuff != null && pooledPuff.gameObject != null)
+            {
+                return pooledPuff;
+            }
+        }
+
+        return CreatePuff();
+    }
+
+    private static bool IsRuntimeSmokeObject(GameObject target)
+    {
+        if (target == null || !IsRuntimeObjectInstance(target))
+        {
+            return false;
+        }
+
+        for (int i = 0; i < RuntimeSmokeObjectNamePrefixes.Length; i++)
+        {
+            if (target.name.StartsWith(RuntimeSmokeObjectNamePrefixes[i]))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool IsRuntimeMissileTrail(TrailRenderer trail)
+    {
+        if (trail == null || !IsRuntimeObjectInstance(trail.gameObject))
+        {
+            return false;
+        }
+
+        GameObject trailObject = trail.gameObject;
+        if (trailObject.GetComponent<HomingMissileController>() != null ||
+            trailObject.GetComponent<SpecialHomingMissileController>() != null)
+        {
+            return true;
+        }
+
+        if (IsRuntimeSmokeObject(trailObject))
+        {
+            return true;
+        }
+
+        Transform root = trailObject.transform.root;
+        if (root != null && IsRuntimeSmokeObject(root.gameObject))
+        {
+            return true;
+        }
+
+        Material material = trail.sharedMaterial;
+        return material != null && material.name.StartsWith("RuntimeMissileTrailMaterial");
+    }
+
+    private static bool IsRuntimeObjectInstance(GameObject target)
+    {
+        if (target == null)
+        {
+            return false;
+        }
+
+        if (target.scene.IsValid())
+        {
+            return true;
+        }
+
+        return (target.hideFlags & HideFlags.DontSave) != 0;
+    }
+
+    private static void HideAndDestroyRuntimeObject(GameObject target)
+    {
+        if (target == null || !IsRuntimeObjectInstance(target))
+        {
+            return;
+        }
+
+        TrailRenderer[] trailRenderers = target.GetComponentsInChildren<TrailRenderer>(true);
+        for (int i = 0; i < trailRenderers.Length; i++)
+        {
+            trailRenderers[i].emitting = false;
+            trailRenderers[i].Clear();
+            trailRenderers[i].enabled = false;
+        }
+
+        Renderer[] renderers = target.GetComponentsInChildren<Renderer>(true);
+        for (int i = 0; i < renderers.Length; i++)
+        {
+            renderers[i].enabled = false;
+        }
+
+        ParticleSystem[] particleSystems = target.GetComponentsInChildren<ParticleSystem>(true);
+        for (int i = 0; i < particleSystems.Length; i++)
+        {
+            particleSystems[i].Stop(true, ParticleSystemStopBehavior.StopEmittingAndClear);
+            particleSystems[i].Clear(true);
+        }
+
+        target.SetActive(false);
+        if (Application.isPlaying)
+        {
+            Destroy(target);
+        }
+        else
+        {
+            DestroyImmediate(target);
+        }
+    }
+
     private static CartoonSmokePuff CreatePuff()
     {
         GameObject puffObject = new("CartoonSmokePuff");
-        puffObject.hideFlags = HideFlags.DontSave;
+        puffObject.hideFlags = HideFlags.HideAndDontSave;
         CartoonSmokePuff puff = puffObject.AddComponent<CartoonSmokePuff>();
         puff.EnsureRenderer();
         puffObject.SetActive(false);

@@ -7,9 +7,11 @@ public class BattleController : MonoBehaviour
 {
     private const string PlayerVisualRootName = "PlayerVisualRoot";
     private const string DamageHurtboxName = "CrashObserver";
+    private const float MinUniformVehicleScale = 0.01f;
     private static readonly Vector3 DefaultPlayerVehicleLocalPosition = new(0f, 1f, 0f);
     private static readonly Quaternion DefaultPlayerVehicleLocalRotation = Quaternion.Euler(270.01978f, 0f, 0f);
-    private static readonly Vector3 DefaultPlayerVehicleLocalScale = new Vector3(1.442044f, 0.6920179f, 0.396217f);
+    private static readonly Vector3 DefaultPlayerVehicleLocalScale =
+        PreserveScaleMagnitudeAsUniform(new Vector3(1.442044f, 0.6920179f, 0.396217f));
 
     [Header("Runtime References")]
     [SerializeField] private BossController bossController;
@@ -34,8 +36,14 @@ public class BattleController : MonoBehaviour
 
     public bool IsBattleActive => battleActive;
 
+    private void Awake()
+    {
+        CartoonSmokePuff.ClearAllRuntimeSmokeObjects();
+    }
+
     private void Start()
     {
+        CartoonSmokePuff.ClearAllRuntimeSmokeObjects();
         ResolveReferences();
         ApplySelectedPlayerVehicleVisual();
         ApplyModeConfiguration();
@@ -191,7 +199,7 @@ public class BattleController : MonoBehaviour
         {
             localPosition = templateVisual.localPosition;
             localRotation = templateVisual.localRotation;
-            localScale = templateVisual.localScale;
+            localScale = PreserveScaleMagnitudeAsUniform(templateVisual.localScale);
         }
 
         for (int i = playerVisualRoot.childCount - 1; i >= 0; i--)
@@ -203,7 +211,7 @@ public class BattleController : MonoBehaviour
         vehicleInstance.name = selectedVehicle.Prefab.name;
         vehicleInstance.transform.localPosition = localPosition;
         vehicleInstance.transform.localRotation = localRotation;
-        vehicleInstance.transform.localScale = localScale;
+        vehicleInstance.transform.localScale = PreserveScaleMagnitudeAsUniform(localScale);
         RestoreDamageHurtbox(vehicleInstance.transform, preservedDamageHurtbox);
 
         playerOrbitController.RefreshVisualBindings();
@@ -232,6 +240,21 @@ public class BattleController : MonoBehaviour
         }
 
         return null;
+    }
+
+    private static Vector3 PreserveScaleMagnitudeAsUniform(Vector3 scale)
+    {
+        float x = Mathf.Abs(scale.x);
+        float y = Mathf.Abs(scale.y);
+        float z = Mathf.Abs(scale.z);
+        float uniformScale = Mathf.Sqrt((x * x + y * y + z * z) / 3f);
+
+        if (uniformScale <= MinUniformVehicleScale)
+        {
+            uniformScale = Mathf.Max(x, y, z, MinUniformVehicleScale);
+        }
+
+        return Vector3.one * uniformScale;
     }
 
     private static Transform PreserveDamageHurtbox(Transform playerVisualRoot)

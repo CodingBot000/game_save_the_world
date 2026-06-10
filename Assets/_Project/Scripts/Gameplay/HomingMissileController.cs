@@ -127,7 +127,7 @@ public class HomingMissileController : MonoBehaviour
     {
         if (battleController == null)
         {
-            Destroy(gameObject);
+            DestroyMissile();
             return;
         }
 
@@ -135,7 +135,7 @@ public class HomingMissileController : MonoBehaviour
         remainingLifetime -= deltaTime;
         if (remainingLifetime <= 0f || transform.position.magnitude > 150f || transform.position.y < -20f)
         {
-            Destroy(gameObject);
+            DestroyMissile();
             return;
         }
 
@@ -149,8 +149,14 @@ public class HomingMissileController : MonoBehaviour
         if (hit)
         {
             SpawnImpactEffect();
-            Destroy(gameObject);
+            DestroyMissile();
         }
+    }
+
+    private void DestroyMissile()
+    {
+        ClearRuntimeTrail();
+        Destroy(gameObject);
     }
 
     private void UpdateFlight(float deltaTime)
@@ -1025,6 +1031,7 @@ public class HomingMissileController : MonoBehaviour
 
     private void OnDestroy()
     {
+        ClearRuntimeTrail();
         DetachSmokeEffect();
 
         for (int i = 0; i < runtimeMaterials.Count; i++)
@@ -1034,6 +1041,28 @@ public class HomingMissileController : MonoBehaviour
                 Destroy(runtimeMaterials[i]);
             }
         }
+    }
+
+    private void OnDisable()
+    {
+        ClearRuntimeTrail();
+    }
+
+    private void ClearRuntimeTrail()
+    {
+        if (trailRenderer == null)
+        {
+            TryGetComponent(out trailRenderer);
+        }
+
+        if (trailRenderer == null)
+        {
+            return;
+        }
+
+        trailRenderer.emitting = false;
+        trailRenderer.Clear();
+        trailRenderer.enabled = false;
     }
 
     private void DetachSmokeEffect()
