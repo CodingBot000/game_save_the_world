@@ -32,6 +32,9 @@ public class BossAttackController : MonoBehaviour
     private float attackTimer = 1f;
     private float nextAnimationTriggerTime;
     private int attackSequence;
+    private bool cinematicPaused;
+    private float animatorSpeedBeforeCinematic = 1f;
+    private bool hasAnimatorSpeedBeforeCinematic;
 
     public float BaseProjectileSpeed => projectileSpeed;
     public float BaseProjectileDamage => projectileDamage;
@@ -46,6 +49,7 @@ public class BossAttackController : MonoBehaviour
     public Vector3 CurrentPlayerHitPoint => playerCombatController != null ? playerCombatController.HitPoint : transform.position;
 
     public bool CanAttack =>
+        !cinematicPaused &&
         battleController != null &&
         bossController != null &&
         playerCombatController != null &&
@@ -117,6 +121,33 @@ public class BossAttackController : MonoBehaviour
         if (bulletPatternController != null)
         {
             bulletPatternController.Configure(this, owner, boss, player, playerOrbit);
+        }
+    }
+
+    public void SetCinematicPaused(bool paused)
+    {
+        if (cinematicPaused == paused)
+        {
+            return;
+        }
+
+        cinematicPaused = paused;
+        ResolveAnimator();
+        if (bossAnimator == null)
+        {
+            return;
+        }
+
+        if (paused)
+        {
+            animatorSpeedBeforeCinematic = bossAnimator.speed;
+            hasAnimatorSpeedBeforeCinematic = true;
+            bossAnimator.speed = 0f;
+        }
+        else if (hasAnimatorSpeedBeforeCinematic)
+        {
+            bossAnimator.speed = animatorSpeedBeforeCinematic;
+            hasAnimatorSpeedBeforeCinematic = false;
         }
     }
 

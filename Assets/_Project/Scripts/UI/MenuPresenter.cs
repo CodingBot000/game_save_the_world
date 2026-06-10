@@ -7,12 +7,19 @@ public class MenuPresenter : MonoBehaviour
 {
     [SerializeField] private bool autoBuildUi = true;
     [SerializeField] private float inputLockDuration = 0.35f;
-    [SerializeField] private Texture2D backgroundTexture;
+    [SerializeField] private Texture2D mainSkyTexture;
+    [SerializeField] private Texture2D mainCloudTexture;
+    [SerializeField] private Texture2D mainBackgroundTexture;
+    [SerializeField] private Texture2D mainHellicopterTexture;
+    [SerializeField] private Texture2D mainCharacterTexture;
+    [SerializeField] private float cloudScrollSpeed = 0.01f;
 
     private Canvas canvas;
     private bool uiBuilt;
     private float inputUnlockTime;
-    private RawImage backdropTextureImage;
+    private readonly List<RawImage> backdropLayerImages = new List<RawImage>();
+    private RawImage cloudLayerImage;
+    private float cloudScrollOffset;
 
     private void Awake()
     {
@@ -36,7 +43,8 @@ public class MenuPresenter : MonoBehaviour
 
     private void Update()
     {
-        ApplyBackdropTextureCover();
+        ApplyBackdropLayerCover();
+        ApplyCloudScroll();
 
         if (Time.unscaledTime < inputUnlockTime)
         {
@@ -120,7 +128,8 @@ public class MenuPresenter : MonoBehaviour
         backdropImage.raycastTarget = false;
         RectTransform backdropRect = backdrop.GetComponent<RectTransform>();
         SimpleUiFactory.StretchFull(backdropRect);
-        ConfigureBackdropTexture(backdrop.transform);
+        ConfigureBackdropLayers(backdrop.transform);
+        backdrop.transform.SetAsFirstSibling();
 
         Image rightTopPanel = SimpleUiFactory.CreateImage("RightTopPanel", root.transform, new Color(0.07f, 0.1f, 0.15f, 0.68f));
         SimpleUiFactory.SetAnchoredLayout(
@@ -130,24 +139,6 @@ public class MenuPresenter : MonoBehaviour
             new Vector2(1f, 1f),
             new Vector2(330f, 320f),
             new Vector2(-36f, -36f));
-
-        Text title = CreateText("Title", root.transform, runtimeFont, 42, FontStyle.Bold, TextAnchor.MiddleCenter, Color.white);
-        title.text = "Titan Destroyer";
-        RectTransform titleRect = title.rectTransform;
-        titleRect.anchorMin = new Vector2(0.5f, 1f);
-        titleRect.anchorMax = new Vector2(0.5f, 1f);
-        titleRect.pivot = new Vector2(0.5f, 1f);
-        titleRect.sizeDelta = new Vector2(900f, 64f);
-        titleRect.anchoredPosition = new Vector2(0f, -120f);
-
-        Text subtitle = CreateText("Subtitle", root.transform, runtimeFont, 20, FontStyle.Normal, TextAnchor.MiddleCenter, new Color(0.8f, 0.88f, 0.95f));
-        subtitle.text = "Orbit the titan, keep distance, and burn down the boss core.";
-        RectTransform subtitleRect = subtitle.rectTransform;
-        subtitleRect.anchorMin = new Vector2(0.5f, 1f);
-        subtitleRect.anchorMax = new Vector2(0.5f, 1f);
-        subtitleRect.pivot = new Vector2(0.5f, 1f);
-        subtitleRect.sizeDelta = new Vector2(960f, 32f);
-        subtitleRect.anchoredPosition = new Vector2(0f, -180f);
 
         List<Button> buttons = new List<Button>();
 
@@ -160,11 +151,11 @@ public class MenuPresenter : MonoBehaviour
             StartSingleBattle);
         SimpleUiFactory.SetAnchoredLayout(
             singleButton.GetComponent<RectTransform>(),
-            new Vector2(0.5f, 0.5f),
-            new Vector2(0.5f, 0.5f),
-            new Vector2(0.5f, 0.5f),
+            new Vector2(0f, 0f),
+            new Vector2(0f, 0f),
+            new Vector2(0f, 0f),
             new Vector2(420f, 72f),
-            new Vector2(0f, 0f));
+            new Vector2(44f, 190f));
         buttons.Add(singleButton);
 
         Button garageButton = CreateButton(
@@ -349,9 +340,28 @@ public class MenuPresenter : MonoBehaviour
         return SimpleUiFactory.FindOrCreateUiObject(name, parent);
     }
 
-    private void ConfigureBackdropTexture(Transform backdropTransform)
+    private void ConfigureBackdropLayers(Transform backdropTransform)
     {
-        Transform existing = backdropTransform.Find("BackdropTexture");
+        Transform legacyTexture = backdropTransform.Find("BackdropTexture");
+        if (legacyTexture != null)
+        {
+            legacyTexture.gameObject.SetActive(false);
+        }
+
+        backdropLayerImages.Clear();
+        cloudLayerImage = null;
+        ConfigureBackdropLayer(backdropTransform, "MainSky", mainSkyTexture);
+        cloudLayerImage = ConfigureBackdropLayer(backdropTransform, "MainCloud", mainCloudTexture);
+        ConfigureBackdropLayer(backdropTransform, "MainBackground", mainBackgroundTexture);
+        ConfigureBackdropLayer(backdropTransform, "MainHellicopter", mainHellicopterTexture);
+        ConfigureBackdropLayer(backdropTransform, "MainCharacter", mainCharacterTexture);
+        ApplyBackdropLayerCover();
+        ApplyCloudScroll();
+    }
+
+    private RawImage ConfigureBackdropLayer(Transform parent, string name, Texture2D texture)
+    {
+        Transform existing = parent.Find(name);
         RawImage image;
 
         if (existing != null)
@@ -360,8 +370,8 @@ public class MenuPresenter : MonoBehaviour
         }
         else
         {
-            GameObject imageObject = new GameObject("BackdropTexture", typeof(RectTransform), typeof(RawImage));
-            imageObject.transform.SetParent(backdropTransform, false);
+            GameObject imageObject = new GameObject(name, typeof(RectTransform), typeof(RawImage));
+            imageObject.transform.SetParent(parent, false);
             image = imageObject.GetComponent<RawImage>();
         }
 
@@ -371,26 +381,30 @@ public class MenuPresenter : MonoBehaviour
             Destroy(existingFitter);
         }
 
-        RectTransform imageRect = image.rectTransform;
-        SimpleUiFactory.StretchFull(imageRect);
-        imageRect.pivot = new Vector2(0.5f, 0.5f);
-
-        image.texture = backgroundTexture;
-        image.color = backgroundTexture == null ? new Color(1f, 1f, 1f, 0f) : Color.white;
+        image.texture = texture;
+        image.color = texture == null ? new Color(1f, 1f, 1f, 0f) : Color.white;
         image.raycastTarget = false;
-
-        backdropTextureImage = image;
-        ApplyBackdropTextureCover();
+        image.transform.SetAsLastSibling();
+        backdropLayerImages.Add(image);
+        return image;
     }
 
-    private void ApplyBackdropTextureCover()
+    private void ApplyBackdropLayerCover()
     {
-        if (backdropTextureImage == null)
+        foreach (RawImage image in backdropLayerImages)
+        {
+            ApplyTextureCover(image);
+        }
+    }
+
+    private static void ApplyTextureCover(RawImage image)
+    {
+        if (image == null)
         {
             return;
         }
 
-        RectTransform imageRect = backdropTextureImage.rectTransform;
+        RectTransform imageRect = image.rectTransform;
         RectTransform parentRect = imageRect.parent as RectTransform;
         Vector2 containerSize = parentRect != null ? parentRect.rect.size : new Vector2(Screen.width, Screen.height);
         if (containerSize.x <= 0.01f || containerSize.y <= 0.01f)
@@ -398,28 +412,53 @@ public class MenuPresenter : MonoBehaviour
             containerSize = new Vector2(Screen.width, Screen.height);
         }
 
-        SimpleUiFactory.StretchFull(imageRect);
+        imageRect.anchorMin = new Vector2(0.5f, 0.5f);
+        imageRect.anchorMax = new Vector2(0.5f, 0.5f);
         imageRect.pivot = new Vector2(0.5f, 0.5f);
         imageRect.anchoredPosition = Vector2.zero;
+        imageRect.localScale = Vector3.one;
+        image.uvRect = new Rect(0f, 0f, 1f, 1f);
 
-        if (backgroundTexture == null || containerSize.x <= 0.01f || containerSize.y <= 0.01f)
+        Texture texture = image.texture;
+        if (texture == null || texture.height == 0 || containerSize.x <= 0.01f || containerSize.y <= 0.01f)
         {
-            backdropTextureImage.uvRect = new Rect(0f, 0f, 1f, 1f);
+            imageRect.sizeDelta = containerSize;
             return;
         }
 
-        float textureAspect = backgroundTexture.width / (float)backgroundTexture.height;
+        float textureAspect = texture.width / (float)texture.height;
         float containerAspect = containerSize.x / containerSize.y;
+        Vector2 coverSize = containerSize;
 
         if (containerAspect > textureAspect)
         {
-            float uvHeight = Mathf.Clamp01(textureAspect / containerAspect);
-            backdropTextureImage.uvRect = new Rect(0f, (1f - uvHeight) * 0.5f, 1f, uvHeight);
+            coverSize.y = coverSize.x / textureAspect;
         }
         else
         {
-            float uvWidth = Mathf.Clamp01(containerAspect / textureAspect);
-            backdropTextureImage.uvRect = new Rect((1f - uvWidth) * 0.5f, 0f, uvWidth, 1f);
+            coverSize.x = coverSize.y * textureAspect;
         }
+
+        imageRect.sizeDelta = coverSize;
+    }
+
+    private void ApplyCloudScroll()
+    {
+        if (cloudLayerImage == null)
+        {
+            return;
+        }
+
+        Texture texture = cloudLayerImage.texture;
+        if (texture == null)
+        {
+            return;
+        }
+
+        texture.wrapMode = TextureWrapMode.Repeat;
+        cloudScrollOffset = Mathf.Repeat(cloudScrollOffset + (Time.unscaledDeltaTime * cloudScrollSpeed), 1f);
+        Rect uvRect = cloudLayerImage.uvRect;
+        uvRect.x = cloudScrollOffset;
+        cloudLayerImage.uvRect = uvRect;
     }
 }

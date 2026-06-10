@@ -3,9 +3,12 @@ using UnityEngine;
 
 public class BossController : MonoBehaviour
 {
+    private const string DefaultDamageHurtboxName = "BossHurtbox";
+
     [SerializeField] private bool deriveFacingOffsetFromSceneRotation = true;
     [SerializeField] private float maxHealth = 2000f;
     [SerializeField] private float hitRadius = 3.8f;
+    [SerializeField] private Collider[] damageHurtboxes = Array.Empty<Collider>();
     [SerializeField] private float idleBobAmplitude = 0.18f;
     [SerializeField] private float idleBobSpeed = 1.4f;
     [SerializeField] private Transform aimPoint;
@@ -17,6 +20,7 @@ public class BossController : MonoBehaviour
     private Renderer[] cachedRenderers;
     private Color[] rendererBaseColors;
     private Quaternion facingRotationOffset = Quaternion.identity;
+    private bool cinematicPaused;
 
     public event Action Died;
 
@@ -27,7 +31,18 @@ public class BossController : MonoBehaviour
     public float HitRadius => hitRadius;
     public Transform AimPoint => aimPoint != null ? aimPoint : transform;
     public Transform OrbitCenter => transform;
-    public Vector3 HitPoint => AimPoint != null ? AimPoint.position : transform.position + Vector3.up * 5f;
+    public Vector3 HitPoint
+    {
+        get
+        {
+            if (TryGetDamageHurtboxBounds(out Bounds bounds))
+            {
+                return bounds.center;
+            }
+
+            return AimPoint != null ? AimPoint.position : transform.position + Vector3.up * 5f;
+        }
+    }
     public float DebugIdleBobAmplitude => idleBobAmplitude;
     public float DebugIdleBobSpeed => idleBobSpeed;
 
@@ -42,6 +57,7 @@ public class BossController : MonoBehaviour
             }
         }
 
+        ResolveDamageHurtboxes();
         currentHealth = maxHealth;
         basePosition = transform.position;
         baseScale = transform.localScale;
@@ -51,6 +67,11 @@ public class BossController : MonoBehaviour
 
     private void Update()
     {
+        if (cinematicPaused)
+        {
+            return;
+        }
+
         float bobOffset = Mathf.Sin(Time.time * idleBobSpeed) * idleBobAmplitude;
         transform.position = new Vector3(basePosition.x, basePosition.y + bobOffset, basePosition.z);
 
@@ -97,6 +118,11 @@ public class BossController : MonoBehaviour
         idleBobSpeed = Mathf.Max(0f, speed);
     }
 
+    public void SetCinematicPaused(bool paused)
+    {
+        cinematicPaused = paused;
+    }
+
     public void AdoptSceneRotation(Vector3 worldTarget)
     {
         if (!deriveFacingOffsetFromSceneRotation)
@@ -119,6 +145,11 @@ public class BossController : MonoBehaviour
 
     public void FaceTarget(Vector3 worldTarget)
     {
+        if (cinematicPaused)
+        {
+            return;
+        }
+
         Vector3 flatDirection = worldTarget - transform.position;
         flatDirection.y = 0f;
         if (flatDirection.sqrMagnitude < 0.001f)
@@ -128,6 +159,22 @@ public class BossController : MonoBehaviour
 
         Quaternion desiredRotation = Quaternion.LookRotation(flatDirection.normalized, Vector3.up) * facingRotationOffset;
         transform.rotation = Quaternion.Slerp(transform.rotation, desiredRotation, 1f - Mathf.Exp(-6f * Time.deltaTime));
+    }
+
+    public bool CheckHit(Vector3 worldPoint, float projectileHitRadius, Collider projectileCollider = null)
+    {
+        if (projectileCollider != null && TryCheckHurtboxColliderHit(projectileCollider, out bool colliderHit))
+        {
+            return colliderHit;
+        }
+
+        float clampedProjectileHitRadius = Mathf.Max(0f, projectileHitRadius);
+        if (TryCheckHurtboxHit(worldPoint, clampedProjectileHitRadius, out bool hurtboxHit))
+        {
+            return hurtboxHit;
+        }
+
+        return Vector3.Distance(worldPoint, HitPoint) <= clampedProjectileHitRadius + hitRadius;
     }
 
     public bool ApplyDamage(float damage)
@@ -148,6 +195,184 @@ public class BossController : MonoBehaviour
         }
 
         return true;
+    }
+
+    private void ResolveDamageHurtboxes()
+    {
+        if (HasAssignedDamageHurtboxes())
+        {
+            return;
+        }
+
+        Transform defaultHurtboxRoot = FindDeepChild(transform, DefaultDamageHurtboxName);
+        if (defaultHurtboxRoot == null)
+        {
+            damageHurtboxes = Array.Empty<Collider>();
+            return;
+        }
+
+        Collider[] foundHurtboxes = defaultHurtboxRoot.GetComponentsInChildren<Collider>(true);
+        damageHurtboxes = foundHurtboxes != null && foundHurtboxes.Length > 0
+            ? foundHurtboxes
+            : Array.Empty<Collider>();
+    }
+
+    private bool HasAssignedDamageHurtboxes()
+    {
+        if (damageHurtboxes == null || damageHurtboxes.Length == 0)
+        {
+            return false;
+        }
+
+        int validCount = 0;
+        for (int i = 0; i < damageHurtboxes.Length; i++)
+        {
+            if (damageHurtboxes[i] != null)
+            {
+                damageHurtboxes[validCount++] = damageHurtboxes[i];
+            }
+        }
+
+        if (validCount == damageHurtboxes.Length)
+        {
+            return validCount > 0;
+        }
+
+        if (validCount == 0)
+        {
+            damageHurtboxes = Array.Empty<Collider>();
+            return false;
+        }
+
+        Array.Resize(ref damageHurtboxes, validCount);
+        return true;
+    }
+
+    private bool TryCheckHurtboxHit(Vector3 worldPoint, float projectileHitRadius, out bool hit)
+    {
+        ResolveDamageHurtboxes();
+        if (damageHurtboxes == null || damageHurtboxes.Length == 0)
+        {
+            hit = false;
+            return false;
+        }
+
+        float maxDistanceSqr = projectileHitRadius * projectileHitRadius;
+        bool hasActiveHurtbox = false;
+        for (int i = 0; i < damageHurtboxes.Length; i++)
+        {
+            Collider hurtbox = damageHurtboxes[i];
+            if (hurtbox == null || !hurtbox.enabled || !hurtbox.gameObject.activeInHierarchy)
+            {
+                continue;
+            }
+
+            hasActiveHurtbox = true;
+            Vector3 closestPoint = hurtbox.ClosestPoint(worldPoint);
+            if ((closestPoint - worldPoint).sqrMagnitude <= maxDistanceSqr)
+            {
+                hit = true;
+                return true;
+            }
+        }
+
+        hit = false;
+        return hasActiveHurtbox;
+    }
+
+    private bool TryCheckHurtboxColliderHit(Collider projectileCollider, out bool hit)
+    {
+        ResolveDamageHurtboxes();
+        if (projectileCollider == null || !projectileCollider.enabled || damageHurtboxes == null || damageHurtboxes.Length == 0)
+        {
+            hit = false;
+            return false;
+        }
+
+        bool hasActiveHurtbox = false;
+        for (int i = 0; i < damageHurtboxes.Length; i++)
+        {
+            Collider hurtbox = damageHurtboxes[i];
+            if (hurtbox == null || !hurtbox.enabled || !hurtbox.gameObject.activeInHierarchy)
+            {
+                continue;
+            }
+
+            hasActiveHurtbox = true;
+            if (Physics.ComputePenetration(
+                projectileCollider,
+                projectileCollider.transform.position,
+                projectileCollider.transform.rotation,
+                hurtbox,
+                hurtbox.transform.position,
+                hurtbox.transform.rotation,
+                out _,
+                out _))
+            {
+                hit = true;
+                return true;
+            }
+        }
+
+        hit = false;
+        return hasActiveHurtbox;
+    }
+
+    private bool TryGetDamageHurtboxBounds(out Bounds bounds)
+    {
+        ResolveDamageHurtboxes();
+        if (damageHurtboxes == null || damageHurtboxes.Length == 0)
+        {
+            bounds = default;
+            return false;
+        }
+
+        bool hasActiveHurtbox = false;
+        bounds = default;
+        for (int i = 0; i < damageHurtboxes.Length; i++)
+        {
+            Collider hurtbox = damageHurtboxes[i];
+            if (hurtbox == null || !hurtbox.enabled || !hurtbox.gameObject.activeInHierarchy)
+            {
+                continue;
+            }
+
+            if (!hasActiveHurtbox)
+            {
+                bounds = hurtbox.bounds;
+                hasActiveHurtbox = true;
+                continue;
+            }
+
+            bounds.Encapsulate(hurtbox.bounds);
+        }
+
+        return hasActiveHurtbox;
+    }
+
+    private static Transform FindDeepChild(Transform root, string targetName)
+    {
+        if (root == null || string.IsNullOrWhiteSpace(targetName))
+        {
+            return null;
+        }
+
+        for (int i = 0; i < root.childCount; i++)
+        {
+            Transform child = root.GetChild(i);
+            if (child.name == targetName)
+            {
+                return child;
+            }
+
+            Transform nested = FindDeepChild(child, targetName);
+            if (nested != null)
+            {
+                return nested;
+            }
+        }
+
+        return null;
     }
 
     private static Color[] CacheBaseColors(Renderer[] renderers)

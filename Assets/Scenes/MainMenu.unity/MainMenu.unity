@@ -172,7 +172,12 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::MenuPresenter
   autoBuildUi: 1
   inputLockDuration: 0.35
-  backgroundTexture: {fileID: 2800000, guid: de4a80dc5d28f472a9a5e7acf4480bda, type: 3}
+  mainSkyTexture: {fileID: 2800000, guid: 573a2da78731f492fb27182dcfdf3020, type: 3}
+  mainCloudTexture: {fileID: 2800000, guid: 2224f818f1bb34db985bb065c8ddff92, type: 3}
+  mainBackgroundTexture: {fileID: 2800000, guid: 44c28fabbe40244d5bf1e18d90e559ed, type: 3}
+  mainHellicopterTexture: {fileID: 2800000, guid: 1bae914e81b4545ffad8942109dab152, type: 3}
+  mainCharacterTexture: {fileID: 2800000, guid: 1904a6653edce4592b291de58f035905, type: 3}
+  cloudScrollSpeed: 0.01
 --- !u!114 &75124122
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -588,6 +593,7 @@ GameObject:
   - component: {fileID: 1135154996}
   - component: {fileID: 1135154998}
   - component: {fileID: 1135154997}
+  - component: {fileID: 1135154999}
   m_Layer: 0
   m_Name: MainMenuCamera
   m_TagString: MainCamera
@@ -669,6 +675,50 @@ Camera:
   m_OcclusionCulling: 1
   m_StereoConvergence: 10
   m_StereoSeparation: 0.022
+--- !u!114 &1135154999
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1135154995}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: a79441f348de89743a2939f4d699eac1, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Unity.RenderPipelines.Universal.Runtime::UnityEngine.Rendering.Universal.UniversalAdditionalCameraData
+  m_RenderShadows: 1
+  m_RequiresDepthTextureOption: 2
+  m_RequiresOpaqueTextureOption: 2
+  m_CameraType: 0
+  m_Cameras: []
+  m_RendererIndex: -1
+  m_VolumeLayerMask:
+    serializedVersion: 2
+    m_Bits: 1
+  m_VolumeTrigger: {fileID: 0}
+  m_VolumeFrameworkUpdateModeOption: 2
+  m_RenderPostProcessing: 0
+  m_Antialiasing: 0
+  m_AntialiasingQuality: 2
+  m_StopNaN: 0
+  m_Dithering: 0
+  m_ClearDepth: 1
+  m_AllowXRRendering: 1
+  m_AllowHDROutput: 1
+  m_UseScreenCoordOverride: 0
+  m_ScreenSizeOverride: {x: 0, y: 0, z: 0, w: 0}
+  m_ScreenCoordScaleBias: {x: 0, y: 0, z: 0, w: 0}
+  m_RequiresDepthTexture: 0
+  m_RequiresColorTexture: 0
+  m_TaaSettings:
+    m_Quality: 3
+    m_FrameInfluence: 0.1
+    m_JitterScale: 1
+    m_MipBias: 0
+    m_VarianceClampScale: 0.9
+    m_ContrastAdaptiveSharpening: 0
+  m_Version: 2
 --- !u!1 &1478427990
 GameObject:
   m_ObjectHideFlags: 0

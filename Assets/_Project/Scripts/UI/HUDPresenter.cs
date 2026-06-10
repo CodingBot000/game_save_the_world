@@ -10,7 +10,11 @@ public class HUDPresenter : MonoBehaviour
 {
     private const string HudRootName = "GeneratedHUD";
     private const string MusicObjectName = "BattleArenaMusic";
-    private const string ControlHintText = "A / D left-right   W / S up-down   Space / Left click fire   Right click / Missile button fire missile   R restart";
+    private const string ControlHintText = "A / D left-right   W / S up-down   Space / Left click fire   Right click / Missile button fire missile   Special button fire special   R restart";
+    private static readonly Vector2 MissileButtonAnchoredPosition = new(-196f, 28f);
+    private static readonly Vector2 MissileButtonSize = new(208f, 74f);
+    private static readonly Vector2 SpecialButtonAnchoredPosition = new(-28f, 28f);
+    private static readonly Vector2 SpecialButtonSize = new(156f, 74f);
 
     public event Action RetryRequested;
     public event Action QuitRequested;
@@ -22,6 +26,7 @@ public class HUDPresenter : MonoBehaviour
     private BossController bossController;
     private PlayerCombatController playerCombatController;
     private PlayerOrbitController playerOrbitController;
+    private PlayerSpecialAttackController specialAttackController;
 
     private GameObject hudRoot;
     private Image bossFillImage;
@@ -41,6 +46,9 @@ public class HUDPresenter : MonoBehaviour
     private Button missileButton;
     private Image missileButtonImage;
     private Text missileButtonLabel;
+    private Button specialButton;
+    private Image specialButtonImage;
+    private Text specialButtonLabel;
     private Button musicButton;
     private Image musicButtonImage;
     private Text musicButtonLabel;
@@ -55,6 +63,8 @@ public class HUDPresenter : MonoBehaviour
     private string statusMessage = string.Empty;
     private float statusTimer;
     private bool musicEnabled;
+
+    public Canvas RuntimeCanvas => ResolveCanvas();
 
     private void Awake()
     {
@@ -149,15 +159,21 @@ public class HUDPresenter : MonoBehaviour
         }
 
         UpdateMissileButtonState();
+        UpdateSpecialButtonState();
         UpdateMusicButtonState();
     }
 
-    public void Configure(BossController boss, PlayerCombatController player, PlayerOrbitController orbit)
+    public void Configure(
+        BossController boss,
+        PlayerCombatController player,
+        PlayerOrbitController orbit,
+        PlayerSpecialAttackController specialAttack = null)
     {
         EnsureUiReferences();
         bossController = boss;
         playerCombatController = player;
         playerOrbitController = orbit;
+        specialAttackController = specialAttack;
         stageSelectionState = StageSelectionState.EnsureInitialized();
     }
 
@@ -265,11 +281,14 @@ public class HUDPresenter : MonoBehaviour
         }
 
         missingAuthoredUiWarningLogged = false;
+        EnsureSpecialButton(hudRoot.transform);
         EnsureMusicButton(hudRoot.transform);
         WireUiEvents();
+        UpdateSpecialButtonState();
         UpdateMusicButtonState();
         if (missionFailedOverlay != null)
         {
+            missionFailedOverlay.transform.SetAsLastSibling();
             missionFailedOverlay.SetActive(false);
         }
 
@@ -336,6 +355,9 @@ public class HUDPresenter : MonoBehaviour
         missileButton = FindUiComponent<Button>(hudRootTransform, "MissileButton");
         missileButtonImage = FindUiComponent<Image>(hudRootTransform, "MissileButton");
         missileButtonLabel = FindUiComponent<Text>(hudRootTransform, "MissileButton/MissileButtonLabel");
+        specialButton = FindUiComponent<Button>(hudRootTransform, "SpecialButton");
+        specialButtonImage = FindUiComponent<Image>(hudRootTransform, "SpecialButton");
+        specialButtonLabel = FindUiComponent<Text>(hudRootTransform, "SpecialButton/SpecialButtonLabel");
         musicButton = FindUiComponent<Button>(hudRootTransform, "MusicButton");
         musicButtonImage = FindUiComponent<Image>(hudRootTransform, "MusicButton");
         musicButtonLabel = FindUiComponent<Text>(hudRootTransform, "MusicButton/MusicButtonLabel");
@@ -365,6 +387,12 @@ public class HUDPresenter : MonoBehaviour
         {
             missileButton.onClick.RemoveListener(FireMissile);
             missileButton.onClick.AddListener(FireMissile);
+        }
+
+        if (specialButton != null)
+        {
+            specialButton.onClick.RemoveListener(FireSpecial);
+            specialButton.onClick.AddListener(FireSpecial);
         }
 
         if (musicButton != null)
@@ -407,6 +435,9 @@ public class HUDPresenter : MonoBehaviour
         missileButton = null;
         missileButtonImage = null;
         missileButtonLabel = null;
+        specialButton = null;
+        specialButtonImage = null;
+        specialButtonLabel = null;
         musicButton = null;
         musicButtonImage = null;
         musicButtonLabel = null;
@@ -457,6 +488,87 @@ public class HUDPresenter : MonoBehaviour
         missileButtonLabel.text = ready
             ? "MISSILE\nREADY"
             : $"MISSILE\n{cooldownRemaining:0.0}s";
+    }
+
+    private void EnsureSpecialButton(Transform hudRootTransform)
+    {
+        if (hudRootTransform == null)
+        {
+            return;
+        }
+
+        if (missileButton != null)
+        {
+            ApplyAnchoredButtonLayout(
+                missileButton.GetComponent<RectTransform>(),
+                new Vector2(1f, 0f),
+                new Vector2(1f, 0f),
+                new Vector2(1f, 0f),
+                MissileButtonAnchoredPosition,
+                MissileButtonSize);
+        }
+
+        Font runtimeFont = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+        if (specialButton == null || specialButtonImage == null || specialButtonLabel == null)
+        {
+            specialButton = CreateAnchoredButton(
+                "SpecialButton",
+                hudRootTransform,
+                runtimeFont,
+                "Special",
+                new Vector2(1f, 0f),
+                new Vector2(1f, 0f),
+                new Vector2(1f, 0f),
+                SpecialButtonAnchoredPosition,
+                SpecialButtonSize,
+                new Color(0.48f, 0.22f, 0.72f, 0.96f),
+                FireSpecial,
+                out specialButtonImage,
+                out specialButtonLabel);
+        }
+        else
+        {
+            ApplyAnchoredButtonLayout(
+                specialButton.GetComponent<RectTransform>(),
+                new Vector2(1f, 0f),
+                new Vector2(1f, 0f),
+                new Vector2(1f, 0f),
+                SpecialButtonAnchoredPosition,
+                SpecialButtonSize);
+        }
+
+        specialButton.transform.SetAsLastSibling();
+    }
+
+    private void UpdateSpecialButtonState()
+    {
+        if (specialButton == null || specialButtonImage == null || specialButtonLabel == null)
+        {
+            return;
+        }
+
+        if (specialAttackController == null)
+        {
+            specialButton.interactable = false;
+            specialButtonImage.color = new Color(0.28f, 0.24f, 0.32f, 0.9f);
+            specialButtonLabel.text = "Special";
+            return;
+        }
+
+        if (specialAttackController.IsActive)
+        {
+            specialButton.interactable = false;
+            specialButtonImage.color = new Color(0.36f, 0.22f, 0.42f, 0.92f);
+            specialButtonLabel.text = "Special\nACTIVE";
+            return;
+        }
+
+        bool canActivate = specialAttackController.CanActivate();
+        specialButton.interactable = canActivate;
+        specialButtonImage.color = canActivate
+            ? new Color(0.58f, 0.2f, 0.78f, 0.96f)
+            : new Color(0.26f, 0.22f, 0.28f, 0.92f);
+        specialButtonLabel.text = canActivate ? "Special" : "Special\nLOCKED";
     }
 
     private void EnsureMusicButton(Transform hudRootTransform)
@@ -640,10 +752,25 @@ public class HUDPresenter : MonoBehaviour
             new Vector2(1f, 0f),
             new Vector2(1f, 0f),
             new Vector2(1f, 0f),
-            new Vector2(-28f, 28f),
-            new Vector2(208f, 74f),
+            MissileButtonAnchoredPosition,
+            MissileButtonSize,
             new Color(0.82f, 0.38f, 0.16f, 0.96f),
             FireMissile,
+            out _,
+            out _);
+
+        CreateAnchoredButton(
+            "SpecialButton",
+            runtimeHudRoot.transform,
+            runtimeFont,
+            "Special",
+            new Vector2(1f, 0f),
+            new Vector2(1f, 0f),
+            new Vector2(1f, 0f),
+            SpecialButtonAnchoredPosition,
+            SpecialButtonSize,
+            new Color(0.58f, 0.2f, 0.78f, 0.96f),
+            FireSpecial,
             out _,
             out _);
 
@@ -739,6 +866,23 @@ public class HUDPresenter : MonoBehaviour
         }
 
         SetStatusMessage(playerCombatController.GetMissileUnavailableReason());
+    }
+
+    private void FireSpecial()
+    {
+        if (specialAttackController == null)
+        {
+            SetStatusMessage("Special attack unavailable.");
+            return;
+        }
+
+        if (specialAttackController.TryActivate())
+        {
+            SetStatusMessage("Special attack.");
+            return;
+        }
+
+        SetStatusMessage(specialAttackController.GetUnavailableReason());
     }
 
     private void ToggleMusic()
@@ -932,12 +1076,13 @@ public class HUDPresenter : MonoBehaviour
         button.onClick.RemoveAllListeners();
         button.onClick.AddListener(onClick);
 
-        RectTransform buttonRect = buttonObject.GetComponent<RectTransform>();
-        buttonRect.anchorMin = anchorMin;
-        buttonRect.anchorMax = anchorMax;
-        buttonRect.pivot = pivot;
-        buttonRect.sizeDelta = size;
-        buttonRect.anchoredPosition = anchoredPosition;
+        ApplyAnchoredButtonLayout(
+            buttonObject.GetComponent<RectTransform>(),
+            anchorMin,
+            anchorMax,
+            pivot,
+            anchoredPosition,
+            size);
 
         buttonLabel = CreateText($"{name}Label", buttonObject.transform, font, TextAnchor.MiddleCenter, 19, Color.white);
         buttonLabel.fontStyle = FontStyle.Bold;
@@ -949,6 +1094,26 @@ public class HUDPresenter : MonoBehaviour
         buttonLabel.text = label;
 
         return button;
+    }
+
+    private static void ApplyAnchoredButtonLayout(
+        RectTransform buttonRect,
+        Vector2 anchorMin,
+        Vector2 anchorMax,
+        Vector2 pivot,
+        Vector2 anchoredPosition,
+        Vector2 size)
+    {
+        if (buttonRect == null)
+        {
+            return;
+        }
+
+        buttonRect.anchorMin = anchorMin;
+        buttonRect.anchorMax = anchorMax;
+        buttonRect.pivot = pivot;
+        buttonRect.sizeDelta = size;
+        buttonRect.anchoredPosition = anchoredPosition;
     }
 
     private static void SetBarFill(RectTransform fillRect, float ratio)

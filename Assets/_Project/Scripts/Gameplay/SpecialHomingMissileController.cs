@@ -1,7 +1,7 @@
 using System.Collections.Generic;
 using UnityEngine;
 
-public class HomingMissileController : MonoBehaviour
+public class SpecialHomingMissileController : MonoBehaviour
 {
     private const float DefaultMissileVisualLength = 0.92f;
     private const float CartoonSmokeSpacing = 0.34f;
@@ -9,6 +9,7 @@ public class HomingMissileController : MonoBehaviour
     private const int MaxCartoonSmokePuffsPerFrame = 8;
     private enum MissilePhase
     {
+        SideArc,
         Straight,
         Turning,
         Boost,
@@ -40,6 +41,10 @@ public class HomingMissileController : MonoBehaviour
     private Vector3 templateLocalEulerAngles;
     private Vector3 straightPhaseStartPosition;
     private Vector3 straightDirection;
+    private Vector3 sideArcStartPosition;
+    private Vector3 sideArcControlPosition;
+    private Vector3 sideArcEndPosition;
+    private float sideArcDuration;
     private Vector3 boostDirection;
     private Quaternion turnStartRotation;
     private Quaternion turnTargetRotation;
@@ -117,10 +122,27 @@ public class HomingMissileController : MonoBehaviour
         phaseElapsed = 0f;
         phase = MissilePhase.Straight;
         remainingLifetime = Mathf.Max(0.5f, lifetime);
-        damage = Mathf.Max(1f, damageAmount);
+        damage = Mathf.Max(0f, damageAmount);
         hitRadius = Mathf.Max(0.1f, projectileHitRadius);
 
         EnsureVisuals(visualTemplate);
+    }
+
+    public void ConfigureSideArc(Vector3 controlPosition, Vector3 endPosition, float duration)
+    {
+        sideArcStartPosition = transform.position;
+        sideArcControlPosition = controlPosition;
+        sideArcEndPosition = endPosition;
+        sideArcDuration = Mathf.Max(0.05f, duration);
+        phaseElapsed = 0f;
+        phase = MissilePhase.SideArc;
+
+        Vector3 initialTangent = GetQuadraticBezierTangent(0f);
+        if (initialTangent.sqrMagnitude > 0.001f)
+        {
+            straightDirection = initialTangent.normalized;
+            transform.rotation = Quaternion.LookRotation(straightDirection, Vector3.up);
+        }
     }
 
     private void Update()
@@ -159,6 +181,27 @@ public class HomingMissileController : MonoBehaviour
 
         switch (phase)
         {
+            case MissilePhase.SideArc:
+                float sideArcProgress = sideArcDuration > 0.001f
+                    ? Mathf.Clamp01(phaseElapsed / sideArcDuration)
+                    : 1f;
+                float easedArcProgress = Mathf.SmoothStep(0f, 1f, sideArcProgress);
+                transform.position = EvaluateQuadraticBezier(easedArcProgress);
+
+                Vector3 arcTangent = GetQuadraticBezierTangent(easedArcProgress);
+                if (arcTangent.sqrMagnitude > 0.001f)
+                {
+                    transform.rotation = Quaternion.LookRotation(arcTangent.normalized, Vector3.up);
+                }
+
+                if (sideArcProgress >= 1f)
+                {
+                    transform.position = sideArcEndPosition;
+                    BeginTurnPhase();
+                }
+
+                break;
+
             case MissilePhase.Straight:
                 transform.rotation = Quaternion.LookRotation(straightDirection, Vector3.up);
                 float straightProgress = straightPhaseDuration > 0.001f
@@ -199,8 +242,26 @@ public class HomingMissileController : MonoBehaviour
         phase = MissilePhase.Turning;
         phaseElapsed = 0f;
         turnStartRotation = transform.rotation;
-        Quaternion fullTurnTargetRotation = Quaternion.LookRotation(GetTargetDirection(straightDirection), Vector3.up);
+        Quaternion fullTurnTargetRotation = Quaternion.LookRotation(GetTargetDirection(transform.forward), Vector3.up);
         turnTargetRotation = Quaternion.Slerp(turnStartRotation, fullTurnTargetRotation, 2f / 3f);
+    }
+
+    private Vector3 EvaluateQuadraticBezier(float progress)
+    {
+        float t = Mathf.Clamp01(progress);
+        float inverseT = 1f - t;
+        return
+            inverseT * inverseT * sideArcStartPosition +
+            2f * inverseT * t * sideArcControlPosition +
+            t * t * sideArcEndPosition;
+    }
+
+    private Vector3 GetQuadraticBezierTangent(float progress)
+    {
+        float t = Mathf.Clamp01(progress);
+        return
+            2f * (1f - t) * (sideArcControlPosition - sideArcStartPosition) +
+            2f * t * (sideArcEndPosition - sideArcControlPosition);
     }
 
     private void BeginBoostPhase()
@@ -476,16 +537,6 @@ public class HomingMissileController : MonoBehaviour
 
     private void EnsureTrailRenderer()
     {
-        if (smokeTemplate != null)
-        {
-            if (trailRenderer != null)
-            {
-                trailRenderer.enabled = false;
-            }
-
-            return;
-        }
-
         if (!TryGetComponent(out trailRenderer) || trailRenderer == null)
         {
             trailRenderer = gameObject.AddComponent<TrailRenderer>();
@@ -496,18 +547,18 @@ public class HomingMissileController : MonoBehaviour
             return;
         }
 
-        trailRenderer.time = 0.35f;
-        trailRenderer.minVertexDistance = 0.03f;
-        trailRenderer.startWidth = 0.14f;
-        trailRenderer.endWidth = 0.025f;
-        trailRenderer.numCornerVertices = 2;
-        trailRenderer.numCapVertices = 2;
+        trailRenderer.time = 0.42f;
+        trailRenderer.minVertexDistance = 0.08f;
+        trailRenderer.startWidth = 0.48f;
+        trailRenderer.endWidth = 0.12f;
+        trailRenderer.numCornerVertices = 0;
+        trailRenderer.numCapVertices = 0;
         trailRenderer.textureMode = LineTextureMode.Stretch;
         trailRenderer.alignment = LineAlignment.View;
         trailRenderer.colorGradient = CreateTrailGradient();
         trailRenderer.sharedMaterial = CreateRuntimeMaterial(
             "RuntimeMissileTrailMaterial",
-            new Color(0.92f, 0.94f, 1f, 0.9f),
+            new Color(0.92f, 0.94f, 1f, 1f),
             true,
             "Sprites/Default",
             "Universal Render Pipeline/Particles/Unlit",
@@ -535,13 +586,13 @@ public class HomingMissileController : MonoBehaviour
         main.simulationSpace = ParticleSystemSimulationSpace.Local;
         main.startLifetime = new ParticleSystem.MinMaxCurve(0.32f, 0.58f);
         main.startSpeed = new ParticleSystem.MinMaxCurve(1.8f, 3.4f);
-        main.startSize = new ParticleSystem.MinMaxCurve(0.18f, 0.34f);
-        main.startColor = new Color(0.96f, 0.97f, 1f, 0.72f);
-        main.maxParticles = 160;
+        main.startSize = new ParticleSystem.MinMaxCurve(0.38f, 0.68f);
+        main.startColor = new Color(0.96f, 0.97f, 1f, 0.95f);
+        main.maxParticles = 90;
 
         ParticleSystem.EmissionModule emission = smokeTrail.emission;
         emission.enabled = true;
-        emission.rateOverTime = 96f;
+        emission.rateOverTime = 36f;
 
         ParticleSystem.ShapeModule shape = smokeTrail.shape;
         shape.enabled = true;
@@ -567,7 +618,7 @@ public class HomingMissileController : MonoBehaviour
         renderer.maxParticleSize = 0.6f;
         renderer.sharedMaterial = CreateRuntimeMaterial(
             "RuntimeMissileSmokeMaterial",
-            new Color(0.96f, 0.97f, 1f, 0.72f),
+            new Color(0.96f, 0.97f, 1f, 0.95f),
             true,
             "Universal Render Pipeline/Particles/Unlit",
             "Particles/Standard Unlit",
@@ -694,8 +745,8 @@ public class HomingMissileController : MonoBehaviour
             },
             new[]
             {
-                new GradientAlphaKey(0.9f, 0f),
-                new GradientAlphaKey(0.28f, 0.5f),
+                new GradientAlphaKey(1f, 0f),
+                new GradientAlphaKey(0.78f, 0.38f),
                 new GradientAlphaKey(0f, 1f),
             });
         return gradient;
@@ -717,13 +768,13 @@ public class HomingMissileController : MonoBehaviour
         main.simulationSpace = ParticleSystemSimulationSpace.World;
         main.startLifetime = new ParticleSystem.MinMaxCurve(1.15f, 2.05f);
         main.startSpeed = new ParticleSystem.MinMaxCurve(1.1f, 2.1f);
-        main.startSize = new ParticleSystem.MinMaxCurve(0.21f, 0.39f);
-        main.startColor = new Color(0.99f, 0.995f, 1f, 0.97f);
-        main.maxParticles = 1200;
+        main.startSize = new ParticleSystem.MinMaxCurve(0.48f, 0.9f);
+        main.startColor = new Color(0.99f, 0.995f, 1f, 1f);
+        main.maxParticles = 180;
 
         ParticleSystem.EmissionModule emission = smokeTrail.emission;
         emission.enabled = true;
-        emission.rateOverTime = 260f;
+        emission.rateOverTime = 54f;
 
         ParticleSystem.ShapeModule shape = smokeTrail.shape;
         shape.enabled = true;
@@ -754,7 +805,7 @@ public class HomingMissileController : MonoBehaviour
 
         ParticleSystemRenderer renderer = smokeTrail.GetComponent<ParticleSystemRenderer>();
         renderer.renderMode = ParticleSystemRenderMode.Billboard;
-        renderer.maxParticleSize = 1.5f;
+        renderer.maxParticleSize = 2.2f;
 
         Material smokeMaterial = CreateRuntimeMaterial(
             "RuntimeTemplateSmokeMaterial",
@@ -766,7 +817,7 @@ public class HomingMissileController : MonoBehaviour
         ApplyTexture(smokeMaterial, smokeTexture);
         renderer.sharedMaterial = smokeMaterial;
 
-        smokeObject.transform.localScale = Vector3.one * Mathf.Max(0.1f, smokeScale * 0.775f);
+        smokeObject.transform.localScale = Vector3.one * Mathf.Max(0.1f, smokeScale * 1.15f);
         smokeTrail.Play(true);
     }
 
@@ -791,7 +842,7 @@ public class HomingMissileController : MonoBehaviour
 
         Material smokeMaterial = CreateRuntimeMaterial(
             "RuntimeTemplateSmokeMaterial",
-            new Color(1f, 1f, 1f, 0.72f),
+            new Color(1f, 1f, 1f, 1f),
             true,
             "Universal Render Pipeline/Particles/Unlit",
             "Particles/Standard Unlit",
@@ -824,8 +875,8 @@ public class HomingMissileController : MonoBehaviour
             },
             new[]
             {
-                new GradientAlphaKey(0.78f, 0f),
-                new GradientAlphaKey(0.38f, 0.45f),
+                new GradientAlphaKey(1f, 0f),
+                new GradientAlphaKey(0.82f, 0.35f),
                 new GradientAlphaKey(0f, 1f),
             });
         return gradient;
@@ -1058,5 +1109,321 @@ public class HomingMissileController : MonoBehaviour
             Destroy(smokeTrail.gameObject, 4f);
             smokeTrail = null;
         }
+    }
+}
+
+public class CartoonSmokePuff : MonoBehaviour
+{
+    private const int TextureSize = 64;
+    private const int CloudCircleCount = 3;
+    private const int DensityLayerCount = 2;
+    private const int VerticesPerCircle = 4;
+    private const int TrianglesPerCircle = 6;
+    private const float FadeStartProgress = 0.2f;
+    private static readonly Queue<CartoonSmokePuff> Pool = new();
+    private static Mesh sharedMesh;
+    private static Material sharedMaterial;
+    private static Texture2D sharedTexture;
+    private static Camera cachedCamera;
+    private static int colorPropertyId = -1;
+
+    private MeshRenderer meshRenderer;
+    private MaterialPropertyBlock propertyBlock;
+    private float age;
+    private float lifetime;
+    private float startScale;
+    private float endScale;
+    private Color color;
+    private Vector3 driftVelocity;
+
+    public static void Spawn(Vector3 position, float size, float duration, Color puffColor, Vector3 drift)
+    {
+        CartoonSmokePuff puff = Pool.Count > 0 ? Pool.Dequeue() : CreatePuff();
+        puff.gameObject.SetActive(true);
+        puff.transform.position = position;
+        puff.Initialize(size, duration, puffColor, drift);
+    }
+
+    private static CartoonSmokePuff CreatePuff()
+    {
+        GameObject puffObject = new("CartoonSmokePuff");
+        puffObject.hideFlags = HideFlags.DontSave;
+        CartoonSmokePuff puff = puffObject.AddComponent<CartoonSmokePuff>();
+        puff.EnsureRenderer();
+        puffObject.SetActive(false);
+        return puff;
+    }
+
+    private void Awake()
+    {
+        EnsureRenderer();
+    }
+
+    private void Initialize(float size, float duration, Color puffColor, Vector3 drift)
+    {
+        EnsureRenderer();
+        age = 0f;
+        lifetime = Mathf.Max(0.05f, duration);
+        startScale = Mathf.Max(0.01f, size * 0.45f);
+        endScale = Mathf.Max(startScale, size * 1.28f);
+        color = puffColor;
+        driftVelocity = drift;
+        ApplyVisual(0f);
+    }
+
+    private void Update()
+    {
+        age += Time.deltaTime;
+        if (age >= lifetime)
+        {
+            Release();
+            return;
+        }
+
+        transform.position += driftVelocity * Time.deltaTime;
+        Camera mainCamera = GetMainCamera();
+        if (mainCamera != null)
+        {
+            Vector3 directionToCamera = transform.position - mainCamera.transform.position;
+            if (directionToCamera.sqrMagnitude > 0.0001f)
+            {
+                transform.rotation = Quaternion.LookRotation(directionToCamera, mainCamera.transform.up);
+            }
+        }
+
+        ApplyVisual(Mathf.Clamp01(age / lifetime));
+    }
+
+    private static Camera GetMainCamera()
+    {
+        if (cachedCamera == null || !cachedCamera.isActiveAndEnabled)
+        {
+            cachedCamera = Camera.main;
+        }
+
+        return cachedCamera;
+    }
+
+    private void ApplyVisual(float progress)
+    {
+        float easedGrowth = Mathf.SmoothStep(0f, 1f, progress);
+        transform.localScale = Vector3.one * Mathf.Lerp(startScale, endScale, easedGrowth);
+
+        float fadeProgress = Mathf.SmoothStep(
+            0f,
+            1f,
+            Mathf.Clamp01((progress - FadeStartProgress) / (1f - FadeStartProgress)));
+        Color appliedColor = color;
+        appliedColor.a *= 1f - fadeProgress;
+
+        propertyBlock ??= new MaterialPropertyBlock();
+        meshRenderer.GetPropertyBlock(propertyBlock);
+        propertyBlock.SetColor(colorPropertyId, appliedColor);
+        if (colorPropertyId != Shader.PropertyToID("_Color"))
+        {
+            propertyBlock.SetColor("_Color", appliedColor);
+        }
+
+        meshRenderer.SetPropertyBlock(propertyBlock);
+    }
+
+    private void Release()
+    {
+        gameObject.SetActive(false);
+        Pool.Enqueue(this);
+    }
+
+    private void EnsureRenderer()
+    {
+        MeshFilter meshFilter = GetComponent<MeshFilter>();
+        if (meshFilter == null)
+        {
+            meshFilter = gameObject.AddComponent<MeshFilter>();
+        }
+
+        meshRenderer = GetComponent<MeshRenderer>();
+        if (meshRenderer == null)
+        {
+            meshRenderer = gameObject.AddComponent<MeshRenderer>();
+        }
+
+        meshFilter.sharedMesh = GetSharedMesh();
+        meshRenderer.sharedMaterial = GetSharedMaterial();
+        meshRenderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+        meshRenderer.receiveShadows = false;
+        propertyBlock ??= new MaterialPropertyBlock();
+    }
+
+    private static Mesh GetSharedMesh()
+    {
+        if (sharedMesh != null)
+        {
+            return sharedMesh;
+        }
+
+        int totalCircles = CloudCircleCount * DensityLayerCount;
+        Vector3[] vertices = new Vector3[totalCircles * VerticesPerCircle];
+        Vector2[] uvs = new Vector2[totalCircles * VerticesPerCircle];
+        int[] triangles = new int[totalCircles * TrianglesPerCircle];
+        Vector2[] layerOffsets =
+        {
+            Vector2.zero,
+            new(0.055f, -0.035f),
+        };
+        float[] layerScales = { 1f, 0.9f };
+
+        for (int layer = 0; layer < DensityLayerCount; layer++)
+        {
+            int circleStart = layer * CloudCircleCount;
+            AddCloudCircle(vertices, uvs, triangles, circleStart, new Vector2(-0.23f, 0.04f) + layerOffsets[layer], 0.82f * layerScales[layer]);
+            AddCloudCircle(vertices, uvs, triangles, circleStart + 1, new Vector2(0.2f, 0.03f) + layerOffsets[layer], 0.92f * layerScales[layer]);
+            AddCloudCircle(vertices, uvs, triangles, circleStart + 2, new Vector2(0.02f, -0.18f) + layerOffsets[layer], 0.72f * layerScales[layer]);
+        }
+
+        sharedMesh = new Mesh
+        {
+            name = "CartoonSmokePuffMesh",
+            vertices = vertices,
+            uv = uvs,
+            triangles = triangles,
+            hideFlags = HideFlags.HideAndDontSave
+        };
+        sharedMesh.RecalculateBounds();
+        return sharedMesh;
+    }
+
+    private static void AddCloudCircle(
+        Vector3[] vertices,
+        Vector2[] uvs,
+        int[] triangles,
+        int circleIndex,
+        Vector2 center,
+        float size)
+    {
+        int vertexStart = circleIndex * 4;
+        int triangleStart = circleIndex * 6;
+        float halfSize = size * 0.5f;
+
+        vertices[vertexStart] = new Vector3(center.x - halfSize, center.y - halfSize, 0f);
+        vertices[vertexStart + 1] = new Vector3(center.x - halfSize, center.y + halfSize, 0f);
+        vertices[vertexStart + 2] = new Vector3(center.x + halfSize, center.y + halfSize, 0f);
+        vertices[vertexStart + 3] = new Vector3(center.x + halfSize, center.y - halfSize, 0f);
+
+        uvs[vertexStart] = new Vector2(0f, 0f);
+        uvs[vertexStart + 1] = new Vector2(0f, 1f);
+        uvs[vertexStart + 2] = new Vector2(1f, 1f);
+        uvs[vertexStart + 3] = new Vector2(1f, 0f);
+
+        triangles[triangleStart] = vertexStart;
+        triangles[triangleStart + 1] = vertexStart + 1;
+        triangles[triangleStart + 2] = vertexStart + 2;
+        triangles[triangleStart + 3] = vertexStart;
+        triangles[triangleStart + 4] = vertexStart + 2;
+        triangles[triangleStart + 5] = vertexStart + 3;
+    }
+
+    private static Material GetSharedMaterial()
+    {
+        if (sharedMaterial != null)
+        {
+            return sharedMaterial;
+        }
+
+        Shader shader = Shader.Find("Sprites/Default");
+        if (shader == null)
+        {
+            shader = Shader.Find("Universal Render Pipeline/Unlit");
+        }
+
+        if (shader == null)
+        {
+            shader = Shader.Find("Unlit/Transparent");
+        }
+
+        if (shader == null)
+        {
+            shader = Shader.Find("Standard");
+        }
+
+        sharedMaterial = new Material(shader)
+        {
+            name = "CartoonSmokePuffMaterial",
+            hideFlags = HideFlags.HideAndDontSave,
+            mainTexture = GetSharedTexture()
+        };
+
+        if (sharedMaterial.HasProperty("_Surface"))
+        {
+            sharedMaterial.SetFloat("_Surface", 1f);
+        }
+
+        if (sharedMaterial.HasProperty("_SrcBlend"))
+        {
+            sharedMaterial.SetFloat("_SrcBlend", 5f);
+        }
+
+        if (sharedMaterial.HasProperty("_DstBlend"))
+        {
+            sharedMaterial.SetFloat("_DstBlend", 10f);
+        }
+
+        if (sharedMaterial.HasProperty("_ZWrite"))
+        {
+            sharedMaterial.SetFloat("_ZWrite", 0f);
+        }
+
+        if (sharedMaterial.HasProperty("_Cull"))
+        {
+            sharedMaterial.SetFloat("_Cull", 0f);
+        }
+
+        if (sharedMaterial.HasProperty("_BaseMap"))
+        {
+            sharedMaterial.SetTexture("_BaseMap", GetSharedTexture());
+        }
+
+        if (sharedMaterial.HasProperty("_MainTex"))
+        {
+            sharedMaterial.SetTexture("_MainTex", GetSharedTexture());
+        }
+
+        colorPropertyId = sharedMaterial.HasProperty("_BaseColor")
+            ? Shader.PropertyToID("_BaseColor")
+            : Shader.PropertyToID("_Color");
+        return sharedMaterial;
+    }
+
+    private static Texture2D GetSharedTexture()
+    {
+        if (sharedTexture != null)
+        {
+            return sharedTexture;
+        }
+
+        sharedTexture = new Texture2D(TextureSize, TextureSize, TextureFormat.RGBA32, false)
+        {
+            name = "CartoonSmokePuffTexture",
+            hideFlags = HideFlags.HideAndDontSave,
+            filterMode = FilterMode.Bilinear,
+            wrapMode = TextureWrapMode.Clamp
+        };
+
+        Color[] pixels = new Color[TextureSize * TextureSize];
+        Vector2 center = new((TextureSize - 1) * 0.5f, (TextureSize - 1) * 0.5f);
+        float radius = TextureSize * 0.48f;
+        for (int y = 0; y < TextureSize; y++)
+        {
+            for (int x = 0; x < TextureSize; x++)
+            {
+                float distance = Vector2.Distance(new Vector2(x, y), center) / radius;
+                float alpha = 1f - Mathf.SmoothStep(0.7f, 1f, distance);
+                alpha = Mathf.Pow(alpha, 0.68f);
+                pixels[y * TextureSize + x] = new Color(1f, 1f, 1f, alpha);
+            }
+        }
+
+        sharedTexture.SetPixels(pixels);
+        sharedTexture.Apply(false, true);
+        return sharedTexture;
     }
 }

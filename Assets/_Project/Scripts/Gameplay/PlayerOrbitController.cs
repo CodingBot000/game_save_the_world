@@ -1,3 +1,4 @@
+using System.Collections;
 using UnityEngine;
 using UnityEngine.InputSystem;
 using UnityEngine.Serialization;
@@ -44,6 +45,8 @@ public class PlayerOrbitController : MonoBehaviour
     [SerializeField] private bool enableVisualTilt = true;
     [SerializeField] private float maxVisualTiltAngle = 12f;
     [SerializeField] private float visualTiltDuration = 0.18f;
+    [SerializeField] private Vector3 cinematicRearViewEulerOffset = Vector3.zero;
+    [SerializeField] private Vector3 cinematicFrontViewEulerOffset = Vector3.zero;
 
     private Transform orbitCenter;
     private Transform lookTarget;
@@ -77,6 +80,9 @@ public class PlayerOrbitController : MonoBehaviour
     private bool hasLockedVisualPose;
     private bool screenSpaceVisualActive;
     private bool hasPreviousWorldPosition;
+    private bool cinematicVisualOverrideActive;
+    private Quaternion cinematicVisualDisplayRotation = Quaternion.identity;
+    private Quaternion cinematicReturnDisplayRotation = Quaternion.identity;
 
     public float CurrentDistance { get; private set; }
     public Vector3 CurrentWorldVelocity { get; private set; }
@@ -177,6 +183,104 @@ public class PlayerOrbitController : MonoBehaviour
     {
         maxVisualTiltAngle = Mathf.Max(0f, maxAngle);
         visualTiltDuration = Mathf.Max(0f, duration);
+    }
+
+    public void SetCinematicVisualLookAt(Vector3 worldTarget)
+    {
+        Vector3 flatDirection = worldTarget - transform.position;
+        flatDirection.y = 0f;
+        if (flatDirection.sqrMagnitude < 0.001f)
+        {
+            flatDirection = transform.forward;
+            flatDirection.y = 0f;
+        }
+
+        if (flatDirection.sqrMagnitude < 0.001f)
+        {
+            flatDirection = Vector3.forward;
+        }
+
+        cinematicVisualDisplayRotation =
+            Quaternion.LookRotation(flatDirection.normalized, Vector3.up) *
+            Quaternion.Euler(cinematicRearViewEulerOffset) *
+            Quaternion.Euler(0f, 180f, 0f);
+        cinematicVisualOverrideActive = true;
+        currentVisualTilt = Vector2.zero;
+        ApplyCinematicVisualPose();
+    }
+
+    public void SetCinematicVisualFacingCamera()
+    {
+        EnsureVisualTargetsReady();
+        if (!cinematicVisualOverrideActive)
+        {
+            cinematicReturnDisplayRotation = ResolveCurrentVisualDisplayRotation();
+        }
+
+        cinematicVisualDisplayRotation = ResolveCameraFacingDisplayRotation();
+        cinematicVisualOverrideActive = true;
+        currentVisualTilt = Vector2.zero;
+        ApplyCinematicVisualPose();
+    }
+
+    public void SetCinematicVisualTurnToward(Vector3 worldTarget, float maxTurnAngle)
+    {
+        EnsureVisualTargetsReady();
+        Quaternion startRotation = ResolveCurrentVisualDisplayRotation();
+        if (!cinematicVisualOverrideActive)
+        {
+            cinematicReturnDisplayRotation = startRotation;
+        }
+
+        Quaternion targetRotation = ResolveTargetFacingDisplayRotation(worldTarget);
+        cinematicVisualDisplayRotation = Quaternion.RotateTowards(
+            startRotation,
+            targetRotation,
+            Mathf.Max(0f, maxTurnAngle));
+        cinematicVisualOverrideActive = true;
+        currentVisualTilt = Vector2.zero;
+        ApplyCinematicVisualPose();
+    }
+
+    public void ClearCinematicVisualOverride()
+    {
+        cinematicVisualOverrideActive = false;
+        ResetVisualTiltImmediate();
+    }
+
+    public IEnumerator ClearCinematicVisualOverrideSmooth(float duration)
+    {
+        if (!cinematicVisualOverrideActive)
+        {
+            yield break;
+        }
+
+        Quaternion startRotation = ResolveCurrentVisualDisplayRotation();
+        Quaternion targetRotation = cinematicReturnDisplayRotation;
+        float clampedDuration = Mathf.Max(0f, duration);
+        if (clampedDuration <= 0.001f)
+        {
+            cinematicVisualDisplayRotation = targetRotation;
+            ApplyCinematicVisualPose();
+            ClearCinematicVisualOverride();
+            yield break;
+        }
+
+        float elapsed = 0f;
+        while (elapsed < clampedDuration)
+        {
+            elapsed += Time.deltaTime;
+            float progress = Mathf.Clamp01(elapsed / clampedDuration);
+            float easedProgress = Mathf.SmoothStep(0f, 1f, progress);
+            cinematicVisualDisplayRotation = Quaternion.Slerp(startRotation, targetRotation, easedProgress);
+            currentVisualTilt = Vector2.zero;
+            ApplyCinematicVisualPose();
+            yield return null;
+        }
+
+        cinematicVisualDisplayRotation = targetRotation;
+        ApplyCinematicVisualPose();
+        ClearCinematicVisualOverride();
     }
 
     public void AdoptScenePlacement(Vector3 worldPosition)
@@ -974,6 +1078,13 @@ public class PlayerOrbitController : MonoBehaviour
             }
         }
 
+        if (cinematicVisualOverrideActive)
+        {
+            currentVisualTilt = Vector2.zero;
+            ApplyCinematicVisualPose();
+            return;
+        }
+
         if (!enableVisualTilt)
         {
             ResetVisualTiltImmediate();
@@ -996,6 +1107,124 @@ public class PlayerOrbitController : MonoBehaviour
         Vector2 targetTilt = new Vector2(-clampedInput.y, clampedInput.x) * clampedMaxAngle;
         currentVisualTilt = Vector2.MoveTowards(currentVisualTilt, targetTilt, tiltSpeed * Time.deltaTime);
         ApplyLockedVisualPose(Quaternion.Euler(currentVisualTilt.x, 0f, currentVisualTilt.y));
+    }
+
+    private void ApplyCinematicVisualPose()
+    {
+        if (screenSpaceVisualRoot != null)
+        {
+            screenSpaceVisualRoot.localRotation = Quaternion.identity;
+        }
+
+        if (screenSpaceVisualInstance != null)
+        {
+            Quaternion referenceCameraRotation = ResolveReferenceVisualCameraRotation();
+            screenSpaceVisualInstance.localRotation = Quaternion.Inverse(referenceCameraRotation) * cinematicVisualDisplayRotation;
+            return;
+        }
+
+        Transform target = visualPoseRoot != null ? visualPoseRoot : visualTiltRoot;
+        if (target != null)
+        {
+            target.rotation = cinematicVisualDisplayRotation;
+        }
+    }
+
+    private void EnsureVisualTargetsReady()
+    {
+        if (visualTiltRoot == null)
+        {
+            CacheVisualTiltRoot();
+        }
+
+        EnsureScreenSpaceVisualReady();
+    }
+
+    private Quaternion ResolveCurrentVisualDisplayRotation()
+    {
+        EnsureVisualTargetsReady();
+        if (screenSpaceVisualInstance != null)
+        {
+            Quaternion referenceCameraRotation = ResolveReferenceVisualCameraRotation();
+            Quaternion screenRootRotation = screenSpaceVisualRoot != null
+                ? screenSpaceVisualRoot.localRotation
+                : Quaternion.identity;
+            return referenceCameraRotation * screenRootRotation * screenSpaceVisualInstance.localRotation;
+        }
+
+        Transform target = visualPoseRoot != null ? visualPoseRoot : visualTiltRoot;
+        if (target != null)
+        {
+            return target.rotation;
+        }
+
+        if (hasLockedVisualPose)
+        {
+            return TryResolveCameraPlane()
+                ? movementCamera.transform.rotation * lockedVisualCameraRelativeRotation
+                : lockedVisualWorldRotation;
+        }
+
+        return Quaternion.identity;
+    }
+
+    private Quaternion ResolveCameraFacingDisplayRotation()
+    {
+        Camera referenceCamera = movementCamera != null ? movementCamera : Camera.main;
+        if (referenceCamera == null && TryResolveCameraPlane())
+        {
+            referenceCamera = movementCamera;
+        }
+
+        Vector3 facingDirection = referenceCamera != null
+            ? -referenceCamera.transform.forward
+            : Vector3.back;
+        Vector3 upDirection = referenceCamera != null
+            ? referenceCamera.transform.up
+            : Vector3.up;
+
+        if (facingDirection.sqrMagnitude < 0.001f)
+        {
+            facingDirection = Vector3.back;
+        }
+
+        if (upDirection.sqrMagnitude < 0.001f)
+        {
+            upDirection = Vector3.up;
+        }
+
+        return Quaternion.LookRotation(facingDirection.normalized, upDirection.normalized) *
+               Quaternion.Euler(cinematicFrontViewEulerOffset);
+    }
+
+    private Quaternion ResolveTargetFacingDisplayRotation(Vector3 worldTarget)
+    {
+        Vector3 flatDirection = worldTarget - transform.position;
+        flatDirection.y = 0f;
+        if (flatDirection.sqrMagnitude < 0.001f)
+        {
+            flatDirection = transform.forward;
+            flatDirection.y = 0f;
+        }
+
+        if (flatDirection.sqrMagnitude < 0.001f)
+        {
+            flatDirection = Vector3.forward;
+        }
+
+        return Quaternion.LookRotation(flatDirection.normalized, Vector3.up) *
+               Quaternion.Euler(cinematicRearViewEulerOffset);
+    }
+
+    private Quaternion ResolveReferenceVisualCameraRotation()
+    {
+        Camera referenceCamera = movementCamera != null ? movementCamera : Camera.main;
+        if (referenceCamera == null && TryResolveCameraPlane())
+        {
+            referenceCamera = movementCamera;
+        }
+
+        return referenceCamera != null ? referenceCamera.transform.rotation : Quaternion.identity;
     }
 
     private Quaternion GetDesiredLookRotation(Vector3 worldPosition)

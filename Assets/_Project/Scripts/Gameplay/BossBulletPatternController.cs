@@ -115,6 +115,7 @@ public class BossBulletPatternController : MonoBehaviour
     private int nextPatternIndex;
     private float spiralRotationDegrees;
     private bool preserveActiveTelegraphUntilPatternEnds;
+    private bool cinematicPaused;
     private int[][] debrisFragmentBatchIndices;
     private int debrisFragmentBatchSourceCount;
     private int debrisFragmentBatchMinCount;
@@ -174,6 +175,21 @@ public class BossBulletPatternController : MonoBehaviour
         playerOrbitController = playerOrbit != null ? playerOrbit : FindAnyObjectByType<PlayerOrbitController>();
         CacheDebrisFragmentFirePoints();
         attackCooldownRemaining = Mathf.Max(attackCooldownRemaining, startupDelay);
+    }
+
+    public void SetCinematicPaused(bool paused)
+    {
+        if (cinematicPaused == paused)
+        {
+            return;
+        }
+
+        cinematicPaused = paused;
+        if (paused)
+        {
+            CancelActivePattern();
+            CleanupTelegraphs();
+        }
     }
 
     public void SetTimingForDebug(
@@ -401,6 +417,7 @@ public class BossBulletPatternController : MonoBehaviour
     private bool CanRunPatterns()
     {
         return enabled &&
+               !cinematicPaused &&
                attackController != null &&
                battleController != null &&
                bossController != null &&

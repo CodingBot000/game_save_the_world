@@ -16,8 +16,10 @@ public class BattleController : MonoBehaviour
     [SerializeField] private BossAttackController bossAttackController;
     [SerializeField] private PlayerOrbitController playerOrbitController;
     [SerializeField] private PlayerCombatController playerCombatController;
+    [SerializeField] private PlayerSpecialAttackController playerSpecialAttackController;
     [SerializeField] private PlayerMovementBounds playerMovementBounds;
     [SerializeField] private HUDPresenter hudPresenter;
+    [SerializeField] private ArenaCameraRig arenaCameraRig;
     [SerializeField] private GameObject playerProjectileTemplate;
     [SerializeField] private GameObject bossProjectileTemplate;
     [SerializeField] private GameObject allyPlaceholder;
@@ -79,20 +81,19 @@ public class BattleController : MonoBehaviour
         }
     }
 
-    public bool TryHitBoss(Vector3 worldPoint, float hitRadius, float damage)
+    public bool TryHitBoss(Vector3 worldPoint, float hitRadius, float damage, Collider projectileCollider = null)
     {
         if (!battleActive || bossController == null || !bossController.IsAlive)
         {
             return false;
         }
 
-        float distance = Vector3.Distance(worldPoint, bossController.HitPoint);
-        if (distance > hitRadius + bossController.HitRadius)
+        if (!bossController.CheckHit(worldPoint, hitRadius, projectileCollider))
         {
             return false;
         }
 
-        return bossController.ApplyDamage(damage);
+        return damage <= 0f || bossController.ApplyDamage(damage);
     }
 
     public bool TryHitPlayer(Vector3 worldPoint, float hitRadius, float damage, Collider projectileCollider = null)
@@ -107,7 +108,7 @@ public class BattleController : MonoBehaviour
             return false;
         }
 
-        return playerCombatController.ApplyDamage(damage);
+        return damage <= 0f || playerCombatController.ApplyDamage(damage);
     }
 
     private void ResolveReferences()
@@ -116,8 +117,10 @@ public class BattleController : MonoBehaviour
         bossAttackController ??= FindSceneComponent<BossAttackController>();
         playerOrbitController ??= FindSceneComponent<PlayerOrbitController>();
         playerCombatController ??= FindSceneComponent<PlayerCombatController>();
+        playerSpecialAttackController ??= FindSceneComponent<PlayerSpecialAttackController>();
         playerMovementBounds ??= FindSceneComponent<PlayerMovementBounds>();
         hudPresenter ??= FindSceneComponent<HUDPresenter>();
+        arenaCameraRig ??= FindSceneComponent<ArenaCameraRig>();
         playerProjectileTemplate ??= FindSceneObject("PlayerProjectileTemplate");
         bossProjectileTemplate ??= FindSceneObject("BossProjectileTemplate");
         allyPlaceholder ??= FindSceneObject("AllyPlaceholder");
@@ -126,6 +129,11 @@ public class BattleController : MonoBehaviour
         stageVisualRoot ??= FindSceneTransform("StageVisualRoot");
         environmentThemeDebugPanel ??= FindSceneComponent<EnvironmentThemeDebugPanel>();
         playerMoveGuide ??= FindSceneComponent<PlayerMoveGuide>();
+
+        if (playerSpecialAttackController == null)
+        {
+            playerSpecialAttackController = gameObject.AddComponent<PlayerSpecialAttackController>();
+        }
     }
 
     private void ApplyModeConfiguration()
@@ -322,9 +330,21 @@ public class BattleController : MonoBehaviour
             bossAttackController.Configure(this, bossController, playerCombatController, bossProjectileTemplate, playerOrbitController);
         }
 
+        if (playerSpecialAttackController != null)
+        {
+            playerSpecialAttackController.Configure(
+                this,
+                bossController,
+                bossAttackController,
+                playerCombatController,
+                playerOrbitController,
+                arenaCameraRig,
+                hudPresenter);
+        }
+
         if (hudPresenter != null && bossController != null && playerCombatController != null && playerOrbitController != null)
         {
-            hudPresenter.Configure(bossController, playerCombatController, playerOrbitController);
+            hudPresenter.Configure(bossController, playerCombatController, playerOrbitController, playerSpecialAttackController);
             hudPresenter.RetryRequested += HandleRetryRequested;
             hudPresenter.QuitRequested += HandleQuitRequested;
             string modeLabel = GameFlowController.CurrentMode == GameMode.MultiPlaceholder

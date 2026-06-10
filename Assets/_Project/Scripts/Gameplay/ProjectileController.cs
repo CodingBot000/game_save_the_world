@@ -27,6 +27,8 @@ public class ProjectileController : MonoBehaviour
     private float effectiveHitRadius;
     private float fallbackHitRadiusMultiplier = 1f;
 
+    public ProjectileTeam Team => team;
+
     private void Awake()
     {
         CacheHitCollider();
@@ -75,7 +77,7 @@ public class ProjectileController : MonoBehaviour
         }
 
         bool hit = team == ProjectileTeam.Player
-            ? battleController.TryHitBoss(transform.position, effectiveHitRadius, damage)
+            ? battleController.TryHitBoss(transform.position, effectiveHitRadius, damage, cachedHitCollider)
             : battleController.TryHitPlayer(transform.position, effectiveHitRadius, damage, cachedHitCollider);
 
         if (hit)

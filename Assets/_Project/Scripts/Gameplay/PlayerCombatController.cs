@@ -127,6 +127,33 @@ public class PlayerCombatController : MonoBehaviour
     public float DebugMissileBoostPhaseDuration => missileBoostPhaseDuration;
     public float DebugMissileLifetime => missileLifetime;
     public float DebugMissileHitRadius => missileHitRadius;
+    public GameObject DebugMissileVisualTemplate => missileVisualTemplate;
+    public GameObject DebugMissileSmokeTemplate => missileSmokeTemplate;
+    public GameObject DebugMissileImpactEffectTemplate => missileImpactEffectTemplate;
+    public Texture2D DebugMissileVisualTexture => missileVisualTexture;
+    public Texture2D DebugMissileSmokeTexture => missileSmokeTexture;
+    public float DebugMissileVisualScale => missileVisualScale;
+    public float DebugMissileSmokeScale => missileSmokeScale;
+    public float DebugMissileImpactEffectScale => missileImpactEffectScale;
+    public bool DebugMissileUseTemplateOriginalMaterials => missileUseTemplateOriginalMaterials;
+    public Color DebugMissileTemplateTint => missileTemplateTint;
+    public Vector3 DebugMissileTemplateLocalEulerAngles => missileTemplateLocalEulerAngles;
+    public Transform MissileLauncherLeft
+    {
+        get
+        {
+            ResolveMissileLaunchers();
+            return missileLauncherLeft;
+        }
+    }
+    public Transform MissileLauncherRight
+    {
+        get
+        {
+            ResolveMissileLaunchers();
+            return missileLauncherRight;
+        }
+    }
     public bool DebugShowDamageHurtbox => showDamageHurtboxDebugVisual;
 
     public string GetMissileUnavailableReason()
@@ -621,6 +648,11 @@ public class PlayerCombatController : MonoBehaviour
             missileTemplateTint,
             missileTemplateLocalEulerAngles);
         return true;
+    }
+
+    public Vector3 GetMissileLaunchDirectionForSpecial()
+    {
+        return GetMissileLaunchDirection();
     }
 
     private bool ResolveMissileLaunchers()
