@@ -6,6 +6,7 @@ using UnityEngine.Rendering;
 
 public class PlayerCombatController : MonoBehaviour
 {
+    private const float MinimumHitInvulnerabilityDuration = 1f;
     private static readonly Quaternion PlayerProjectileVisualRotation = Quaternion.Euler(90f, 0f, 0f);
     private const string VehiclePlayerStateCatalogResourcePath = "Vehicles/VehiclePlayerStateCatalog";
     private const string DefaultDamageHurtboxName = "CrashObserver";
@@ -14,13 +15,15 @@ public class PlayerCombatController : MonoBehaviour
     [SerializeField] private float fireCooldown = 0.15f;
     [SerializeField] private float projectileSpeed = 60f;
     [SerializeField] private float projectileDamage = 25f;
-    [SerializeField] private float invulnerabilityDuration = 0.5f;
+    [SerializeField] private float invulnerabilityDuration = MinimumHitInvulnerabilityDuration;
     [SerializeField] private float hitRadius = 1.4f;
     [SerializeField] private Collider[] damageHurtboxes = Array.Empty<Collider>();
     [SerializeField] private bool showDamageHurtboxDebugVisual = false;
     [SerializeField] private Color damageHurtboxDebugColor = new(0.1f, 1f, 0.25f, 0.92f);
     [SerializeField] private float damageHurtboxDebugScaleMultiplier = 1.12f;
     [SerializeField] private Transform muzzle;
+    [SerializeField] private AudioClip gunFireLoopClip;
+    [SerializeField, Range(0f, 1f)] private float gunFireLoopVolume = 0.8f;
     [SerializeField] private float missileCooldown = 2.6f;
     [SerializeField] private float missileDamage = 150f;
     [SerializeField] private float missileLaunchSpeed = 18f;
@@ -70,6 +73,7 @@ public class PlayerCombatController : MonoBehaviour
     private ParticleSystem muzzleFlash;
     private Material muzzleFlashMaterial;
     private Mesh muzzleFlashParticleMesh;
+    private AudioSource gunFireLoopSource;
     private float pulseTimer;
     private Vector3 baseScale;
     private bool launchLeftMissileNext = true;
@@ -162,12 +166,15 @@ public class PlayerCombatController : MonoBehaviour
 
     private void Awake()
     {
+        RestoreRuntimeAudioOutput();
         ApplySelectedVehicleState(resetRuntimeValues: true);
+        invulnerabilityDuration = Mathf.Max(MinimumHitInvulnerabilityDuration, invulnerabilityDuration);
         baseScale = transform.localScale;
         cachedRenderers = GetComponentsInChildren<Renderer>();
         rendererBaseColors = CacheBaseColors(cachedRenderers);
         ResolveDamageHurtboxes();
         UpdateDamageHurtboxDebugVisuals();
+        EnsureGunFireLoopSource();
     }
 
     private void Update()
@@ -181,6 +188,7 @@ public class PlayerCombatController : MonoBehaviour
 
         if (!combatEnabled || !IsAlive || battleController == null || bossController == null || !bossController.IsAlive)
         {
+            StopGunFireLoop();
             return;
         }
 
@@ -190,7 +198,9 @@ public class PlayerCombatController : MonoBehaviour
         bool mouseFire = mouse != null && mouse.leftButton.isPressed && !pointerOverUi;
         bool mouseMissileFire = mouse != null && mouse.rightButton.wasPressedThisFrame && !pointerOverUi;
         bool keyboardFire = keyboard != null && keyboard.spaceKey.isPressed;
-        if (mouseFire || keyboardFire)
+        bool gunFireInput = mouseFire || keyboardFire;
+        UpdateGunFireLoop(gunFireInput);
+        if (gunFireInput)
         {
             TryFire();
         }
@@ -209,6 +219,7 @@ public class PlayerCombatController : MonoBehaviour
         bossController = boss;
         projectileTemplate = projectileTemplateSource;
         ApplySelectedVehicleState(resetRuntimeValues: true);
+        invulnerabilityDuration = Mathf.Max(MinimumHitInvulnerabilityDuration, invulnerabilityDuration);
 
         if (muzzle == null)
         {
@@ -223,6 +234,7 @@ public class PlayerCombatController : MonoBehaviour
         ResolveDamageHurtboxes();
         UpdateDamageHurtboxDebugVisuals();
         EnsureMuzzleFlash();
+        EnsureGunFireLoopSource();
     }
 
     public void RefreshVisualBindings()
@@ -233,11 +245,16 @@ public class PlayerCombatController : MonoBehaviour
         ResolveDamageHurtboxes();
         UpdateDamageHurtboxDebugVisuals();
         EnsureMuzzleFlash();
+        EnsureGunFireLoopSource();
     }
 
     public void SetCombatEnabled(bool enabled)
     {
         combatEnabled = enabled;
+        if (!combatEnabled)
+        {
+            StopGunFireLoop();
+        }
     }
 
     public void ApplyRuntimeStats(PlayerRuntimeStats stats, bool refillDefense)
@@ -288,7 +305,7 @@ public class PlayerCombatController : MonoBehaviour
 
     public void SetInvulnerabilityDurationForDebug(float value)
     {
-        invulnerabilityDuration = Mathf.Max(0f, value);
+        invulnerabilityDuration = Mathf.Max(MinimumHitInvulnerabilityDuration, value);
     }
 
     public void SetHitRadiusForDebug(float value)
@@ -381,6 +398,26 @@ public class PlayerCombatController : MonoBehaviour
             return false;
         }
 
+        return ApplyDamageInternal(damage, applyInvulnerability: true);
+    }
+
+    public bool ApplyContinuousDamage(float damage)
+    {
+        if (GameplayDebugFlags.Undead && damage > 0f)
+        {
+            return true;
+        }
+
+        if (!IsAlive || damage <= 0f)
+        {
+            return false;
+        }
+
+        return ApplyDamageInternal(damage, applyInvulnerability: false);
+    }
+
+    private bool ApplyDamageInternal(float damage, bool applyInvulnerability)
+    {
         armorRepairCooldownRemaining = armorRepairDelay;
 
         float remainingDamage = damage;
@@ -405,9 +442,14 @@ public class PlayerCombatController : MonoBehaviour
             currentHull = Mathf.Max(0f, currentHull - hullDamage);
         }
 
-        invulnerabilityRemaining = invulnerabilityDuration;
+        if (applyInvulnerability)
+        {
+            invulnerabilityRemaining = Mathf.Max(MinimumHitInvulnerabilityDuration, invulnerabilityDuration);
+        }
+
         pulseTimer = 1f;
         ApplyTint(Color.red);
+        CancelInvoke(nameof(RestoreBaseColors));
         Invoke(nameof(RestoreBaseColors), 0.12f);
 
         if (currentHull <= 0f)
@@ -897,7 +939,7 @@ public class PlayerCombatController : MonoBehaviour
         main.simulationSpace = ParticleSystemSimulationSpace.Local;
         main.startLifetime = new ParticleSystem.MinMaxCurve(0.04f, 0.08f);
         main.startSpeed = new ParticleSystem.MinMaxCurve(7f, 12f);
-        main.startSize = new ParticleSystem.MinMaxCurve(0.135f, 0.27f);
+        main.startSize = new ParticleSystem.MinMaxCurve(0.27f, 0.54f);
         main.startColor = new Color(1f, 0.82f, 0.28f, 0.95f);
         main.maxParticles = 36;
 
@@ -910,7 +952,7 @@ public class PlayerCombatController : MonoBehaviour
         shape.enabled = true;
         shape.shapeType = ParticleSystemShapeType.Cone;
         shape.angle = 10f;
-        shape.radius = 0.03f;
+        shape.radius = 0.06f;
         shape.radiusThickness = 0.2f;
 
         ParticleSystem.ColorOverLifetimeModule colorOverLifetime = muzzleFlash.colorOverLifetime;
@@ -943,7 +985,7 @@ public class PlayerCombatController : MonoBehaviour
         ParticleSystemRenderer renderer = muzzleFlash.GetComponent<ParticleSystemRenderer>();
         renderer.renderMode = ParticleSystemRenderMode.Mesh;
         renderer.mesh = GetOrCreateMuzzleFlashParticleMesh();
-        renderer.maxParticleSize = 0.33f;
+        renderer.maxParticleSize = 0.66f;
         renderer.sharedMaterial = GetOrCreateMuzzleFlashMaterial();
 
         muzzleFlash.Stop(true, ParticleSystemStopBehavior.StopEmittingAndClear);
@@ -962,6 +1004,60 @@ public class PlayerCombatController : MonoBehaviour
 
         muzzleFlash.Stop(true, ParticleSystemStopBehavior.StopEmittingAndClear);
         muzzleFlash.Play(true);
+    }
+
+    private void EnsureGunFireLoopSource()
+    {
+        RestoreRuntimeAudioOutput();
+        if (gunFireLoopClip == null)
+        {
+            return;
+        }
+
+        if (gunFireLoopSource == null)
+        {
+            gunFireLoopSource = gameObject.AddComponent<AudioSource>();
+        }
+
+        gunFireLoopSource.playOnAwake = false;
+        gunFireLoopSource.loop = true;
+        gunFireLoopSource.clip = gunFireLoopClip;
+        RuntimeAudioOutputGuard.PrimeClip(gunFireLoopClip);
+        RuntimeAudioOutputGuard.ConfigureAlwaysAudible2D(gunFireLoopSource, gunFireLoopVolume);
+    }
+
+    private static void RestoreRuntimeAudioOutput()
+    {
+        RuntimeAudioOutputGuard.Restore();
+    }
+
+    private void UpdateGunFireLoop(bool shouldPlay)
+    {
+        if (!shouldPlay)
+        {
+            StopGunFireLoop();
+            return;
+        }
+
+        EnsureGunFireLoopSource();
+        if (gunFireLoopSource == null || gunFireLoopSource.clip == null)
+        {
+            return;
+        }
+
+        gunFireLoopSource.volume = Mathf.Clamp01(gunFireLoopVolume);
+        if (!gunFireLoopSource.isPlaying)
+        {
+            gunFireLoopSource.Play();
+        }
+    }
+
+    private void StopGunFireLoop()
+    {
+        if (gunFireLoopSource != null && gunFireLoopSource.isPlaying)
+        {
+            gunFireLoopSource.Stop();
+        }
     }
 
     private Mesh GetOrCreateMuzzleFlashParticleMesh()
@@ -1197,8 +1293,15 @@ public class PlayerCombatController : MonoBehaviour
         return $"({value.x:0.0}, {value.y:0.0}, {value.z:0.0})";
     }
 
+    private void OnDisable()
+    {
+        StopGunFireLoop();
+    }
+
     private void OnDestroy()
     {
+        StopGunFireLoop();
+
         if (muzzleFlashMaterial != null)
         {
             Destroy(muzzleFlashMaterial);

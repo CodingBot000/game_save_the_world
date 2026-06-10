@@ -319,7 +319,7 @@ public class BattleController : MonoBehaviour
 
         if (bossAttackController != null)
         {
-            bossAttackController.Configure(this, bossController, playerCombatController, bossProjectileTemplate);
+            bossAttackController.Configure(this, bossController, playerCombatController, bossProjectileTemplate, playerOrbitController);
         }
 
         if (hudPresenter != null && bossController != null && playerCombatController != null && playerOrbitController != null)

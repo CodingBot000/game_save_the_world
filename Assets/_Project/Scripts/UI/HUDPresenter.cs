@@ -9,12 +9,15 @@ using UnityEditor.SceneManagement;
 public class HUDPresenter : MonoBehaviour
 {
     private const string HudRootName = "GeneratedHUD";
+    private const string MusicObjectName = "BattleArenaMusic";
     private const string ControlHintText = "A / D left-right   W / S up-down   Space / Left click fire   Right click / Missile button fire missile   R restart";
 
     public event Action RetryRequested;
     public event Action QuitRequested;
 
     [SerializeField] private bool showDebugPanel = true;
+    [SerializeField] private AudioClip battleMusicClip;
+    [SerializeField, Range(0f, 1f)] private float battleMusicVolume = 0.7f;
 
     private BossController bossController;
     private PlayerCombatController playerCombatController;
@@ -38,6 +41,10 @@ public class HUDPresenter : MonoBehaviour
     private Button missileButton;
     private Image missileButtonImage;
     private Text missileButtonLabel;
+    private Button musicButton;
+    private Image musicButtonImage;
+    private Text musicButtonLabel;
+    private AudioSource battleMusicSource;
     private GameObject missionFailedOverlay;
     private Button retryButton;
     private Button quitButton;
@@ -47,9 +54,13 @@ public class HUDPresenter : MonoBehaviour
 
     private string statusMessage = string.Empty;
     private float statusTimer;
+    private bool musicEnabled;
 
     private void Awake()
     {
+        RestoreRuntimeAudioOutput();
+        ResolveBattleMusicSource();
+        SetMusicEnabled(true, updateStatus: false);
         EnsureUiReferences();
     }
 
@@ -138,6 +149,7 @@ public class HUDPresenter : MonoBehaviour
         }
 
         UpdateMissileButtonState();
+        UpdateMusicButtonState();
     }
 
     public void Configure(BossController boss, PlayerCombatController player, PlayerOrbitController orbit)
@@ -253,7 +265,9 @@ public class HUDPresenter : MonoBehaviour
         }
 
         missingAuthoredUiWarningLogged = false;
+        EnsureMusicButton(hudRoot.transform);
         WireUiEvents();
+        UpdateMusicButtonState();
         if (missionFailedOverlay != null)
         {
             missionFailedOverlay.SetActive(false);
@@ -322,6 +336,9 @@ public class HUDPresenter : MonoBehaviour
         missileButton = FindUiComponent<Button>(hudRootTransform, "MissileButton");
         missileButtonImage = FindUiComponent<Image>(hudRootTransform, "MissileButton");
         missileButtonLabel = FindUiComponent<Text>(hudRootTransform, "MissileButton/MissileButtonLabel");
+        musicButton = FindUiComponent<Button>(hudRootTransform, "MusicButton");
+        musicButtonImage = FindUiComponent<Image>(hudRootTransform, "MusicButton");
+        musicButtonLabel = FindUiComponent<Text>(hudRootTransform, "MusicButton/MusicButtonLabel");
 
         missionFailedOverlay = FindUiTransform(hudRootTransform, "MissionFailedOverlay")?.gameObject;
         retryButton = FindUiComponent<Button>(hudRootTransform, "MissionFailedOverlay/Panel/RetryButton");
@@ -348,6 +365,12 @@ public class HUDPresenter : MonoBehaviour
         {
             missileButton.onClick.RemoveListener(FireMissile);
             missileButton.onClick.AddListener(FireMissile);
+        }
+
+        if (musicButton != null)
+        {
+            musicButton.onClick.RemoveListener(ToggleMusic);
+            musicButton.onClick.AddListener(ToggleMusic);
         }
 
         if (retryButton != null)
@@ -384,6 +407,9 @@ public class HUDPresenter : MonoBehaviour
         missileButton = null;
         missileButtonImage = null;
         missileButtonLabel = null;
+        musicButton = null;
+        musicButtonImage = null;
+        musicButtonLabel = null;
         missionFailedOverlay = null;
         retryButton = null;
         quitButton = null;
@@ -431,6 +457,51 @@ public class HUDPresenter : MonoBehaviour
         missileButtonLabel.text = ready
             ? "MISSILE\nREADY"
             : $"MISSILE\n{cooldownRemaining:0.0}s";
+    }
+
+    private void EnsureMusicButton(Transform hudRootTransform)
+    {
+        if (hudRootTransform == null)
+        {
+            return;
+        }
+
+        if (musicButton != null && musicButtonImage != null && musicButtonLabel != null)
+        {
+            musicButton.transform.SetAsLastSibling();
+            return;
+        }
+
+        Font runtimeFont = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+        musicButton = CreateAnchoredButton(
+            "MusicButton",
+            hudRootTransform,
+            runtimeFont,
+            "MUSIC\nOFF",
+            new Vector2(0f, 0f),
+            new Vector2(0f, 0f),
+            new Vector2(0f, 0f),
+            new Vector2(28f, 28f),
+            new Vector2(148f, 56f),
+            new Color(0.20f, 0.22f, 0.26f, 0.92f),
+            ToggleMusic,
+            out musicButtonImage,
+            out musicButtonLabel);
+        musicButton.transform.SetAsLastSibling();
+    }
+
+    private void UpdateMusicButtonState()
+    {
+        if (musicButton == null || musicButtonImage == null || musicButtonLabel == null)
+        {
+            return;
+        }
+
+        musicButton.interactable = battleMusicSource != null;
+        musicButtonImage.color = musicEnabled
+            ? new Color(0.18f, 0.48f, 0.44f, 0.96f)
+            : new Color(0.20f, 0.22f, 0.26f, 0.92f);
+        musicButtonLabel.text = musicEnabled ? "MUSIC\nON" : "MUSIC\nOFF";
     }
 
     private void BuildHudUi(Transform canvasTransform)
@@ -576,6 +647,21 @@ public class HUDPresenter : MonoBehaviour
             out _,
             out _);
 
+        CreateAnchoredButton(
+            "MusicButton",
+            runtimeHudRoot.transform,
+            runtimeFont,
+            "MUSIC\nOFF",
+            new Vector2(0f, 0f),
+            new Vector2(0f, 0f),
+            new Vector2(0f, 0f),
+            new Vector2(28f, 28f),
+            new Vector2(148f, 56f),
+            new Color(0.20f, 0.22f, 0.26f, 0.92f),
+            ToggleMusic,
+            out _,
+            out _);
+
         GameObject createdMissionFailedOverlay = FindOrCreateUiObject("MissionFailedOverlay", runtimeHudRoot.transform);
         Image overlayImage = createdMissionFailedOverlay.GetComponent<Image>() ?? createdMissionFailedOverlay.AddComponent<Image>();
         overlayImage.color = new Color(0.02f, 0.03f, 0.05f, 0.74f);
@@ -653,6 +739,83 @@ public class HUDPresenter : MonoBehaviour
         }
 
         SetStatusMessage(playerCombatController.GetMissileUnavailableReason());
+    }
+
+    private void ToggleMusic()
+    {
+        SetMusicEnabled(!musicEnabled, updateStatus: true);
+    }
+
+    private void SetMusicEnabled(bool enabled, bool updateStatus)
+    {
+        RestoreRuntimeAudioOutput();
+        ResolveBattleMusicSource();
+        musicEnabled = enabled && battleMusicSource != null && battleMusicSource.clip != null;
+        if (battleMusicSource != null)
+        {
+            battleMusicSource.mute = !musicEnabled;
+            if (musicEnabled)
+            {
+                if (!battleMusicSource.isPlaying)
+                {
+                    battleMusicSource.Play();
+                }
+            }
+            else
+            {
+                battleMusicSource.Stop();
+            }
+        }
+
+        UpdateMusicButtonState();
+        if (updateStatus)
+        {
+            SetStatusMessage(musicEnabled ? "Music on." : "Music off.");
+        }
+    }
+
+    private void ResolveBattleMusicSource()
+    {
+        if (battleMusicSource != null)
+        {
+            ConfigureBattleMusicSource();
+            return;
+        }
+
+        GameObject musicObject = GameObject.Find(MusicObjectName);
+        if (musicObject == null && battleMusicClip != null)
+        {
+            musicObject = new GameObject(MusicObjectName);
+        }
+
+        if (musicObject != null)
+        {
+            battleMusicSource = musicObject.GetComponent<AudioSource>() ?? musicObject.AddComponent<AudioSource>();
+            ConfigureBattleMusicSource();
+        }
+    }
+
+    private void ConfigureBattleMusicSource()
+    {
+        if (battleMusicSource == null)
+        {
+            return;
+        }
+
+        if (battleMusicSource.clip == null && battleMusicClip != null)
+        {
+            battleMusicSource.clip = battleMusicClip;
+        }
+
+        RuntimeAudioOutputGuard.PrimeClip(battleMusicSource.clip);
+        battleMusicSource.playOnAwake = false;
+        battleMusicSource.loop = true;
+        RuntimeAudioOutputGuard.ConfigureAlwaysAudible2D(battleMusicSource, battleMusicVolume);
+    }
+
+    private static void RestoreRuntimeAudioOutput()
+    {
+        RuntimeAudioOutputGuard.Restore();
     }
 
     private void HandleQuitButtonClicked()

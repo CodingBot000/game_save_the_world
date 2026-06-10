@@ -1,3 +1,4 @@
+using System.Collections;
 using UnityEngine;
 
 public class BossAttackController : MonoBehaviour
@@ -17,6 +18,12 @@ public class BossAttackController : MonoBehaviour
     [SerializeField] private string quickAttackTrigger = "Attack1";
     [SerializeField] private string heavyAttackTrigger = "Attack2";
     [SerializeField] private float minimumAnimationRetriggerInterval = 0.25f;
+    [SerializeField, Min(0.1f)] private float projectileScaleMultiplier = 2.5f;
+    [SerializeField] private bool playCosmeticProjectileBurst = true;
+    [SerializeField, Min(0)] private int cosmeticProjectileBurstCount = 2;
+    [SerializeField, Min(0f)] private float cosmeticProjectileBurstInterval = 0.08f;
+    [SerializeField, Min(0.01f)] private float cosmeticProjectileLifetime = 1.1f;
+    [SerializeField, Min(0.01f)] private float cosmeticProjectileSpeedMultiplier = 1f;
 
     private BattleController battleController;
     private BossController bossController;
@@ -32,6 +39,7 @@ public class BossAttackController : MonoBehaviour
     public float DebugEnragedAttackInterval => enragedAttackInterval;
     public int DebugSpreadShotCount => spreadShotCount;
     public float DebugSpreadAngle => spreadAngle;
+    public float DebugProjectileScaleMultiplier => projectileScaleMultiplier;
     public float CurrentAttackInterval => Mathf.Lerp(enragedAttackInterval, baseAttackInterval, bossController != null ? bossController.HealthRatio : 1f);
     public Vector3 CurrentFireOrigin => firePoint != null ? firePoint.position : (bossController != null ? bossController.HitPoint : transform.position);
     public Vector3 CurrentBossCenter => bossController != null ? bossController.HitPoint : transform.position;
@@ -86,7 +94,12 @@ public class BossAttackController : MonoBehaviour
         }
     }
 
-    public void Configure(BattleController owner, BossController boss, PlayerCombatController player, GameObject projectileTemplateSource)
+    public void Configure(
+        BattleController owner,
+        BossController boss,
+        PlayerCombatController player,
+        GameObject projectileTemplateSource,
+        PlayerOrbitController playerOrbit = null)
     {
         battleController = owner;
         bossController = boss;
@@ -103,7 +116,7 @@ public class BossAttackController : MonoBehaviour
         bulletPatternController ??= GetComponent<BossBulletPatternController>();
         if (bulletPatternController != null)
         {
-            bulletPatternController.Configure(this, owner, boss, player);
+            bulletPatternController.Configure(this, owner, boss, player, playerOrbit);
         }
     }
 
@@ -118,6 +131,11 @@ public class BossAttackController : MonoBehaviour
     {
         projectileSpeed = Mathf.Max(0f, speed);
         projectileDamage = Mathf.Max(0f, damage);
+    }
+
+    public void SetProjectileScaleMultiplierForDebug(float scaleMultiplier)
+    {
+        projectileScaleMultiplier = Mathf.Max(0.01f, scaleMultiplier);
     }
 
     public void SetLegacySpreadForDebug(int shotCount, float angle)
@@ -140,7 +158,14 @@ public class BossAttackController : MonoBehaviour
             ResolveTriggerName(quickAttackTrigger, DefaultQuickAttackTrigger));
     }
 
-    public ProjectileController SpawnProjectile(Vector3 origin, Vector3 direction, float speed, float damage, string runtimeName = "BossProjectileRuntime")
+    public ProjectileController SpawnProjectile(
+        Vector3 origin,
+        Vector3 direction,
+        float speed,
+        float damage,
+        string runtimeName = "BossProjectileRuntime",
+        float scaleMultiplier = 1f,
+        bool spawnCosmeticBurst = true)
     {
         if (projectileTemplate == null || battleController == null)
         {
@@ -153,15 +178,50 @@ public class BossAttackController : MonoBehaviour
         // continues to own visuals and hitbox behavior so future bullet styles can swap freely.
         GameObject projectileInstance = Instantiate(projectileTemplate, origin, Quaternion.LookRotation(normalizedDirection));
         projectileInstance.name = runtimeName;
+        float clampedScaleMultiplier = ResolveProjectileScaleMultiplier(scaleMultiplier);
+        if (!Mathf.Approximately(clampedScaleMultiplier, 1f))
+        {
+            projectileInstance.transform.localScale *= clampedScaleMultiplier;
+        }
+
         projectileInstance.SetActive(true);
 
         ProjectileController projectile = projectileInstance.GetComponent<ProjectileController>();
         if (projectile != null)
         {
+            projectile.SetFallbackHitRadiusMultiplier(clampedScaleMultiplier);
             projectile.Launch(battleController, ProjectileTeam.Boss, normalizedDirection, speed, damage);
         }
 
+        if (spawnCosmeticBurst)
+        {
+            PlayCosmeticProjectileBurst(origin, normalizedDirection, speed, clampedScaleMultiplier, runtimeName);
+        }
+
         return projectile;
+    }
+
+    public void SpawnVisualOnlyProjectile(
+        Vector3 origin,
+        Vector3 direction,
+        float speed,
+        float scaleMultiplier = 1f,
+        string runtimeName = "BossProjectileVisualOnly",
+        float lifetimeOverride = -1f)
+    {
+        if (projectileTemplate == null)
+        {
+            return;
+        }
+
+        Vector3 normalizedDirection = direction.sqrMagnitude > 0.0001f ? direction.normalized : Vector3.forward;
+        SpawnCosmeticProjectile(
+            origin,
+            normalizedDirection,
+            Mathf.Max(0f, speed),
+            ResolveProjectileScaleMultiplier(scaleMultiplier),
+            runtimeName,
+            lifetimeOverride);
     }
 
     private void FireLegacyDirectShot()
@@ -188,7 +248,92 @@ public class BossAttackController : MonoBehaviour
         {
             float angle = start + step * i;
             Vector3 direction = centerRotation * Quaternion.AngleAxis(angle, Vector3.up) * Vector3.forward;
-            SpawnProjectile(origin, direction, spreadProjectileSpeed, projectileDamage * 0.7f);
+            SpawnProjectile(origin, direction, spreadProjectileSpeed, projectileDamage * 0.7f, spawnCosmeticBurst: false);
+        }
+    }
+
+    public float ResolveProjectileScaleMultiplier(float scaleMultiplier)
+    {
+        return Mathf.Max(0.01f, scaleMultiplier) * Mathf.Max(0.01f, projectileScaleMultiplier);
+    }
+
+    private void PlayCosmeticProjectileBurst(
+        Vector3 origin,
+        Vector3 direction,
+        float speed,
+        float resolvedScaleMultiplier,
+        string sourceRuntimeName)
+    {
+        if (!playCosmeticProjectileBurst || cosmeticProjectileBurstCount <= 0 || projectileTemplate == null)
+        {
+            return;
+        }
+
+        StartCoroutine(SpawnCosmeticProjectileBurstRoutine(
+            origin,
+            direction,
+            Mathf.Max(0f, speed),
+            Mathf.Max(0.01f, resolvedScaleMultiplier),
+            string.IsNullOrEmpty(sourceRuntimeName) ? "BossProjectileRuntime" : sourceRuntimeName));
+    }
+
+    private IEnumerator SpawnCosmeticProjectileBurstRoutine(
+        Vector3 origin,
+        Vector3 direction,
+        float speed,
+        float resolvedScaleMultiplier,
+        string sourceRuntimeName)
+    {
+        Vector3 normalizedDirection = direction.sqrMagnitude > 0.0001f ? direction.normalized : Vector3.forward;
+        float interval = Mathf.Max(0f, cosmeticProjectileBurstInterval);
+        for (int i = 0; i < cosmeticProjectileBurstCount; i++)
+        {
+            if (interval > 0f)
+            {
+                yield return new WaitForSeconds(interval);
+            }
+
+            SpawnCosmeticProjectile(
+                origin,
+                normalizedDirection,
+                speed * Mathf.Max(0.01f, cosmeticProjectileSpeedMultiplier),
+                resolvedScaleMultiplier,
+                $"{sourceRuntimeName}_VisualOnly_{i + 1}");
+        }
+    }
+
+    private void SpawnCosmeticProjectile(
+        Vector3 origin,
+        Vector3 direction,
+        float speed,
+        float resolvedScaleMultiplier,
+        string runtimeName,
+        float lifetimeOverride = -1f)
+    {
+        GameObject projectileInstance = Instantiate(projectileTemplate, origin, Quaternion.LookRotation(direction));
+        projectileInstance.name = runtimeName;
+        projectileInstance.transform.localScale *= resolvedScaleMultiplier;
+        StripGameplayFromCosmeticProjectile(projectileInstance);
+        projectileInstance.SetActive(true);
+
+        BossCosmeticProjectileRuntime runtime = projectileInstance.AddComponent<BossCosmeticProjectileRuntime>();
+        float lifetime = lifetimeOverride > 0f ? lifetimeOverride : cosmeticProjectileLifetime;
+        runtime.Launch(direction, speed, lifetime);
+    }
+
+    private static void StripGameplayFromCosmeticProjectile(GameObject projectileInstance)
+    {
+        ProjectileController[] projectileControllers = projectileInstance.GetComponentsInChildren<ProjectileController>(true);
+        for (int i = 0; i < projectileControllers.Length; i++)
+        {
+            projectileControllers[i].enabled = false;
+            Destroy(projectileControllers[i]);
+        }
+
+        Collider[] colliders = projectileInstance.GetComponentsInChildren<Collider>(true);
+        for (int i = 0; i < colliders.Length; i++)
+        {
+            colliders[i].enabled = false;
         }
     }
 
@@ -228,5 +373,28 @@ public class BossAttackController : MonoBehaviour
     private static string ResolveTriggerName(string configuredTriggerName, string fallbackTriggerName)
     {
         return string.IsNullOrEmpty(configuredTriggerName) ? fallbackTriggerName : configuredTriggerName;
+    }
+}
+
+public class BossCosmeticProjectileRuntime : MonoBehaviour
+{
+    private Vector3 velocity;
+    private float remainingLifetime;
+
+    public void Launch(Vector3 direction, float speed, float lifetime)
+    {
+        Vector3 normalizedDirection = direction.sqrMagnitude > 0.0001f ? direction.normalized : Vector3.forward;
+        velocity = normalizedDirection * Mathf.Max(0f, speed);
+        remainingLifetime = Mathf.Max(0.05f, lifetime);
+    }
+
+    private void Update()
+    {
+        transform.position += velocity * Time.deltaTime;
+        remainingLifetime -= Time.deltaTime;
+        if (remainingLifetime <= 0f || transform.position.magnitude > 120f || transform.position.y < -10f)
+        {
+            Destroy(gameObject);
+        }
     }
 }

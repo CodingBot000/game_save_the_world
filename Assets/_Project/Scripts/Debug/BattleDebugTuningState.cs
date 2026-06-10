@@ -53,10 +53,13 @@ public enum BattleTuningKey
     BossEnragedAttackInterval,
     BossProjectileSpeed,
     BossProjectileDamage,
+    BossProjectileScaleMultiplier,
 
     BossPatternStartupDelay,
     BossPatternAimedBurstShotInterval,
     BossPatternWarningLineThickness,
+    BossPatternAttackSizeMultiplier,
+    BossPatternMinimumTelegraphThickness,
 }
 
 public enum BossPatternTuningKey
@@ -82,6 +85,25 @@ public enum BossPatternTuningKey
     WarningDepth,
     OverheadHeight,
     SplitDistance,
+    ProjectileScale,
+    ActiveDuration,
+    HazardRadius,
+    HazardThickness,
+    InterruptDamageThreshold,
+    SafeRadius,
+    MinimumSpacing,
+    FixedDuration,
+    SlowDuration,
+    FastDuration,
+    TrackingDuration,
+    TrackingTurnRate,
+    BeamWarmupTrackingSpeedMultiplier,
+    BeamActiveTrackingSpeedMultiplier,
+    AimJitterPlayerScale,
+    ApproachStartScale,
+    ApproachEndScale,
+    ApproachInitialSpeedMultiplier,
+    ApproachFlightDuration,
 }
 
 public static class BattleDebugTuningState

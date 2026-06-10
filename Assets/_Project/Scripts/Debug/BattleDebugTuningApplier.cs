@@ -156,12 +156,15 @@ public class BattleDebugTuningApplier : MonoBehaviour
             case BattleTuningKey.BossEnragedAttackInterval:
             case BattleTuningKey.BossProjectileSpeed:
             case BattleTuningKey.BossProjectileDamage:
+            case BattleTuningKey.BossProjectileScaleMultiplier:
                 ApplyBossAttack();
                 break;
 
             case BattleTuningKey.BossPatternStartupDelay:
             case BattleTuningKey.BossPatternAimedBurstShotInterval:
             case BattleTuningKey.BossPatternWarningLineThickness:
+            case BattleTuningKey.BossPatternAttackSizeMultiplier:
+            case BattleTuningKey.BossPatternMinimumTelegraphThickness:
                 ApplyBossPatternTiming();
                 break;
         }
@@ -304,6 +307,8 @@ public class BattleDebugTuningApplier : MonoBehaviour
         BossAttack.SetProjectileTuningForDebug(
             ResolveFloat(BattleTuningKey.BossProjectileSpeed, BossAttack.BaseProjectileSpeed),
             ResolveFloat(BattleTuningKey.BossProjectileDamage, BossAttack.BaseProjectileDamage));
+        BossAttack.SetProjectileScaleMultiplierForDebug(
+            ResolveFloat(BattleTuningKey.BossProjectileScaleMultiplier, BossAttack.DebugProjectileScaleMultiplier));
     }
 
     private void ApplyBossPatternTiming()
@@ -316,7 +321,9 @@ public class BattleDebugTuningApplier : MonoBehaviour
         BossPatterns.SetTimingForDebug(
             ResolveFloat(BattleTuningKey.BossPatternStartupDelay, BossPatterns.DebugStartupDelay),
             ResolveFloat(BattleTuningKey.BossPatternAimedBurstShotInterval, BossPatterns.DebugAimedBurstShotInterval),
-            ResolveFloat(BattleTuningKey.BossPatternWarningLineThickness, BossPatterns.DebugWarningLineThickness));
+            ResolveFloat(BattleTuningKey.BossPatternWarningLineThickness, BossPatterns.DebugWarningLineThickness),
+            ResolveFloat(BattleTuningKey.BossPatternAttackSizeMultiplier, BossPatterns.DebugAttackSizeMultiplier),
+            ResolveFloat(BattleTuningKey.BossPatternMinimumTelegraphThickness, BossPatterns.DebugMinimumTelegraphThickness));
     }
 
     private void ApplyAllPatternOverrides()

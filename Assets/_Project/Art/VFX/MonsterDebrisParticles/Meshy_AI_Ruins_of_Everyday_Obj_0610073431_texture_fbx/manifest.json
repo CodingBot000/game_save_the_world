@@ -1,0 +1,371 @@
+{
+  "source_folder": "/Users/switch/Development/game/Planning/EscapeConvoyPlanning/images/need_separate_3dmodel/Meshy_AI_Ruins_of_Everyday_Obj_0610073431_texture_fbx",
+  "source_model": "Meshy_AI_Ruins_of_Everyday_Obj_0610073431_texture.fbx",
+  "output_folder": "/Users/switch/Development/game/Planning/EscapeConvoyPlanning/exports/Meshy_AI_Ruins_of_Everyday_Obj_0610073431_texture_fbx",
+  "part_count": 22,
+  "skipped_tiny_or_empty_parts": 0,
+  "textures": [
+    "Image_0.jpg",
+    "Image_3.jpg",
+    "Meshy_AI_Ruins_of_Everyday_Obj_0610073431_texture.png",
+    "Meshy_AI_Ruins_of_Everyday_Obj_0610073431_texture_emission.png",
+    "Meshy_AI_Ruins_of_Everyday_Obj_0610073431_texture_metallic.png",
+    "Meshy_AI_Ruins_of_Everyday_Obj_0610073431_texture_normal.png",
+    "Meshy_AI_Ruins_of_Everyday_Obj_0610073431_texture_roughness.png",
+    "normal.png"
+  ],
+  "parts": [
+    {
+      "file": "part_001_Mesh_0.014.fbx",
+      "source_object": "Mesh_0.014",
+      "vertices": 150,
+      "faces": 300,
+      "dimensions": [
+        0.164158,
+        0.220776,
+        0.248322
+      ],
+      "center": [
+        -0.862887,
+        0.09606,
+        -0.396379
+      ]
+    },
+    {
+      "file": "part_002_Mesh_0.019.fbx",
+      "source_object": "Mesh_0.019",
+      "vertices": 645,
+      "faces": 1293,
+      "dimensions": [
+        0.27908,
+        0.358545,
+        0.400803
+      ],
+      "center": [
+        -0.814736,
+        -0.544848,
+        -0.339321
+      ]
+    },
+    {
+      "file": "part_003_Mesh_0.004.fbx",
+      "source_object": "Mesh_0.004",
+      "vertices": 901,
+      "faces": 1799,
+      "dimensions": [
+        0.304976,
+        0.383685,
+        0.343701
+      ],
+      "center": [
+        -0.795452,
+        0.395277,
+        0.381772
+      ]
+    },
+    {
+      "file": "part_004_Mesh_0.007.fbx",
+      "source_object": "Mesh_0.007",
+      "vertices": 1050,
+      "faces": 2115,
+      "dimensions": [
+        0.343251,
+        0.225737,
+        0.35287
+      ],
+      "center": [
+        -0.783166,
+        0.399245,
+        -0.116234
+      ]
+    },
+    {
+      "file": "part_005_Mesh_0.015.fbx",
+      "source_object": "Mesh_0.015",
+      "vertices": 295,
+      "faces": 586,
+      "dimensions": [
+        0.260752,
+        0.330307,
+        0.270799
+      ],
+      "center": [
+        -0.684093,
+        0.040801,
+        -0.414309
+      ]
+    },
+    {
+      "file": "part_006_Mesh_0.013.fbx",
+      "source_object": "Mesh_0.013",
+      "vertices": 275,
+      "faces": 567,
+      "dimensions": [
+        0.197907,
+        0.257738,
+        0.140144
+      ],
+      "center": [
+        -0.481374,
+        0.086685,
+        -0.473975
+      ]
+    },
+    {
+      "file": "part_007_Mesh_0.018.fbx",
+      "source_object": "Mesh_0.018",
+      "vertices": 1285,
+      "faces": 2633,
+      "dimensions": [
+        0.427743,
+        0.316733,
+        0.284673
+      ],
+      "center": [
+        -0.358263,
+        -0.47712,
+        -0.402834
+      ]
+    },
+    {
+      "file": "part_008_Mesh_0.001.fbx",
+      "source_object": "Mesh_0.001",
+      "vertices": 950,
+      "faces": 1919,
+      "dimensions": [
+        0.410452,
+        0.347922,
+        0.233534
+      ],
+      "center": [
+        -0.343537,
+        0.438511,
+        0.304684
+      ]
+    },
+    {
+      "file": "part_009_Mesh_0.fbx",
+      "source_object": "Mesh_0",
+      "vertices": 1469,
+      "faces": 2942,
+      "dimensions": [
+        0.470314,
+        0.478236,
+        0.302694
+      ],
+      "center": [
+        -0.296669,
+        0.55847,
+        -0.193575
+      ]
+    },
+    {
+      "file": "part_010_Mesh_0.006.fbx",
+      "source_object": "Mesh_0.006",
+      "vertices": 1069,
+      "faces": 2144,
+      "dimensions": [
+        0.399228,
+        0.587004,
+        0.278246
+      ],
+      "center": [
+        -0.099066,
+        0.231973,
+        -0.416799
+      ]
+    },
+    {
+      "file": "part_011_Mesh_0.009.fbx",
+      "source_object": "Mesh_0.009",
+      "vertices": 141,
+      "faces": 278,
+      "dimensions": [
+        0.201192,
+        0.116124,
+        0.035357
+      ],
+      "center": [
+        0.100376,
+        0.356441,
+        0.161219
+      ]
+    },
+    {
+      "file": "part_012_Mesh_0.005.fbx",
+      "source_object": "Mesh_0.005",
+      "vertices": 602,
+      "faces": 1204,
+      "dimensions": [
+        0.284484,
+        0.350777,
+        0.277721
+      ],
+      "center": [
+        0.105147,
+        0.384896,
+        0.348681
+      ]
+    },
+    {
+      "file": "part_013_Mesh_0.021.fbx",
+      "source_object": "Mesh_0.021",
+      "vertices": 1105,
+      "faces": 2233,
+      "dimensions": [
+        0.364667,
+        0.222958,
+        0.315738
+      ],
+      "center": [
+        0.17702,
+        -0.61918,
+        -0.387096
+      ]
+    },
+    {
+      "file": "part_014_Mesh_0.003.fbx",
+      "source_object": "Mesh_0.003",
+      "vertices": 702,
+      "faces": 1419,
+      "dimensions": [
+        0.515646,
+        0.25233,
+        0.269691
+      ],
+      "center": [
+        0.292619,
+        0.459485,
+        -0.234861
+      ]
+    },
+    {
+      "file": "part_015_Mesh_0.016.fbx",
+      "source_object": "Mesh_0.016",
+      "vertices": 557,
+      "faces": 1132,
+      "dimensions": [
+        0.231735,
+        0.219956,
+        0.295031
+      ],
+      "center": [
+        0.420099,
+        0.034686,
+        -0.400969
+      ]
+    },
+    {
+      "file": "part_016_Mesh_0.008.fbx",
+      "source_object": "Mesh_0.008",
+      "vertices": 254,
+      "faces": 508,
+      "dimensions": [
+        0.177735,
+        0.182698,
+        0.334425
+      ],
+      "center": [
+        0.453921,
+        0.340364,
+        0.321809
+      ]
+    },
+    {
+      "file": "part_017_Mesh_0.002.fbx",
+      "source_object": "Mesh_0.002",
+      "vertices": 752,
+      "faces": 1509,
+      "dimensions": [
+        0.249059,
+        0.452794,
+        0.365089
+      ],
+      "center": [
+        0.482048,
+        0.384514,
+        0.31966
+      ]
+    },
+    {
+      "file": "part_018_Mesh_0.020.fbx",
+      "source_object": "Mesh_0.020",
+      "vertices": 586,
+      "faces": 1169,
+      "dimensions": [
+        0.427027,
+        0.384945,
+        0.247245
+      ],
+      "center": [
+        0.659787,
+        -0.601627,
+        -0.424161
+      ]
+    },
+    {
+      "file": "part_019_Mesh_0.010.fbx",
+      "source_object": "Mesh_0.010",
+      "vertices": 425,
+      "faces": 854,
+      "dimensions": [
+        0.297994,
+        0.374511,
+        0.315169
+      ],
+      "center": [
+        0.745261,
+        0.114976,
+        -0.048732
+      ]
+    },
+    {
+      "file": "part_020_Mesh_0.017.fbx",
+      "source_object": "Mesh_0.017",
+      "vertices": 103,
+      "faces": 210,
+      "dimensions": [
+        0.101398,
+        0.09925,
+        0.027261
+      ],
+      "center": [
+        0.766286,
+        -0.054396,
+        -0.473981
+      ]
+    },
+    {
+      "file": "part_021_Mesh_0.011.fbx",
+      "source_object": "Mesh_0.011",
+      "vertices": 417,
+      "faces": 829,
+      "dimensions": [
+        0.29211,
+        0.267878,
+        0.332951
+      ],
+      "center": [
+        0.790794,
+        0.110916,
+        0.373349
+      ]
+    },
+    {
+      "file": "part_022_Mesh_0.012.fbx",
+      "source_object": "Mesh_0.012",
+      "vertices": 1190,
+      "faces": 2386,
+      "dimensions": [
+        0.313694,
+        0.391225,
+        0.312192
+      ],
+      "center": [
+        0.796315,
+        0.039775,
+        -0.38875
+      ]
+    }
+  ]
+}

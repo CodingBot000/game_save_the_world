@@ -416,6 +416,10 @@ PrefabInstance:
       propertyPath: m_Name
       value: StageVisual_TestMap
       objectReference: {fileID: 0}
+    - target: {fileID: 919132149155446097, guid: fef453418ba8b4172ac5b3281b0bb908, type: 3}
+      propertyPath: m_IsActive
+      value: 0
+      objectReference: {fileID: 0}
     m_RemovedComponents: []
     m_RemovedGameObjects: []
     m_AddedGameObjects: []
@@ -426,6 +430,37 @@ Transform:
   m_CorrespondingSourceObject: {fileID: -8679921383154817045, guid: fef453418ba8b4172ac5b3281b0bb908, type: 3}
   m_PrefabInstance: {fileID: 221619313}
   m_PrefabAsset: {fileID: 0}
+--- !u!1 &234310930
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 234310931}
+  m_Layer: 0
+  m_Name: BossFootDebrisFirePoint2
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &234310931
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 234310930}
+  serializedVersion: 2
+  m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
+  m_LocalPosition: {x: 2.28, y: 0.29, z: 1.07}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 2136976777075452831}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &276394270
 GameObject:
   m_ObjectHideFlags: 0
@@ -1496,6 +1531,8 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::HUDPresenter
   showDebugPanel: 1
+  battleMusicClip: {fileID: 8300000, guid: a382ec1039316458e85de84e272f385f, type: 3}
+  battleMusicVolume: 0.7
 --- !u!114 &745161329
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -1732,7 +1769,7 @@ AudioSource:
   m_Volume: 0.7
   m_Pitch: 1
   Loop: 1
-  Mute: 1
+  Mute: 0
   Spatialize: 0
   SpatializePostEffects: 0
   Priority: 128
@@ -2824,6 +2861,119 @@ Transform:
   m_Children: []
   m_Father: {fileID: 745161324}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!1 &1399756401
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 1399756402}
+  m_Layer: 0
+  m_Name: BossFootDebrisFirePoint1
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &1399756402
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1399756401}
+  serializedVersion: 2
+  m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
+  m_LocalPosition: {x: -0.66, y: -0.14, z: 1.07}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 2136976777075452831}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!1001 &1419665091
+PrefabInstance:
+  m_ObjectHideFlags: 0
+  serializedVersion: 2
+  m_Modification:
+    serializedVersion: 3
+    m_TransformParent: {fileID: 2056611780}
+    m_Modifications:
+    - target: {fileID: -8679921383154817045, guid: 7351dea185c804fc7922060ffdcf1420, type: 3}
+      propertyPath: m_LocalScale.x
+      value: 2803.433
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: 7351dea185c804fc7922060ffdcf1420, type: 3}
+      propertyPath: m_LocalScale.y
+      value: 2803.433
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: 7351dea185c804fc7922060ffdcf1420, type: 3}
+      propertyPath: m_LocalScale.z
+      value: 6222.647
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: 7351dea185c804fc7922060ffdcf1420, type: 3}
+      propertyPath: m_LocalPosition.x
+      value: -0.014806315
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: 7351dea185c804fc7922060ffdcf1420, type: 3}
+      propertyPath: m_LocalPosition.y
+      value: 10.06
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: 7351dea185c804fc7922060ffdcf1420, type: 3}
+      propertyPath: m_LocalPosition.z
+      value: 0.03
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: 7351dea185c804fc7922060ffdcf1420, type: 3}
+      propertyPath: m_LocalRotation.w
+      value: 0.7071068
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: 7351dea185c804fc7922060ffdcf1420, type: 3}
+      propertyPath: m_LocalRotation.x
+      value: -0.7071068
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: 7351dea185c804fc7922060ffdcf1420, type: 3}
+      propertyPath: m_LocalRotation.y
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: 7351dea185c804fc7922060ffdcf1420, type: 3}
+      propertyPath: m_LocalRotation.z
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: 7351dea185c804fc7922060ffdcf1420, type: 3}
+      propertyPath: m_LocalEulerAnglesHint.x
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: 7351dea185c804fc7922060ffdcf1420, type: 3}
+      propertyPath: m_LocalEulerAnglesHint.y
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: 7351dea185c804fc7922060ffdcf1420, type: 3}
+      propertyPath: m_LocalEulerAnglesHint.z
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: -7511558181221131132, guid: 7351dea185c804fc7922060ffdcf1420, type: 3}
+      propertyPath: m_CastShadows
+      value: 2
+      objectReference: {fileID: 0}
+    - target: {fileID: -7511558181221131132, guid: 7351dea185c804fc7922060ffdcf1420, type: 3}
+      propertyPath: 'm_Materials.Array.data[0]'
+      value: 
+      objectReference: {fileID: 2100000, guid: 0d7206a69bee246568d611d7f677cfab, type: 2}
+    - target: {fileID: 919132149155446097, guid: 7351dea185c804fc7922060ffdcf1420, type: 3}
+      propertyPath: m_Name
+      value: StageVisual_RoundRuinsBackground_Test
+      objectReference: {fileID: 0}
+    m_RemovedComponents: []
+    m_RemovedGameObjects: []
+    m_AddedGameObjects: []
+    m_AddedComponents: []
+  m_SourcePrefab: {fileID: 100100000, guid: 7351dea185c804fc7922060ffdcf1420, type: 3}
+--- !u!4 &1419665092 stripped
+Transform:
+  m_CorrespondingSourceObject: {fileID: -8679921383154817045, guid: 7351dea185c804fc7922060ffdcf1420, type: 3}
+  m_PrefabInstance: {fileID: 1419665091}
+  m_PrefabAsset: {fileID: 0}
 --- !u!4 &1430395488 stripped
 Transform:
   m_CorrespondingSourceObject: {fileID: 5221743100000000001, guid: 1bf703432b7d34927bba0f996294225b, type: 3}
@@ -3474,14 +3624,14 @@ Transform:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1623732983}
   serializedVersion: 2
-  m_LocalRotation: {x: 0.23886253, y: -0.055287868, z: -0.021267772, w: 0.9692449}
-  m_LocalPosition: {x: -7.75, y: 16.99, z: -21.92}
+  m_LocalRotation: {x: 0.23755956, y: -0.060642466, z: 0.00052190427, w: 0.969478}
+  m_LocalPosition: {x: 1.36, y: 16.37, z: -21.03}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children:
   - {fileID: 1857182175}
   m_Father: {fileID: 516902304}
-  m_LocalEulerAnglesHint: {x: 27.431, y: -7.597, z: -4.371}
+  m_LocalEulerAnglesHint: {x: 27.431, y: -7.597, z: -1.795}
 --- !u!81 &1623732985
 AudioListener:
   m_ObjectHideFlags: 0
@@ -3741,7 +3891,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!114 &1654763358
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -5279,6 +5429,7 @@ Transform:
   m_ConstrainProportionsScale: 0
   m_Children:
   - {fileID: 221619314}
+  - {fileID: 1419665092}
   m_Father: {fileID: 402230244}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!114 &2056611781
@@ -5726,6 +5877,12 @@ PrefabInstance:
     m_AddedGameObjects:
     - targetCorrespondingSourceObject: {fileID: 3530013549960574596, guid: 3691f05105cbb4aaab25baf51fc81f33, type: 3}
       insertIndex: -1
+      addedObject: {fileID: 1399756402}
+    - targetCorrespondingSourceObject: {fileID: 3530013549960574596, guid: 3691f05105cbb4aaab25baf51fc81f33, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 234310931}
+    - targetCorrespondingSourceObject: {fileID: 3530013549960574596, guid: 3691f05105cbb4aaab25baf51fc81f33, type: 3}
+      insertIndex: -1
       addedObject: {fileID: 728299068}
     m_AddedComponents:
     - targetCorrespondingSourceObject: {fileID: 2016219895108238417, guid: 3691f05105cbb4aaab25baf51fc81f33, type: 3}
@@ -5774,6 +5931,15 @@ MonoBehaviour:
   startupDelay: 1
   aimedBurstShotInterval: 0.14
   warningLineThickness: 0.045
+  activePatternSet: 1
+  attackSizeMultiplier: 2.5
+  minimumTelegraphThickness: 0.3
+  debrisFragmentStompCount: 2
+  debrisFragmentStompDuration: 0.2
+  debrisFragmentJumpHeightRatio: 0.1
+  debrisFragmentStompShakeDuration: 0.1
+  debrisFragmentStompShakeAmplitude: 0.24
+  debrisFragmentCatalog: {fileID: 0}
   patternSequence:
   - displayName: Fan Spread
     patternType: 0
@@ -5798,6 +5964,25 @@ MonoBehaviour:
     warningDepth: 1.3
     overheadHeight: 12
     splitDistance: 11
+    projectileScale: 1
+    activeDuration: 1
+    hazardRadius: 16
+    hazardThickness: 1.4
+    interruptDamageThreshold: 120
+    safeRadius: 2.5
+    minimumSpacing: 4
+    fixedDuration: 0.5
+    slowDuration: 0.4
+    fastDuration: 0.5
+    trackingDuration: 3
+    trackingTurnRate: 28
+    beamWarmupTrackingSpeedMultiplier: 0.5
+    beamActiveTrackingSpeedMultiplier: 0.4
+    aimJitterPlayerScale: 2
+    approachStartScale: 0.25
+    approachEndScale: 0.7
+    approachInitialSpeedMultiplier: 0.5
+    approachFlightDuration: 1
   - displayName: Aimed Burst
     patternType: 1
     enabled: 1
@@ -5821,6 +6006,25 @@ MonoBehaviour:
     warningDepth: 1.3
     overheadHeight: 12
     splitDistance: 11
+    projectileScale: 1
+    activeDuration: 1
+    hazardRadius: 16
+    hazardThickness: 1.4
+    interruptDamageThreshold: 120
+    safeRadius: 2.5
+    minimumSpacing: 4
+    fixedDuration: 0.5
+    slowDuration: 0.4
+    fastDuration: 0.5
+    trackingDuration: 3
+    trackingTurnRate: 28
+    beamWarmupTrackingSpeedMultiplier: 0.5
+    beamActiveTrackingSpeedMultiplier: 0.4
+    aimJitterPlayerScale: 2
+    approachStartScale: 0.25
+    approachEndScale: 0.7
+    approachInitialSpeedMultiplier: 0.5
+    approachFlightDuration: 1
   - displayName: Spiral Ring
     patternType: 2
     enabled: 1
@@ -5844,6 +6048,25 @@ MonoBehaviour:
     warningDepth: 1.3
     overheadHeight: 12
     splitDistance: 11
+    projectileScale: 1
+    activeDuration: 1
+    hazardRadius: 16
+    hazardThickness: 1.4
+    interruptDamageThreshold: 120
+    safeRadius: 2.5
+    minimumSpacing: 4
+    fixedDuration: 0.5
+    slowDuration: 0.4
+    fastDuration: 0.5
+    trackingDuration: 3
+    trackingTurnRate: 28
+    beamWarmupTrackingSpeedMultiplier: 0.5
+    beamActiveTrackingSpeedMultiplier: 0.4
+    aimJitterPlayerScale: 2
+    approachStartScale: 0.25
+    approachEndScale: 0.7
+    approachInitialSpeedMultiplier: 0.5
+    approachFlightDuration: 1
   - displayName: Falling Bomb
     patternType: 3
     enabled: 1
@@ -5867,6 +6090,25 @@ MonoBehaviour:
     warningDepth: 1.4
     overheadHeight: 12
     splitDistance: 11
+    projectileScale: 1
+    activeDuration: 1
+    hazardRadius: 16
+    hazardThickness: 1.4
+    interruptDamageThreshold: 120
+    safeRadius: 2.5
+    minimumSpacing: 4
+    fixedDuration: 0.5
+    slowDuration: 0.4
+    fastDuration: 0.5
+    trackingDuration: 3
+    trackingTurnRate: 28
+    beamWarmupTrackingSpeedMultiplier: 0.5
+    beamActiveTrackingSpeedMultiplier: 0.4
+    aimJitterPlayerScale: 2
+    approachStartScale: 0.25
+    approachEndScale: 0.7
+    approachInitialSpeedMultiplier: 0.5
+    approachFlightDuration: 1
   - displayName: Split Shot
     patternType: 4
     enabled: 1
@@ -5890,6 +6132,194 @@ MonoBehaviour:
     warningDepth: 1.3
     overheadHeight: 12
     splitDistance: 11
+    projectileScale: 1
+    activeDuration: 1
+    hazardRadius: 16
+    hazardThickness: 1.4
+    interruptDamageThreshold: 120
+    safeRadius: 2.5
+    minimumSpacing: 4
+    fixedDuration: 0.5
+    slowDuration: 0.4
+    fastDuration: 0.5
+    trackingDuration: 3
+    trackingTurnRate: 28
+    beamWarmupTrackingSpeedMultiplier: 0.5
+    beamActiveTrackingSpeedMultiplier: 0.4
+    aimJitterPlayerScale: 2
+    approachStartScale: 0.25
+    approachEndScale: 0.7
+    approachInitialSpeedMultiplier: 0.5
+    approachFlightDuration: 1
+  kaijuHeavyThreatSequence:
+  - displayName: Debris Fragment Scatter
+    patternType: 12
+    enabled: 1
+    minHealthRatio: 0
+    maxHealthRatio: 1
+    cooldownMultiplier: 0.9
+    projectileCount: 10
+    secondaryProjectileCount: 7
+    burstCount: 1
+    burstInterval: 0.025
+    spreadAngle: 30
+    speedMultiplier: 0.25
+    secondarySpeedMultiplier: 1
+    damageMultiplier: 0.35
+    secondaryDamageMultiplier: 1
+    ringRotationStep: 18
+    telegraphDuration: 0.25
+    flashingDuration: 0.4
+    warningWidth: 0.65
+    warningHeight: 10
+    warningDepth: 1.3
+    overheadHeight: 12
+    splitDistance: 11
+    projectileScale: 0.45
+    activeDuration: 1
+    hazardRadius: 16
+    hazardThickness: 0.34
+    interruptDamageThreshold: 120
+    safeRadius: 1
+    minimumSpacing: 4
+    fixedDuration: 0.5
+    slowDuration: 0.4
+    fastDuration: 0.5
+    trackingDuration: 3
+    trackingTurnRate: 28
+    beamWarmupTrackingSpeedMultiplier: 0.5
+    beamActiveTrackingSpeedMultiplier: 0.4
+    aimJitterPlayerScale: 6
+    approachStartScale: 0.25
+    approachEndScale: 0.7
+    approachInitialSpeedMultiplier: 0.5
+    approachFlightDuration: 1
+  - displayName: Debris Salvo
+    patternType: 9
+    enabled: 1
+    minHealthRatio: 0
+    maxHealthRatio: 1
+    cooldownMultiplier: 1.05
+    projectileCount: 4
+    secondaryProjectileCount: 2
+    burstCount: 1
+    burstInterval: 0.2
+    spreadAngle: 30
+    speedMultiplier: 0.5
+    secondarySpeedMultiplier: 1
+    damageMultiplier: 1.55
+    secondaryDamageMultiplier: 1
+    ringRotationStep: 18
+    telegraphDuration: 0.3
+    flashingDuration: 0.04
+    warningWidth: 0.8
+    warningHeight: 10
+    warningDepth: 1.3
+    overheadHeight: 12
+    splitDistance: 11
+    projectileScale: 2.8
+    activeDuration: 1
+    hazardRadius: 16
+    hazardThickness: 1.4
+    interruptDamageThreshold: 120
+    safeRadius: 2.5
+    minimumSpacing: 4
+    fixedDuration: 0.5
+    slowDuration: 0.4
+    fastDuration: 0.5
+    trackingDuration: 3
+    trackingTurnRate: 28
+    beamWarmupTrackingSpeedMultiplier: 0.5
+    beamActiveTrackingSpeedMultiplier: 0.4
+    aimJitterPlayerScale: 2
+    approachStartScale: 0.25
+    approachEndScale: 1.19
+    approachInitialSpeedMultiplier: 0.5
+    approachFlightDuration: 1
+  - displayName: Accelerating Sweep Beam
+    patternType: 10
+    enabled: 1
+    minHealthRatio: 0
+    maxHealthRatio: 1
+    cooldownMultiplier: 1.2
+    projectileCount: 1
+    secondaryProjectileCount: 1
+    burstCount: 1
+    burstInterval: 0.25
+    spreadAngle: 92
+    speedMultiplier: 1
+    secondarySpeedMultiplier: 1
+    damageMultiplier: 1.2
+    secondaryDamageMultiplier: 1
+    ringRotationStep: 18
+    telegraphDuration: 0.8
+    flashingDuration: 0.05
+    warningWidth: 0.78
+    warningHeight: 10
+    warningDepth: 1.3
+    overheadHeight: 12
+    splitDistance: 11
+    projectileScale: 1
+    activeDuration: 1
+    hazardRadius: 28
+    hazardThickness: 1.4
+    interruptDamageThreshold: 120
+    safeRadius: 2.5
+    minimumSpacing: 4
+    fixedDuration: 0.5
+    slowDuration: 0.3
+    fastDuration: 0.2
+    trackingDuration: 3
+    trackingTurnRate: 28
+    beamWarmupTrackingSpeedMultiplier: 0.5
+    beamActiveTrackingSpeedMultiplier: 0.4
+    aimJitterPlayerScale: 2
+    approachStartScale: 0.25
+    approachEndScale: 0.7
+    approachInitialSpeedMultiplier: 0.5
+    approachFlightDuration: 1
+  - displayName: Tracking Residual Beam
+    patternType: 11
+    enabled: 1
+    minHealthRatio: 0
+    maxHealthRatio: 0.65
+    cooldownMultiplier: 1.35
+    projectileCount: 1
+    secondaryProjectileCount: 1
+    burstCount: 1
+    burstInterval: 0.25
+    spreadAngle: 30
+    speedMultiplier: 1
+    secondarySpeedMultiplier: 1
+    damageMultiplier: 0.95
+    secondaryDamageMultiplier: 1
+    ringRotationStep: 18
+    telegraphDuration: 0.7
+    flashingDuration: 0.4
+    warningWidth: 0.62
+    warningHeight: 10
+    warningDepth: 1.3
+    overheadHeight: 12
+    splitDistance: 11
+    projectileScale: 1
+    activeDuration: 1
+    hazardRadius: 28
+    hazardThickness: 1.4
+    interruptDamageThreshold: 120
+    safeRadius: 3.2
+    minimumSpacing: 4
+    fixedDuration: 0.5
+    slowDuration: 0.4
+    fastDuration: 0.5
+    trackingDuration: 4
+    trackingTurnRate: 28
+    beamWarmupTrackingSpeedMultiplier: 0.5
+    beamActiveTrackingSpeedMultiplier: 0.4
+    aimJitterPlayerScale: 2
+    approachStartScale: 0.25
+    approachEndScale: 0.7
+    approachInitialSpeedMultiplier: 0.5
+    approachFlightDuration: 1
 --- !u!1001 &5440016506999024349
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -6026,15 +6456,15 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 4405679316718279896, guid: 1bf703432b7d34927bba0f996294225b, type: 3}
       propertyPath: m_LocalPosition.x
-      value: -3.796743
+      value: 5.07
       objectReference: {fileID: 0}
     - target: {fileID: 4405679316718279896, guid: 1bf703432b7d34927bba0f996294225b, type: 3}
       propertyPath: m_LocalPosition.y
-      value: 12.522235
+      value: 12.84
       objectReference: {fileID: 0}
     - target: {fileID: 4405679316718279896, guid: 1bf703432b7d34927bba0f996294225b, type: 3}
       propertyPath: m_LocalPosition.z
-      value: -17.986876
+      value: -18.36
       objectReference: {fileID: 0}
     - target: {fileID: 4405679316718279896, guid: 1bf703432b7d34927bba0f996294225b, type: 3}
       propertyPath: m_LocalRotation.w

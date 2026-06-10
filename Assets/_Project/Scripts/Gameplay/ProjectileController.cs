@@ -25,6 +25,7 @@ public class ProjectileController : MonoBehaviour
     private float remainingLifetime;
     private Collider cachedHitCollider;
     private float effectiveHitRadius;
+    private float fallbackHitRadiusMultiplier = 1f;
 
     private void Awake()
     {
@@ -42,6 +43,18 @@ public class ProjectileController : MonoBehaviour
         remainingLifetime = lifetime;
         CacheHitCollider();
         effectiveHitRadius = ResolveHitRadius();
+    }
+
+    public void SetFallbackHitRadiusMultiplier(float multiplier)
+    {
+        fallbackHitRadiusMultiplier = Mathf.Max(0.01f, multiplier);
+        effectiveHitRadius = ResolveHitRadius();
+    }
+
+    public void SetVelocityForRuntime(Vector3 direction, float speedOverride)
+    {
+        speed = Mathf.Max(0f, speedOverride);
+        velocity = direction.sqrMagnitude > 0.0001f ? direction.normalized * speed : Vector3.zero;
     }
 
     private void Update()
@@ -89,7 +102,7 @@ public class ProjectileController : MonoBehaviour
 
     private float ResolveHitRadius()
     {
-        float fallbackRadius = Mathf.Max(0.01f, hitRadius);
+        float fallbackRadius = Mathf.Max(0.01f, hitRadius * fallbackHitRadiusMultiplier);
         if (!useColliderBasedHitRadius || cachedHitCollider == null || !cachedHitCollider.enabled)
         {
             return fallbackRadius;

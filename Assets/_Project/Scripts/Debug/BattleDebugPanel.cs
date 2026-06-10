@@ -267,11 +267,14 @@ public class BattleDebugPanel : MonoBehaviour
         AddFloatRow("Enraged Int.", BattleTuningKey.BossEnragedAttackInterval, 0.1f, () => applier.BossAttack != null ? applier.BossAttack.DebugEnragedAttackInterval : 0f);
         AddFloatRow("Bullet Speed", BattleTuningKey.BossProjectileSpeed, 2f, () => applier.BossAttack != null ? applier.BossAttack.BaseProjectileSpeed : 0f);
         AddFloatRow("Bullet Damage", BattleTuningKey.BossProjectileDamage, 2f, () => applier.BossAttack != null ? applier.BossAttack.BaseProjectileDamage : 0f);
+        AddFloatRow("Projectile Scale x", BattleTuningKey.BossProjectileScaleMultiplier, 0.25f, () => applier.BossAttack != null ? applier.BossAttack.DebugProjectileScaleMultiplier : 0f);
 
         AddHeader("Pattern Timing");
         AddFloatRow("Startup Delay", BattleTuningKey.BossPatternStartupDelay, 0.1f, () => applier.BossPatterns != null ? applier.BossPatterns.DebugStartupDelay : 0f);
         AddFloatRow("Aimed Interval", BattleTuningKey.BossPatternAimedBurstShotInterval, 0.05f, () => applier.BossPatterns != null ? applier.BossPatterns.DebugAimedBurstShotInterval : 0f);
         AddFloatRow("Warn Line", BattleTuningKey.BossPatternWarningLineThickness, 0.01f, () => applier.BossPatterns != null ? applier.BossPatterns.DebugWarningLineThickness : 0f);
+        AddFloatRow("Attack Size x", BattleTuningKey.BossPatternAttackSizeMultiplier, 0.25f, () => applier.BossPatterns != null ? applier.BossPatterns.DebugAttackSizeMultiplier : 0f);
+        AddFloatRow("Min Telegraph", BattleTuningKey.BossPatternMinimumTelegraphThickness, 0.05f, () => applier.BossPatterns != null ? applier.BossPatterns.DebugMinimumTelegraphThickness : 0f);
 
         AddPatternRows();
     }
@@ -311,6 +314,24 @@ public class BattleDebugPanel : MonoBehaviour
             AddPatternFloatRow("Warn Depth", index, BossPatternTuningKey.WarningDepth, 0.1f, () => pattern.warningDepth);
             AddPatternFloatRow("Overhead", index, BossPatternTuningKey.OverheadHeight, 0.5f, () => pattern.overheadHeight);
             AddPatternFloatRow("Split Dist", index, BossPatternTuningKey.SplitDistance, 0.5f, () => pattern.splitDistance);
+            AddPatternFloatRow("Projectile Scale", index, BossPatternTuningKey.ProjectileScale, 0.25f, () => pattern.projectileScale);
+            AddPatternFloatRow("Active Time", index, BossPatternTuningKey.ActiveDuration, 0.1f, () => pattern.activeDuration);
+            AddPatternFloatRow("Hazard Radius", index, BossPatternTuningKey.HazardRadius, 1f, () => pattern.hazardRadius);
+            AddPatternFloatRow("Hazard Thick", index, BossPatternTuningKey.HazardThickness, 0.25f, () => pattern.hazardThickness);
+            AddPatternFloatRow("Interrupt Dmg", index, BossPatternTuningKey.InterruptDamageThreshold, 10f, () => pattern.interruptDamageThreshold);
+            AddPatternFloatRow("Safe Radius", index, BossPatternTuningKey.SafeRadius, 0.25f, () => pattern.safeRadius);
+            AddPatternFloatRow("Min Spacing", index, BossPatternTuningKey.MinimumSpacing, 0.25f, () => pattern.minimumSpacing);
+            AddPatternFloatRow("Warm Time", index, BossPatternTuningKey.FixedDuration, 0.1f, () => pattern.fixedDuration);
+            AddPatternFloatRow("Slow Time", index, BossPatternTuningKey.SlowDuration, 0.1f, () => pattern.slowDuration);
+            AddPatternFloatRow("Fast Time", index, BossPatternTuningKey.FastDuration, 0.1f, () => pattern.fastDuration);
+            AddPatternFloatRow("Track Time", index, BossPatternTuningKey.TrackingDuration, 0.1f, () => pattern.trackingDuration);
+            AddPatternFloatRow("Warm Track x", index, BossPatternTuningKey.BeamWarmupTrackingSpeedMultiplier, 0.05f, () => pattern.beamWarmupTrackingSpeedMultiplier);
+            AddPatternFloatRow("Beam Track x", index, BossPatternTuningKey.BeamActiveTrackingSpeedMultiplier, 0.05f, () => pattern.beamActiveTrackingSpeedMultiplier);
+            AddPatternFloatRow("Aim Jitter x", index, BossPatternTuningKey.AimJitterPlayerScale, 0.25f, () => pattern.aimJitterPlayerScale);
+            AddPatternFloatRow("Start Scale x", index, BossPatternTuningKey.ApproachStartScale, 0.05f, () => pattern.approachStartScale);
+            AddPatternFloatRow("End Scale x", index, BossPatternTuningKey.ApproachEndScale, 0.05f, () => pattern.approachEndScale);
+            AddPatternFloatRow("Start Speed x", index, BossPatternTuningKey.ApproachInitialSpeedMultiplier, 0.05f, () => pattern.approachInitialSpeedMultiplier);
+            AddPatternFloatRow("Flight Time", index, BossPatternTuningKey.ApproachFlightDuration, 0.05f, () => pattern.approachFlightDuration);
         }
     }
 

@@ -12,6 +12,7 @@ public class MenuPresenter : MonoBehaviour
     private Canvas canvas;
     private bool uiBuilt;
     private float inputUnlockTime;
+    private RawImage backdropTextureImage;
 
     private void Awake()
     {
@@ -35,6 +36,8 @@ public class MenuPresenter : MonoBehaviour
 
     private void Update()
     {
+        ApplyBackdropTextureCover();
+
         if (Time.unscaledTime < inputUnlockTime)
         {
             return;
@@ -357,23 +360,66 @@ public class MenuPresenter : MonoBehaviour
         }
         else
         {
-            GameObject imageObject = new GameObject("BackdropTexture", typeof(RectTransform), typeof(RawImage), typeof(AspectRatioFitter));
+            GameObject imageObject = new GameObject("BackdropTexture", typeof(RectTransform), typeof(RawImage));
             imageObject.transform.SetParent(backdropTransform, false);
             image = imageObject.GetComponent<RawImage>();
+        }
+
+        AspectRatioFitter existingFitter = image.GetComponent<AspectRatioFitter>();
+        if (existingFitter != null)
+        {
+            Destroy(existingFitter);
         }
 
         RectTransform imageRect = image.rectTransform;
         SimpleUiFactory.StretchFull(imageRect);
         imageRect.pivot = new Vector2(0.5f, 0.5f);
 
-        AspectRatioFitter fitter = image.GetComponent<AspectRatioFitter>() ?? image.gameObject.AddComponent<AspectRatioFitter>();
-        fitter.aspectMode = AspectRatioFitter.AspectMode.EnvelopeParent;
-        fitter.aspectRatio = backgroundTexture == null
-            ? 1f
-            : Mathf.Max(0.01f, backgroundTexture.width / (float)backgroundTexture.height);
-
         image.texture = backgroundTexture;
         image.color = backgroundTexture == null ? new Color(1f, 1f, 1f, 0f) : Color.white;
         image.raycastTarget = false;
+
+        backdropTextureImage = image;
+        ApplyBackdropTextureCover();
+    }
+
+    private void ApplyBackdropTextureCover()
+    {
+        if (backdropTextureImage == null)
+        {
+            return;
+        }
+
+        RectTransform imageRect = backdropTextureImage.rectTransform;
+        RectTransform parentRect = imageRect.parent as RectTransform;
+        Vector2 containerSize = parentRect != null ? parentRect.rect.size : new Vector2(Screen.width, Screen.height);
+        if (containerSize.x <= 0.01f || containerSize.y <= 0.01f)
+        {
+            containerSize = new Vector2(Screen.width, Screen.height);
+        }
+
+        SimpleUiFactory.StretchFull(imageRect);
+        imageRect.pivot = new Vector2(0.5f, 0.5f);
+        imageRect.anchoredPosition = Vector2.zero;
+
+        if (backgroundTexture == null || containerSize.x <= 0.01f || containerSize.y <= 0.01f)
+        {
+            backdropTextureImage.uvRect = new Rect(0f, 0f, 1f, 1f);
+            return;
+        }
+
+        float textureAspect = backgroundTexture.width / (float)backgroundTexture.height;
+        float containerAspect = containerSize.x / containerSize.y;
+
+        if (containerAspect > textureAspect)
+        {
+            float uvHeight = Mathf.Clamp01(textureAspect / containerAspect);
+            backdropTextureImage.uvRect = new Rect(0f, (1f - uvHeight) * 0.5f, 1f, uvHeight);
+        }
+        else
+        {
+            float uvWidth = Mathf.Clamp01(containerAspect / textureAspect);
+            backdropTextureImage.uvRect = new Rect((1f - uvWidth) * 0.5f, 0f, uvWidth, 1f);
+        }
     }
 }

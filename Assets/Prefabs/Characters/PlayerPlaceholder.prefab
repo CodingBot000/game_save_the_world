@@ -170,6 +170,8 @@ MonoBehaviour:
   invulnerabilityDuration: 0.5
   hitRadius: 1.4
   muzzle: {fileID: 0}
+  gunFireLoopClip: {fileID: 8300000, guid: d12d824fb922d47e68411341e7bbff60, type: 3}
+  gunFireLoopVolume: 0.8
   missileCooldown: 2.6
   missileDamage: 150
   missileLaunchSpeed: 18
