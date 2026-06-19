@@ -12,6 +12,8 @@ public class MenuPresenter : MonoBehaviour
     [SerializeField] private Texture2D mainBackgroundTexture;
     [SerializeField] private Texture2D mainHellicopterTexture;
     [SerializeField] private Texture2D mainCharacterTexture;
+    [SerializeField] private Texture2D[] mufflerFrames;
+    [SerializeField] private float mufflerFramesPerSecond = 12f;
     [SerializeField] private float cloudScrollSpeed = 0.01f;
 
     private Canvas canvas;
@@ -19,7 +21,9 @@ public class MenuPresenter : MonoBehaviour
     private float inputUnlockTime;
     private readonly List<RawImage> backdropLayerImages = new List<RawImage>();
     private RawImage cloudLayerImage;
+    private RawImage mufflerLayerImage;
     private float cloudScrollOffset;
+    private int appliedMufflerFrameIndex = -1;
 
     private void Awake()
     {
@@ -45,6 +49,7 @@ public class MenuPresenter : MonoBehaviour
     {
         ApplyBackdropLayerCover();
         ApplyCloudScroll();
+        ApplyMufflerAnimation();
 
         if (Time.unscaledTime < inputUnlockTime)
         {
@@ -350,13 +355,17 @@ public class MenuPresenter : MonoBehaviour
 
         backdropLayerImages.Clear();
         cloudLayerImage = null;
+        mufflerLayerImage = null;
+        appliedMufflerFrameIndex = -1;
         ConfigureBackdropLayer(backdropTransform, "MainSky", mainSkyTexture);
         cloudLayerImage = ConfigureBackdropLayer(backdropTransform, "MainCloud", mainCloudTexture);
         ConfigureBackdropLayer(backdropTransform, "MainBackground", mainBackgroundTexture);
         ConfigureBackdropLayer(backdropTransform, "MainHellicopter", mainHellicopterTexture);
         ConfigureBackdropLayer(backdropTransform, "MainCharacter", mainCharacterTexture);
+        mufflerLayerImage = ConfigureBackdropLayer(backdropTransform, "Muffler", GetMufflerFrame(0));
         ApplyBackdropLayerCover();
         ApplyCloudScroll();
+        ApplyMufflerAnimation();
     }
 
     private RawImage ConfigureBackdropLayer(Transform parent, string name, Texture2D texture)
@@ -460,5 +469,45 @@ public class MenuPresenter : MonoBehaviour
         Rect uvRect = cloudLayerImage.uvRect;
         uvRect.x = cloudScrollOffset;
         cloudLayerImage.uvRect = uvRect;
+    }
+
+    private void ApplyMufflerAnimation()
+    {
+        if (mufflerLayerImage == null || mufflerFrames == null || mufflerFrames.Length == 0)
+        {
+            return;
+        }
+
+        int frameIndex = 0;
+        if (mufflerFramesPerSecond > 0.01f)
+        {
+            frameIndex = Mathf.FloorToInt(Time.unscaledTime * mufflerFramesPerSecond) % mufflerFrames.Length;
+        }
+
+        if (frameIndex == appliedMufflerFrameIndex)
+        {
+            return;
+        }
+
+        Texture2D frame = GetMufflerFrame(frameIndex);
+        mufflerLayerImage.texture = frame;
+        mufflerLayerImage.color = frame == null ? new Color(1f, 1f, 1f, 0f) : Color.white;
+        appliedMufflerFrameIndex = frameIndex;
+    }
+
+    private Texture2D GetMufflerFrame(int frameIndex)
+    {
+        if (mufflerFrames == null || mufflerFrames.Length == 0)
+        {
+            return null;
+        }
+
+        int safeIndex = frameIndex % mufflerFrames.Length;
+        if (safeIndex < 0)
+        {
+            safeIndex += mufflerFrames.Length;
+        }
+
+        return mufflerFrames[safeIndex];
     }
 }

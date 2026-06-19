@@ -177,6 +177,14 @@ MonoBehaviour:
   mainBackgroundTexture: {fileID: 2800000, guid: 44c28fabbe40244d5bf1e18d90e559ed, type: 3}
   mainHellicopterTexture: {fileID: 2800000, guid: 1bae914e81b4545ffad8942109dab152, type: 3}
   mainCharacterTexture: {fileID: 2800000, guid: 1904a6653edce4592b291de58f035905, type: 3}
+  mufflerFrames:
+  - {fileID: 2800000, guid: 327e3a1b5cfcb489888d8e37e84e954c, type: 3}
+  - {fileID: 2800000, guid: 03ac026660cc341c88afad62ea9c3366, type: 3}
+  - {fileID: 2800000, guid: 16821e7731220401980a09ca55a08eb4, type: 3}
+  - {fileID: 2800000, guid: 06464fc0fa82845f1bbf576cebf03407, type: 3}
+  - {fileID: 2800000, guid: c84f40ed0f5cf48058f260a68cd07e81, type: 3}
+  - {fileID: 2800000, guid: 42b89c43582394824ae7b9eaf769e0e3, type: 3}
+  mufflerFramesPerSecond: 12
   cloudScrollSpeed: 0.01
 --- !u!114 &75124122
 MonoBehaviour:

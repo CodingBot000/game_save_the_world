@@ -3505,6 +3505,10 @@ PrefabInstance:
       propertyPath: m_Name
       value: StageVisual_RoundRuinsBackground_Test
       objectReference: {fileID: 0}
+    - target: {fileID: 919132149155446097, guid: 7351dea185c804fc7922060ffdcf1420, type: 3}
+      propertyPath: m_IsActive
+      value: 1
+      objectReference: {fileID: 0}
     m_RemovedComponents: []
     m_RemovedGameObjects: []
     m_AddedGameObjects: []
@@ -6451,7 +6455,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 7fb797c97d772436abba59c1cc8713b7, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::BossBulletPatternController
-  startupDelay: 1
+  startupDelay: 4
   aimedBurstShotInterval: 0.14
   warningLineThickness: 0.045
   activePatternSet: 1
