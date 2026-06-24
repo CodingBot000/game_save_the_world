@@ -411,6 +411,7 @@ public class BossBulletPatternController : MonoBehaviour
             return;
         }
 
+        attackController.NotifyGameplayAttackStarted();
         activePatternRoutine = StartCoroutine(ExecutePatternRoutine(pattern));
     }
 

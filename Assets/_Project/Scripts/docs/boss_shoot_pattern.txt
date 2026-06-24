@@ -1,4 +1,10 @@
-7. 실제 패턴 예시 5개
+이 파일은 LegacyBulletHell 시절의 초기 보스 탄막 초안이다.
+최신 보스 1 패턴 기준은 아래 파일을 본다.
+
+- docs/titan-destroyer-latest-design-plan.md
+- Assets/_Project/Scripts/docs/boss1_shoot_pattern.txt
+
+7. 레거시 패턴 예시 5개
 1) 부채꼴 탄막
 
 전방 7발

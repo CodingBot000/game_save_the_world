@@ -46,8 +46,10 @@ public class PlayerSpecialAttackController : MonoBehaviour
     private Coroutine activeRoutine;
     private Texture2D sceneTopTextureFallback;
     private Texture2D sceneBottomTextureFallback;
+    private bool lastMissileSalvoCompleted;
 
     public bool IsActive => activeRoutine != null;
+    public event System.Action SpecialMissileSalvoCompleted;
 
     public void Configure(
         BattleController battle,
@@ -135,7 +137,12 @@ public class PlayerSpecialAttackController : MonoBehaviour
             SetSpecialAttackVisualPose();
 
             yield return PlayCutInOverlay();
+            lastMissileSalvoCompleted = false;
             yield return LaunchMissileSalvo();
+            if (lastMissileSalvoCompleted)
+            {
+                SpecialMissileSalvoCompleted?.Invoke();
+            }
 
             if (playerOrbitController != null)
             {
@@ -237,6 +244,8 @@ public class PlayerSpecialAttackController : MonoBehaviour
                 yield return new WaitForSeconds(launchInterval);
             }
         }
+
+        lastMissileSalvoCompleted = true;
     }
 
     private void LaunchSpecialMissile(int index, int countPerSide)

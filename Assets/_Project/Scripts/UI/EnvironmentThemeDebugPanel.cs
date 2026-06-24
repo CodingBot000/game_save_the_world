@@ -12,7 +12,7 @@ public class EnvironmentThemeDebugPanel : MonoBehaviour
 
     [Header("Debug UI")]
     [SerializeField] private bool showDebugPanel = true;
-    [SerializeField] private Vector2 panelAnchoredPosition = new(-24f, -24f);
+    [SerializeField] private Vector2 panelAnchoredPosition = new(28f, 96f);
 
     [Header("Scene References")]
     [SerializeField] private Canvas targetCanvas;
@@ -361,9 +361,9 @@ public class EnvironmentThemeDebugPanel : MonoBehaviour
 
         GameObject createdPanelRoot = FindOrCreateUiObject(PanelRootName, canvasTransform);
         RectTransform panelRect = createdPanelRoot.GetComponent<RectTransform>();
-        panelRect.anchorMin = new Vector2(1f, 1f);
-        panelRect.anchorMax = new Vector2(1f, 1f);
-        panelRect.pivot = new Vector2(1f, 1f);
+        panelRect.anchorMin = new Vector2(0f, 0f);
+        panelRect.anchorMax = new Vector2(0f, 0f);
+        panelRect.pivot = new Vector2(0f, 0f);
         panelRect.sizeDelta = new Vector2(420f, 176f);
         panelRect.anchoredPosition = panelAnchoredPosition;
 

@@ -48,6 +48,8 @@ public class BossAttackController : MonoBehaviour
     public Vector3 CurrentBossCenter => bossController != null ? bossController.HitPoint : transform.position;
     public Vector3 CurrentPlayerHitPoint => playerCombatController != null ? playerCombatController.HitPoint : transform.position;
 
+    public event System.Action GameplayAttackStarted;
+
     public bool CanAttack =>
         !cinematicPaused &&
         battleController != null &&
@@ -175,6 +177,11 @@ public class BossAttackController : MonoBehaviour
         spreadAngle = Mathf.Max(0f, angle);
     }
 
+    public void NotifyGameplayAttackStarted()
+    {
+        GameplayAttackStarted?.Invoke();
+    }
+
     public void PlayQuickAttackAnimation()
     {
         PlayAttackAnimation(
@@ -259,6 +266,7 @@ public class BossAttackController : MonoBehaviour
     {
         Vector3 origin = CurrentFireOrigin;
         Vector3 direction = (CurrentPlayerHitPoint - origin).normalized;
+        NotifyGameplayAttackStarted();
         PlayQuickAttackAnimation();
         SpawnProjectile(origin, direction, projectileSpeed, projectileDamage);
     }
@@ -270,6 +278,7 @@ public class BossAttackController : MonoBehaviour
         Quaternion centerRotation = Quaternion.LookRotation(forward, Vector3.up);
         float spreadProjectileSpeed = projectileSpeed * 0.9f;
 
+        NotifyGameplayAttackStarted();
         PlayQuickAttackAnimation();
 
         float step = spreadShotCount > 1 ? spreadAngle / (spreadShotCount - 1) : 0f;
