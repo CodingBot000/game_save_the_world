@@ -1,9 +1,11 @@
 using System;
+using System.Collections.Generic;
 using UnityEngine;
 
 public class BossController : MonoBehaviour
 {
     private const string DefaultDamageHurtboxName = "BossHurtbox";
+    private static readonly string[] AdditionalAimPointNames = { "AimPoint2", "AimPoint3", "AimPoint4", "AimPoint5" };
 
     [SerializeField] private bool deriveFacingOffsetFromSceneRotation = true;
     [SerializeField] private float maxHealth = 2000f;
@@ -12,6 +14,7 @@ public class BossController : MonoBehaviour
     [SerializeField] private float idleBobAmplitude = 0.18f;
     [SerializeField] private float idleBobSpeed = 1.4f;
     [SerializeField] private Transform aimPoint;
+    [SerializeField] private float aimPointRetargetInterval = 5f;
 
     private float currentHealth;
     private Vector3 basePosition;
@@ -21,6 +24,10 @@ public class BossController : MonoBehaviour
     private Color[] rendererBaseColors;
     private Quaternion facingRotationOffset = Quaternion.identity;
     private bool cinematicPaused;
+    private Transform[] combatAimPoints = Array.Empty<Transform>();
+    private Transform currentCombatAimPoint;
+    private float aimPointRetargetRemaining;
+    private bool aimPointsResolved;
 
     public event Action Died;
 
@@ -29,7 +36,14 @@ public class BossController : MonoBehaviour
     public float MaxHealth => maxHealth;
     public float HealthRatio => maxHealth > 0f ? currentHealth / maxHealth : 0f;
     public float HitRadius => hitRadius;
-    public Transform AimPoint => aimPoint != null ? aimPoint : transform;
+    public Transform AimPoint
+    {
+        get
+        {
+            EnsureAimPointsResolved();
+            return currentCombatAimPoint != null ? currentCombatAimPoint : aimPoint != null ? aimPoint : transform;
+        }
+    }
     public Transform OrbitCenter => transform;
     public Vector3 HitPoint
     {
@@ -48,15 +62,7 @@ public class BossController : MonoBehaviour
 
     private void Awake()
     {
-        if (aimPoint == null)
-        {
-            Transform foundAimPoint = transform.Find("AimPoint");
-            if (foundAimPoint != null)
-            {
-                aimPoint = foundAimPoint;
-            }
-        }
-
+        ResolveAimPoints();
         ResolveDamageHurtboxes();
         currentHealth = maxHealth;
         basePosition = transform.position;
@@ -67,6 +73,8 @@ public class BossController : MonoBehaviour
 
     private void Update()
     {
+        UpdateCombatAimPoint(Time.deltaTime);
+
         if (cinematicPaused)
         {
             return;
@@ -116,6 +124,12 @@ public class BossController : MonoBehaviour
     {
         idleBobAmplitude = Mathf.Max(0f, amplitude);
         idleBobSpeed = Mathf.Max(0f, speed);
+    }
+
+    public void SetAimPointRetargetIntervalForDebug(float interval)
+    {
+        aimPointRetargetInterval = Mathf.Max(0.1f, interval);
+        aimPointRetargetRemaining = Mathf.Min(aimPointRetargetRemaining, aimPointRetargetInterval);
     }
 
     public void SetCinematicPaused(bool paused)
@@ -195,6 +209,138 @@ public class BossController : MonoBehaviour
         }
 
         return true;
+    }
+
+    private void ResolveAimPoints()
+    {
+        if (aimPoint == null)
+        {
+            aimPoint = FindDeepChild(transform, "AimPoint");
+        }
+
+        List<Transform> resolvedAimPoints = new();
+        AddUniqueAimPoint(resolvedAimPoints, aimPoint);
+
+        for (int i = 0; i < AdditionalAimPointNames.Length; i++)
+        {
+            AddUniqueAimPoint(resolvedAimPoints, FindDeepChild(transform, AdditionalAimPointNames[i]));
+        }
+
+        combatAimPoints = resolvedAimPoints.Count > 0
+            ? resolvedAimPoints.ToArray()
+            : Array.Empty<Transform>();
+        aimPointsResolved = true;
+
+        if (!ContainsAimPoint(combatAimPoints, currentCombatAimPoint))
+        {
+            currentCombatAimPoint = combatAimPoints.Length > 0 ? combatAimPoints[0] : null;
+        }
+
+        aimPointRetargetRemaining = Mathf.Max(0.1f, aimPointRetargetInterval);
+    }
+
+    private void EnsureAimPointsResolved()
+    {
+        if (!aimPointsResolved || combatAimPoints == null || HasMissingAimPoint(combatAimPoints))
+        {
+            ResolveAimPoints();
+        }
+    }
+
+    private void UpdateCombatAimPoint(float deltaTime)
+    {
+        EnsureAimPointsResolved();
+        if (combatAimPoints.Length <= 1)
+        {
+            currentCombatAimPoint = combatAimPoints.Length == 1 ? combatAimPoints[0] : null;
+            return;
+        }
+
+        aimPointRetargetRemaining -= deltaTime;
+        if (aimPointRetargetRemaining > 0f)
+        {
+            return;
+        }
+
+        SelectRandomCombatAimPoint(excludeCurrent: true);
+        aimPointRetargetRemaining = Mathf.Max(0.1f, aimPointRetargetInterval);
+    }
+
+    private void SelectRandomCombatAimPoint(bool excludeCurrent)
+    {
+        int targetCount = combatAimPoints.Length;
+        if (targetCount == 0)
+        {
+            currentCombatAimPoint = null;
+            return;
+        }
+
+        if (!excludeCurrent || targetCount == 1)
+        {
+            currentCombatAimPoint = combatAimPoints[UnityEngine.Random.Range(0, targetCount)];
+            return;
+        }
+
+        int currentIndex = IndexOfAimPoint(combatAimPoints, currentCombatAimPoint);
+        if (currentIndex < 0)
+        {
+            currentCombatAimPoint = combatAimPoints[UnityEngine.Random.Range(0, targetCount)];
+            return;
+        }
+
+        int selectedIndex = UnityEngine.Random.Range(0, targetCount - 1);
+        if (selectedIndex >= currentIndex)
+        {
+            selectedIndex++;
+        }
+
+        currentCombatAimPoint = combatAimPoints[selectedIndex];
+    }
+
+    private static void AddUniqueAimPoint(List<Transform> aimPoints, Transform candidate)
+    {
+        if (candidate == null || aimPoints.Contains(candidate))
+        {
+            return;
+        }
+
+        aimPoints.Add(candidate);
+    }
+
+    private static bool HasMissingAimPoint(Transform[] aimPoints)
+    {
+        for (int i = 0; i < aimPoints.Length; i++)
+        {
+            if (aimPoints[i] == null)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool ContainsAimPoint(Transform[] aimPoints, Transform target)
+    {
+        return IndexOfAimPoint(aimPoints, target) >= 0;
+    }
+
+    private static int IndexOfAimPoint(Transform[] aimPoints, Transform target)
+    {
+        if (target == null || aimPoints == null)
+        {
+            return -1;
+        }
+
+        for (int i = 0; i < aimPoints.Length; i++)
+        {
+            if (aimPoints[i] == target)
+            {
+                return i;
+            }
+        }
+
+        return -1;
     }
 
     private void ResolveDamageHurtboxes()
