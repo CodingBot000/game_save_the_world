@@ -30,6 +30,7 @@ public class BattleController : MonoBehaviour
     [SerializeField] private Transform stageVisualRoot;
     [SerializeField] private EnvironmentThemeDebugPanel environmentThemeDebugPanel;
     [SerializeField] private PlayerMoveGuide playerMoveGuide;
+    [SerializeField] private BattleDamageNumberPresenter damageNumberPresenter;
 
     private bool battleActive = true;
     private bool awaitingDefeatChoice;
@@ -101,7 +102,13 @@ public class BattleController : MonoBehaviour
             return false;
         }
 
-        return damage <= 0f || bossController.ApplyDamage(damage);
+        bool damageApplied = damage <= 0f || bossController.ApplyDamage(damage);
+        if (damageApplied && damage > 0f)
+        {
+            damageNumberPresenter?.ShowDamage(worldPoint, damage);
+        }
+
+        return damageApplied;
     }
 
     public bool TryHitPlayer(Vector3 worldPoint, float hitRadius, float damage, Collider projectileCollider = null)
@@ -137,10 +144,24 @@ public class BattleController : MonoBehaviour
         stageVisualRoot ??= FindSceneTransform("StageVisualRoot");
         environmentThemeDebugPanel ??= FindSceneComponent<EnvironmentThemeDebugPanel>();
         playerMoveGuide ??= FindSceneComponent<PlayerMoveGuide>();
+        damageNumberPresenter ??= FindSceneComponent<BattleDamageNumberPresenter>();
 
         if (playerSpecialAttackController == null)
         {
             playerSpecialAttackController = gameObject.AddComponent<PlayerSpecialAttackController>();
+        }
+
+        if (damageNumberPresenter == null)
+        {
+            Canvas damageCanvas = hudPresenter != null ? hudPresenter.RuntimeCanvas : FindSceneComponent<Canvas>();
+            if (damageCanvas != null)
+            {
+                damageNumberPresenter = damageCanvas.GetComponent<BattleDamageNumberPresenter>();
+                if (damageNumberPresenter == null)
+                {
+                    damageNumberPresenter = damageCanvas.gameObject.AddComponent<BattleDamageNumberPresenter>();
+                }
+            }
         }
     }
 
@@ -363,6 +384,11 @@ public class BattleController : MonoBehaviour
                 playerOrbitController,
                 arenaCameraRig,
                 hudPresenter);
+        }
+
+        if (damageNumberPresenter != null)
+        {
+            damageNumberPresenter.Configure(hudPresenter != null ? hudPresenter.RuntimeCanvas : null);
         }
 
         if (hudPresenter != null && bossController != null && playerCombatController != null && playerOrbitController != null)

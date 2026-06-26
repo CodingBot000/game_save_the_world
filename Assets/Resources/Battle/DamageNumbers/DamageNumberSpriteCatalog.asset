@@ -1,0 +1,36 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 9d4e66b3c50a4f1e9f61d3338a94f22a, type: 3}
+  m_Name: DamageNumberSpriteCatalog
+  m_EditorClassIdentifier:
+  normalDigits:
+  - {fileID: 21300000, guid: 96de1420d58aacadb8f4fd7ae64a536d, type: 3}
+  - {fileID: 21300000, guid: 2f4bd8b68910f75c6b55faeb2fed0e4c, type: 3}
+  - {fileID: 21300000, guid: f92699b4f393f8dfeed433686ab5d4ec, type: 3}
+  - {fileID: 21300000, guid: 004418fc7ac4be18c9ad5e39363a29a0, type: 3}
+  - {fileID: 21300000, guid: b3791b3eb1ff59d06714da37f1767c6f, type: 3}
+  - {fileID: 21300000, guid: 62a8d8bd168bfc6181adfb5c07eb2aa9, type: 3}
+  - {fileID: 21300000, guid: 024c07d6f12575aa31e38fc7258f9493, type: 3}
+  - {fileID: 21300000, guid: 7c289b54a9f7f293364b8ada27662f56, type: 3}
+  - {fileID: 21300000, guid: 177fe9282c9ab0c7b5eae2cc8aaf571c, type: 3}
+  - {fileID: 21300000, guid: d3d4faf496f835ce279dddcf93909452, type: 3}
+  criticalDigits:
+  - {fileID: 21300000, guid: 171c81576145cb51289ac6cdc3153228, type: 3}
+  - {fileID: 21300000, guid: bd5fc5a500708f5f95b2f6528369dd29, type: 3}
+  - {fileID: 21300000, guid: 295db332422d691615169d65592f17b4, type: 3}
+  - {fileID: 21300000, guid: a0a942b2b6fa24a2aec6d0c01876c216, type: 3}
+  - {fileID: 21300000, guid: 1730b0e48275adc1da39e700505f1bd3, type: 3}
+  - {fileID: 21300000, guid: 273efb770674dbb4f62df5db263a308b, type: 3}
+  - {fileID: 21300000, guid: 8a333e70cfe30bf4de8172047d435b90, type: 3}
+  - {fileID: 21300000, guid: f950331cb8bea138e8cc9694508dca29, type: 3}
+  - {fileID: 21300000, guid: 8a791086510795748a1bde868758c554, type: 3}
+  - {fileID: 21300000, guid: da8ea61709ee5d346f0df5fd2377c304, type: 3}
