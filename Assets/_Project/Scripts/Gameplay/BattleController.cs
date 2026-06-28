@@ -31,6 +31,8 @@ public class BattleController : MonoBehaviour
     [SerializeField] private EnvironmentThemeDebugPanel environmentThemeDebugPanel;
     [SerializeField] private PlayerMoveGuide playerMoveGuide;
     [SerializeField] private BattleDamageNumberPresenter damageNumberPresenter;
+    [SerializeField] private BattleAimPointTargetingPresenter aimPointTargetingPresenter;
+    [SerializeField, Min(1f)] private float criticalDamageMultiplier = 2f;
 
     private bool battleActive = true;
     private bool awaitingDefeatChoice;
@@ -90,7 +92,12 @@ public class BattleController : MonoBehaviour
         }
     }
 
-    public bool TryHitBoss(Vector3 worldPoint, float hitRadius, float damage, Collider projectileCollider = null)
+    public bool TryHitBoss(
+        Vector3 worldPoint,
+        float hitRadius,
+        float damage,
+        Collider projectileCollider = null,
+        float criticalChance = 0f)
     {
         if (!battleActive || bossController == null || !bossController.IsAlive)
         {
@@ -102,10 +109,39 @@ public class BattleController : MonoBehaviour
             return false;
         }
 
-        bool damageApplied = damage <= 0f || bossController.ApplyDamage(damage);
-        if (damageApplied && damage > 0f)
+        return TryApplyBossHitDamage(worldPoint, damage, criticalChance);
+    }
+
+    public bool TryHitBoss(
+        Vector3 previousWorldPoint,
+        Vector3 worldPoint,
+        float hitRadius,
+        float damage,
+        Collider projectileCollider = null,
+        float criticalChance = 0f)
+    {
+        if (!battleActive || bossController == null || !bossController.IsAlive)
         {
-            damageNumberPresenter?.ShowDamage(worldPoint, damage);
+            return false;
+        }
+
+        if (!bossController.CheckHit(previousWorldPoint, worldPoint, hitRadius, projectileCollider))
+        {
+            return false;
+        }
+
+        return TryApplyBossHitDamage(worldPoint, damage, criticalChance);
+    }
+
+    private bool TryApplyBossHitDamage(Vector3 worldPoint, float damage, float criticalChance)
+    {
+        bool critical = damage > 0f && Random.value < Mathf.Clamp01(criticalChance);
+        float appliedDamage = critical ? damage * Mathf.Max(1f, criticalDamageMultiplier) : damage;
+        bool damageApplied = appliedDamage <= 0f || bossController.ApplyDamage(appliedDamage);
+        if (damageApplied && appliedDamage > 0f)
+        {
+            EnsureDamageNumberPresenter();
+            damageNumberPresenter?.ShowDamage(worldPoint, appliedDamage, critical);
         }
 
         return damageApplied;
@@ -119,6 +155,26 @@ public class BattleController : MonoBehaviour
         }
 
         if (!playerCombatController.CheckHit(worldPoint, hitRadius, projectileCollider))
+        {
+            return false;
+        }
+
+        return damage <= 0f || playerCombatController.ApplyDamage(damage);
+    }
+
+    public bool TryHitPlayer(
+        Vector3 previousWorldPoint,
+        Vector3 worldPoint,
+        float hitRadius,
+        float damage,
+        Collider projectileCollider = null)
+    {
+        if (!battleActive || playerCombatController == null || !playerCombatController.IsAlive)
+        {
+            return false;
+        }
+
+        if (!playerCombatController.CheckHit(previousWorldPoint, worldPoint, hitRadius, projectileCollider))
         {
             return false;
         }
@@ -145,22 +201,21 @@ public class BattleController : MonoBehaviour
         environmentThemeDebugPanel ??= FindSceneComponent<EnvironmentThemeDebugPanel>();
         playerMoveGuide ??= FindSceneComponent<PlayerMoveGuide>();
         damageNumberPresenter ??= FindSceneComponent<BattleDamageNumberPresenter>();
+        aimPointTargetingPresenter ??= FindSceneComponent<BattleAimPointTargetingPresenter>();
 
         if (playerSpecialAttackController == null)
         {
             playerSpecialAttackController = gameObject.AddComponent<PlayerSpecialAttackController>();
         }
 
-        if (damageNumberPresenter == null)
+        EnsureDamageNumberPresenter();
+
+        if (aimPointTargetingPresenter == null)
         {
-            Canvas damageCanvas = hudPresenter != null ? hudPresenter.RuntimeCanvas : FindSceneComponent<Canvas>();
-            if (damageCanvas != null)
+            Canvas targetingCanvas = hudPresenter != null ? hudPresenter.RuntimeCanvas : FindSceneComponent<Canvas>();
+            if (targetingCanvas != null)
             {
-                damageNumberPresenter = damageCanvas.GetComponent<BattleDamageNumberPresenter>();
-                if (damageNumberPresenter == null)
-                {
-                    damageNumberPresenter = damageCanvas.gameObject.AddComponent<BattleDamageNumberPresenter>();
-                }
+                aimPointTargetingPresenter = targetingCanvas.GetComponent<BattleAimPointTargetingPresenter>();
             }
         }
     }
@@ -183,6 +238,28 @@ public class BattleController : MonoBehaviour
             bool showAlly = GameFlowController.CurrentMode == GameMode.MultiPlaceholder;
             allyPlaceholder.SetActive(showAlly);
         }
+    }
+
+    private void EnsureDamageNumberPresenter()
+    {
+        if (damageNumberPresenter != null)
+        {
+            return;
+        }
+
+        Canvas damageCanvas = hudPresenter != null ? hudPresenter.RuntimeCanvas : FindSceneComponent<Canvas>();
+        if (damageCanvas == null)
+        {
+            return;
+        }
+
+        damageNumberPresenter = damageCanvas.GetComponent<BattleDamageNumberPresenter>();
+        if (damageNumberPresenter == null)
+        {
+            damageNumberPresenter = damageCanvas.gameObject.AddComponent<BattleDamageNumberPresenter>();
+        }
+
+        damageNumberPresenter.Configure(damageCanvas);
     }
 
     private void ApplySelectedPlayerVehicleVisual()
@@ -360,7 +437,7 @@ public class BattleController : MonoBehaviour
     {
         if (playerCombatController != null)
         {
-            playerCombatController.Configure(this, bossController, playerProjectileTemplate);
+            playerCombatController.Configure(this, bossController, playerProjectileTemplate, aimPointTargetingPresenter);
             playerCombatController.Died += HandlePlayerDied;
         }
 
@@ -383,7 +460,13 @@ public class BattleController : MonoBehaviour
                 playerCombatController,
                 playerOrbitController,
                 arenaCameraRig,
-                hudPresenter);
+                hudPresenter,
+                aimPointTargetingPresenter);
+        }
+
+        if (aimPointTargetingPresenter != null)
+        {
+            aimPointTargetingPresenter.Configure(hudPresenter != null ? hudPresenter.RuntimeCanvas : FindSceneComponent<Canvas>(), bossController);
         }
 
         if (damageNumberPresenter != null)

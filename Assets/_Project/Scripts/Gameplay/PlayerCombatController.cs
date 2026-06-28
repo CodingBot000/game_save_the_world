@@ -7,6 +7,7 @@ using UnityEngine.Rendering;
 public class PlayerCombatController : MonoBehaviour
 {
     private const float MinimumHitInvulnerabilityDuration = 1f;
+    private const float FallbackNormalCriticalChance = 0.05f;
     private static readonly Quaternion PlayerProjectileVisualRotation = Quaternion.Euler(90f, 0f, 0f);
     private const string VehiclePlayerStateCatalogResourcePath = "Vehicles/VehiclePlayerStateCatalog";
     private const string DefaultDamageHurtboxName = "CrashObserver";
@@ -53,6 +54,7 @@ public class PlayerCombatController : MonoBehaviour
 
     private BattleController battleController;
     private BossController bossController;
+    private BattleAimPointTargetingPresenter aimPointTargetingPresenter;
     private GameObject projectileTemplate;
     private Renderer[] cachedRenderers;
     private Color[] rendererBaseColors;
@@ -222,8 +224,10 @@ public class PlayerCombatController : MonoBehaviour
         Mouse mouse = Mouse.current;
         Keyboard keyboard = Keyboard.current;
         bool pointerOverUi = EventSystem.current != null && EventSystem.current.IsPointerOverGameObject();
-        bool mouseFire = mouse != null && mouse.leftButton.isPressed && !pointerOverUi;
-        bool mouseMissileFire = mouse != null && mouse.rightButton.wasPressedThisFrame && !pointerOverUi;
+        bool pointerOverAimPointMarker = pointerOverUi && BattleAimPointTargetMarker.IsPointerOverAnyMarker();
+        bool blockPointerFire = pointerOverUi && !pointerOverAimPointMarker;
+        bool mouseFire = mouse != null && mouse.leftButton.isPressed && !blockPointerFire;
+        bool mouseMissileFire = mouse != null && mouse.rightButton.wasPressedThisFrame && !blockPointerFire;
         bool keyboardFire = keyboard != null && keyboard.spaceKey.isPressed;
         bool gunFireInput = mouseFire || keyboardFire;
         UpdateGunFireLoop(gunFireInput);
@@ -240,10 +244,15 @@ public class PlayerCombatController : MonoBehaviour
         }
     }
 
-    public void Configure(BattleController owner, BossController boss, GameObject projectileTemplateSource)
+    public void Configure(
+        BattleController owner,
+        BossController boss,
+        GameObject projectileTemplateSource,
+        BattleAimPointTargetingPresenter targetingPresenter = null)
     {
         battleController = owner;
         bossController = boss;
+        aimPointTargetingPresenter = targetingPresenter;
         projectileTemplate = projectileTemplateSource;
         ApplySelectedVehicleState(resetRuntimeValues: true);
         invulnerabilityDuration = Mathf.Max(MinimumHitInvulnerabilityDuration, invulnerabilityDuration);
@@ -262,6 +271,11 @@ public class PlayerCombatController : MonoBehaviour
         UpdateDamageHurtboxDebugVisuals();
         EnsureMuzzleFlash();
         EnsureGunFireLoopSource();
+    }
+
+    public void SetAimPointTargetingPresenter(BattleAimPointTargetingPresenter targetingPresenter)
+    {
+        aimPointTargetingPresenter = targetingPresenter;
     }
 
     public void RefreshVisualBindings()
@@ -489,9 +503,11 @@ public class PlayerCombatController : MonoBehaviour
 
     public bool CheckHit(Vector3 worldPoint, float projectileHitRadius, Collider projectileCollider = null)
     {
-        if (projectileCollider != null && TryCheckHurtboxColliderHit(projectileCollider, out bool colliderHit))
+        if (projectileCollider != null &&
+            TryCheckHurtboxColliderHit(projectileCollider, out bool colliderHit) &&
+            colliderHit)
         {
-            return colliderHit;
+            return true;
         }
 
         float clampedProjectileHitRadius = Mathf.Max(0f, projectileHitRadius);
@@ -501,6 +517,26 @@ public class PlayerCombatController : MonoBehaviour
         }
 
         return Vector3.Distance(worldPoint, HitPoint) <= clampedProjectileHitRadius + hitRadius;
+    }
+
+    public bool CheckHit(
+        Vector3 previousWorldPoint,
+        Vector3 worldPoint,
+        float projectileHitRadius,
+        Collider projectileCollider = null)
+    {
+        if (CheckHit(worldPoint, projectileHitRadius, projectileCollider))
+        {
+            return true;
+        }
+
+        float clampedProjectileHitRadius = Mathf.Max(0f, projectileHitRadius);
+        if (TryCheckHurtboxSegmentHit(previousWorldPoint, worldPoint, clampedProjectileHitRadius, out bool hit))
+        {
+            return hit;
+        }
+
+        return DistancePointToSegment(HitPoint, previousWorldPoint, worldPoint) <= clampedProjectileHitRadius + hitRadius;
     }
 
     private void ApplySelectedVehicleState(bool resetRuntimeValues)
@@ -574,8 +610,9 @@ public class PlayerCombatController : MonoBehaviour
 
         shootCooldownRemaining = fireCooldown;
         Vector3 origin = muzzle != null ? muzzle.position : HitPoint;
-        Vector3 target = bossController.AimPoint != null ? bossController.AimPoint.position : bossController.transform.position;
-        Vector3 direction = (target - origin).normalized;
+        Transform targetTransform = ResolveWeaponTarget(out Vector3 targetPosition, out bool userSelectedTarget);
+        Vector3 direction = ResolveSafeDirection(targetPosition - origin);
+        float criticalChance = ResolveCriticalChance(targetTransform, userSelectedTarget);
 
         GameObject projectileInstance = Instantiate(projectileTemplate, origin, Quaternion.LookRotation(direction) * PlayerProjectileVisualRotation);
         projectileInstance.name = "PlayerProjectileRuntime";
@@ -585,7 +622,7 @@ public class PlayerCombatController : MonoBehaviour
         ProjectileController projectile = projectileInstance.GetComponent<ProjectileController>();
         if (projectile != null)
         {
-            projectile.Launch(battleController, ProjectileTeam.Player, direction, projectileSpeed, projectileDamage);
+            projectile.Launch(battleController, ProjectileTeam.Player, direction, projectileSpeed, projectileDamage, criticalChance);
         }
     }
 
@@ -607,7 +644,9 @@ public class PlayerCombatController : MonoBehaviour
             return false;
         }
 
+        Transform targetTransform = ResolveWeaponTarget(out _, out bool userSelectedTarget);
         Vector3 launchDirection = GetMissileLaunchDirection();
+        float criticalChance = ResolveCriticalChance(targetTransform, userSelectedTarget);
         float boostAcceleration = Mathf.Max(
             missileAcceleration,
             Mathf.Abs(missileCruiseSpeed - missileLaunchSpeed) / Mathf.Max(0.01f, missileBoostPhaseDuration));
@@ -621,7 +660,7 @@ public class PlayerCombatController : MonoBehaviour
         HomingMissileController missile = missileInstance.AddComponent<HomingMissileController>();
         missile.Launch(
             battleController,
-            bossController.AimPoint,
+            targetTransform,
             ProjectileTeam.Player,
             launchDirection,
             missileLaunchSpeed,
@@ -646,8 +685,20 @@ public class PlayerCombatController : MonoBehaviour
             missileImpactEffectScale,
             missileUseTemplateOriginalMaterials,
             missileTemplateTint,
-            missileTemplateLocalEulerAngles);
+            missileTemplateLocalEulerAngles,
+            criticalChance);
         return true;
+    }
+
+    public Transform ResolveCurrentWeaponTarget()
+    {
+        return ResolveWeaponTarget(out _, out _);
+    }
+
+    public float ResolveCurrentWeaponCriticalChance()
+    {
+        Transform target = ResolveWeaponTarget(out _, out bool userSelectedTarget);
+        return ResolveCriticalChance(target, userSelectedTarget);
     }
 
     public Vector3 GetMissileLaunchDirectionForSpecial()
@@ -791,6 +842,62 @@ public class PlayerCombatController : MonoBehaviour
         return hasActiveHurtbox;
     }
 
+    private bool TryCheckHurtboxSegmentHit(
+        Vector3 previousWorldPoint,
+        Vector3 worldPoint,
+        float projectileHitRadius,
+        out bool hit)
+    {
+        ResolveDamageHurtboxes();
+
+        if (damageHurtboxes == null || damageHurtboxes.Length == 0)
+        {
+            hit = false;
+            return false;
+        }
+
+        float maxDistanceSqr = projectileHitRadius * projectileHitRadius;
+        Vector3 segment = worldPoint - previousWorldPoint;
+        float segmentLength = segment.magnitude;
+        bool canRaycast = segmentLength > 0.0001f;
+        Ray segmentRay = canRaycast ? new Ray(previousWorldPoint, segment / segmentLength) : default;
+
+        bool hasActiveHurtbox = false;
+        for (int i = 0; i < damageHurtboxes.Length; i++)
+        {
+            Collider hurtbox = damageHurtboxes[i];
+            if (hurtbox == null || !hurtbox.enabled || !hurtbox.gameObject.activeInHierarchy)
+            {
+                continue;
+            }
+
+            hasActiveHurtbox = true;
+            if (TryRecordPointWithinHurtboxRadius(hurtbox, previousWorldPoint, projectileHitRadius, maxDistanceSqr) ||
+                TryRecordPointWithinHurtboxRadius(hurtbox, worldPoint, projectileHitRadius, maxDistanceSqr))
+            {
+                hit = true;
+                return true;
+            }
+
+            if (canRaycast && hurtbox.Raycast(segmentRay, out RaycastHit raycastHit, segmentLength))
+            {
+                RecordApproximateHitDebugInfo(raycastHit.point, raycastHit.point, projectileHitRadius, hurtbox, 0f);
+                hit = true;
+                return true;
+            }
+
+            Vector3 nearestSegmentPoint = ClosestPointOnSegment(hurtbox.bounds.center, previousWorldPoint, worldPoint);
+            if (TryRecordPointWithinHurtboxRadius(hurtbox, nearestSegmentPoint, projectileHitRadius, maxDistanceSqr))
+            {
+                hit = true;
+                return true;
+            }
+        }
+
+        hit = false;
+        return hasActiveHurtbox;
+    }
+
     private bool TryCheckHurtboxColliderHit(Collider projectileCollider, out bool hit)
     {
         ResolveDamageHurtboxes();
@@ -865,6 +972,41 @@ public class PlayerCombatController : MonoBehaviour
         return hasActiveHurtbox;
     }
 
+    private bool TryRecordPointWithinHurtboxRadius(
+        Collider hurtbox,
+        Vector3 worldPoint,
+        float projectileHitRadius,
+        float maxDistanceSqr)
+    {
+        Vector3 closestPoint = hurtbox.ClosestPoint(worldPoint);
+        float sqrDistance = (closestPoint - worldPoint).sqrMagnitude;
+        if (sqrDistance > maxDistanceSqr)
+        {
+            return false;
+        }
+
+        RecordApproximateHitDebugInfo(worldPoint, closestPoint, projectileHitRadius, hurtbox, Mathf.Sqrt(sqrDistance));
+        return true;
+    }
+
+    private static Vector3 ClosestPointOnSegment(Vector3 point, Vector3 segmentStart, Vector3 segmentEnd)
+    {
+        Vector3 segment = segmentEnd - segmentStart;
+        float lengthSqr = segment.sqrMagnitude;
+        if (lengthSqr <= 0.000001f)
+        {
+            return segmentEnd;
+        }
+
+        float t = Mathf.Clamp01(Vector3.Dot(point - segmentStart, segment) / lengthSqr);
+        return segmentStart + segment * t;
+    }
+
+    private static float DistancePointToSegment(Vector3 point, Vector3 segmentStart, Vector3 segmentEnd)
+    {
+        return Vector3.Distance(point, ClosestPointOnSegment(point, segmentStart, segmentEnd));
+    }
+
     private static Transform FindDeepChild(Transform root, string targetName)
     {
         if (root == null || string.IsNullOrWhiteSpace(targetName))
@@ -912,6 +1054,39 @@ public class PlayerCombatController : MonoBehaviour
         }
 
         return null;
+    }
+
+    private Transform ResolveWeaponTarget(out Vector3 targetPosition, out bool userSelectedTarget)
+    {
+        userSelectedTarget = false;
+        if (aimPointTargetingPresenter != null && aimPointTargetingPresenter.TryGetSelectedAimPoint(out Transform selectedAimPoint))
+        {
+            targetPosition = selectedAimPoint.position;
+            userSelectedTarget = true;
+            return selectedAimPoint;
+        }
+
+        Transform fallbackAimPoint = bossController != null ? bossController.AimPoint : null;
+        if (fallbackAimPoint != null)
+        {
+            targetPosition = fallbackAimPoint.position;
+            return fallbackAimPoint;
+        }
+
+        targetPosition = bossController != null ? bossController.transform.position : transform.position + transform.forward;
+        return null;
+    }
+
+    private float ResolveCriticalChance(Transform targetTransform, bool userSelectedTarget)
+    {
+        return aimPointTargetingPresenter != null
+            ? aimPointTargetingPresenter.GetCriticalChanceForShot(targetTransform, userSelectedTarget)
+            : FallbackNormalCriticalChance;
+    }
+
+    private static Vector3 ResolveSafeDirection(Vector3 direction)
+    {
+        return direction.sqrMagnitude > 0.0001f ? direction.normalized : Vector3.forward;
     }
 
     private Vector3 GetMissileLaunchDirection()

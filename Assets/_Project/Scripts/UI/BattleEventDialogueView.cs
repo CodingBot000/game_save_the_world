@@ -13,16 +13,21 @@ public class BattleEventDialogueView : MonoBehaviour
     [SerializeField] private CanvasGroup canvasGroup;
     [SerializeField] private Image bubbleBackground;
     [SerializeField] private Image frameImage;
+    [SerializeField] private Image playerShoutImage;
 
     [Header("Animation Frames")]
     [SerializeField] private Sprite[] normalFrames;
     [SerializeField] private Sprite[] angryFrames;
     [SerializeField, Min(1f)] private float framesPerSecond = 8f;
     [SerializeField] private bool hideOnAwake = true;
+    [SerializeField] private bool usePlayerShoutImage = true;
+    [SerializeField, Min(0f)] private float playerShoutBounceScale = 0.08f;
+    [SerializeField, Min(0.01f)] private float playerShoutBounceFrequency = 2.5f;
 
     private Sprite[] activeFrames;
     private float visibleRemaining;
     private float frameTimer;
+    private float playerShoutBounceTimer;
     private int frameIndex;
     private bool isVisible;
 
@@ -61,6 +66,7 @@ public class BattleEventDialogueView : MonoBehaviour
         }
 
         AdvanceFrame(Time.deltaTime);
+        UpdatePlayerShoutBounce(Time.deltaTime);
     }
 
     public void ShowNormal(float duration)
@@ -77,9 +83,11 @@ public class BattleEventDialogueView : MonoBehaviour
     {
         ResolveReferences();
 
-        activeFrames = mood == DialogueMood.Angry ? angryFrames : normalFrames;
+        bool showingPlayerShout = usePlayerShoutImage && playerShoutImage != null;
+        activeFrames = showingPlayerShout ? null : mood == DialogueMood.Angry ? angryFrames : normalFrames;
         visibleRemaining = Mathf.Max(0.01f, duration);
         frameTimer = 0f;
+        playerShoutBounceTimer = 0f;
         frameIndex = 0;
         isVisible = true;
 
@@ -90,12 +98,13 @@ public class BattleEventDialogueView : MonoBehaviour
             canvasGroup.blocksRaycasts = false;
         }
 
-        if (bubbleBackground != null)
-        {
-            bubbleBackground.enabled = true;
-        }
+        SetLegacyDialogueActive(!showingPlayerShout);
+        SetPlayerShoutVisible(showingPlayerShout);
 
-        ApplyCurrentFrame();
+        if (!showingPlayerShout)
+        {
+            ApplyCurrentFrame();
+        }
     }
 
     public void HideImmediate()
@@ -103,6 +112,7 @@ public class BattleEventDialogueView : MonoBehaviour
         isVisible = false;
         visibleRemaining = 0f;
         frameTimer = 0f;
+        playerShoutBounceTimer = 0f;
         frameIndex = 0;
 
         if (canvasGroup != null)
@@ -116,6 +126,10 @@ public class BattleEventDialogueView : MonoBehaviour
         {
             frameImage.enabled = false;
         }
+
+        SetLegacyDialogueActive(false);
+        SetPlayerShoutVisible(false);
+        ResetPlayerShoutScale();
     }
 
     private void AdvanceFrame(float deltaTime)
@@ -155,6 +169,82 @@ public class BattleEventDialogueView : MonoBehaviour
         frameImage.enabled = sprite != null;
     }
 
+    private void SetLegacyDialogueActive(bool active)
+    {
+        if (bubbleBackground != null)
+        {
+            bubbleBackground.enabled = active;
+            bubbleBackground.gameObject.SetActive(active);
+        }
+
+        if (frameImage != null)
+        {
+            Transform frameRoot = frameImage.transform.parent;
+            if (frameRoot != null)
+            {
+                frameRoot.gameObject.SetActive(active);
+            }
+
+            if (!active)
+            {
+                frameImage.enabled = false;
+            }
+        }
+    }
+
+    private void SetPlayerShoutVisible(bool visible)
+    {
+        if (playerShoutImage == null)
+        {
+            return;
+        }
+
+        ApplyPlayerShoutRectForTopRightPivot();
+        if (visible)
+        {
+            ResetPlayerShoutScale();
+        }
+
+        playerShoutImage.enabled = visible;
+        playerShoutImage.gameObject.SetActive(visible);
+    }
+
+    private void UpdatePlayerShoutBounce(float deltaTime)
+    {
+        if (!usePlayerShoutImage || playerShoutImage == null || !playerShoutImage.gameObject.activeSelf)
+        {
+            return;
+        }
+
+        playerShoutBounceTimer += deltaTime;
+        float wave = Mathf.Sin(playerShoutBounceTimer * Mathf.PI * 2f * Mathf.Max(0.01f, playerShoutBounceFrequency));
+        float bounceT = 0.5f + wave * 0.5f;
+        float scale = 1f + Mathf.SmoothStep(0f, 1f, bounceT) * Mathf.Max(0f, playerShoutBounceScale);
+        playerShoutImage.rectTransform.localScale = Vector3.one * scale;
+    }
+
+    private void ResetPlayerShoutScale()
+    {
+        if (playerShoutImage != null)
+        {
+            playerShoutImage.rectTransform.localScale = Vector3.one;
+        }
+    }
+
+    private void ApplyPlayerShoutRectForTopRightPivot()
+    {
+        if (playerShoutImage == null)
+        {
+            return;
+        }
+
+        RectTransform rect = playerShoutImage.rectTransform;
+        rect.anchorMin = Vector2.one;
+        rect.anchorMax = Vector2.one;
+        rect.pivot = Vector2.one;
+        rect.anchoredPosition = Vector2.zero;
+    }
+
     private void ResolveReferences()
     {
         if (canvasGroup == null)
@@ -177,6 +267,15 @@ public class BattleEventDialogueView : MonoBehaviour
             if (foundFrame != null)
             {
                 frameImage = foundFrame.GetComponent<Image>();
+            }
+        }
+
+        if (playerShoutImage == null)
+        {
+            Transform foundPlayerShout = transform.Find("PlayerShoutImage");
+            if (foundPlayerShout != null)
+            {
+                playerShoutImage = foundPlayerShout.GetComponent<Image>();
             }
         }
     }

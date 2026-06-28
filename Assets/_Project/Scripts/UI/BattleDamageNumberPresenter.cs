@@ -13,6 +13,12 @@ public class BattleDamageNumberPresenter : MonoBehaviour
     [SerializeField] private float digitSpacing = -2f;
     [SerializeField] private float riseDistance = 64f;
     [SerializeField] private float lifetime = 0.85f;
+    [SerializeField] private float criticalRiseDistance = 34f;
+    [SerializeField] private float criticalLifetime = 0.72f;
+    [SerializeField] private float criticalStartScale = 1.6f;
+    [SerializeField] private float criticalPeakScale = 3.7f;
+    [SerializeField] private float criticalEndScale = 2.5f;
+    [SerializeField, Range(0.05f, 0.75f)] private float criticalScaleUpPortion = 0.22f;
     [SerializeField] private Vector2 startScreenOffset = new(0f, 8f);
     [SerializeField] private Vector2 randomScreenJitter = new(8f, 4f);
 
@@ -42,6 +48,8 @@ public class BattleDamageNumberPresenter : MonoBehaviour
         {
             return;
         }
+
+        damageRoot.SetAsLastSibling();
 
         Camera worldCamera = Camera.main;
         if (worldCamera == null)
@@ -86,7 +94,17 @@ public class BattleDamageNumberPresenter : MonoBehaviour
 
         numberRoot.anchoredPosition = anchoredPosition;
         FloatingDamageNumberRuntime runtime = numberRoot.gameObject.AddComponent<FloatingDamageNumberRuntime>();
-        runtime.Play(numberRoot, numberRoot.GetComponent<CanvasGroup>(), anchoredPosition, riseDistance, lifetime);
+        runtime.Play(
+            numberRoot,
+            numberRoot.GetComponent<CanvasGroup>(),
+            anchoredPosition,
+            critical ? criticalRiseDistance : riseDistance,
+            critical ? criticalLifetime : lifetime,
+            critical,
+            criticalStartScale,
+            criticalPeakScale,
+            criticalEndScale,
+            criticalScaleUpPortion);
     }
 
     private RectTransform BuildNumber(string damageText, bool critical)
@@ -187,19 +205,33 @@ public class BattleDamageNumberPresenter : MonoBehaviour
         if (existingRoot != null)
         {
             damageRoot = existingRoot as RectTransform;
+            ApplyRootRect();
+            damageRoot.SetAsLastSibling();
             return;
         }
 
         GameObject rootObject = new(RootName);
         damageRoot = rootObject.AddComponent<RectTransform>();
         damageRoot.SetParent(targetCanvas.transform, false);
+        ApplyRootRect();
+        rootObject.AddComponent<CanvasRenderer>();
+        damageRoot.SetAsLastSibling();
+    }
+
+    private void ApplyRootRect()
+    {
+        if (damageRoot == null)
+        {
+            return;
+        }
+
         damageRoot.anchorMin = Vector2.zero;
         damageRoot.anchorMax = Vector2.one;
         damageRoot.offsetMin = Vector2.zero;
         damageRoot.offsetMax = Vector2.zero;
         damageRoot.pivot = new Vector2(0.5f, 0.5f);
-        rootObject.AddComponent<CanvasRenderer>();
-        damageRoot.SetAsLastSibling();
+        damageRoot.localScale = Vector3.one;
+        damageRoot.localRotation = Quaternion.identity;
     }
 
     private void EnsureCatalog()
@@ -230,6 +262,11 @@ public class FloatingDamageNumberRuntime : MonoBehaviour
     private Vector2 startPosition;
     private float riseDistance;
     private float lifetime;
+    private bool critical;
+    private float criticalStartScale;
+    private float criticalPeakScale;
+    private float criticalEndScale;
+    private float criticalScaleUpPortion;
     private float elapsed;
 
     public void Play(
@@ -237,14 +274,28 @@ public class FloatingDamageNumberRuntime : MonoBehaviour
         CanvasGroup targetCanvasGroup,
         Vector2 anchoredPosition,
         float upwardDistance,
-        float duration)
+        float duration,
+        bool isCritical = false,
+        float criticalStart = 1f,
+        float criticalPeak = 1f,
+        float criticalEnd = 1f,
+        float criticalScaleUp = 0.2f)
     {
         rectTransform = targetRectTransform;
         canvasGroup = targetCanvasGroup;
         startPosition = anchoredPosition;
         riseDistance = Mathf.Max(0f, upwardDistance);
         lifetime = Mathf.Max(0.05f, duration);
+        critical = isCritical;
+        criticalStartScale = Mathf.Max(0.01f, criticalStart);
+        criticalPeakScale = Mathf.Max(criticalStartScale, criticalPeak);
+        criticalEndScale = Mathf.Max(0.01f, criticalEnd);
+        criticalScaleUpPortion = Mathf.Clamp(criticalScaleUp, 0.05f, 0.75f);
         elapsed = 0f;
+
+        rectTransform.localScale = critical
+            ? Vector3.one * criticalStartScale
+            : Vector3.one;
 
         if (canvasGroup != null)
         {
@@ -266,6 +317,9 @@ public class FloatingDamageNumberRuntime : MonoBehaviour
         float t = Mathf.Clamp01(elapsed / lifetime);
         float riseT = 1f - Mathf.Pow(1f - t, 2f);
         rectTransform.anchoredPosition = startPosition + Vector2.up * (riseDistance * riseT);
+        rectTransform.localScale = critical
+            ? Vector3.one * EvaluateCriticalScale(t)
+            : Vector3.one;
 
         if (canvasGroup != null)
         {
@@ -276,5 +330,17 @@ public class FloatingDamageNumberRuntime : MonoBehaviour
         {
             Destroy(gameObject);
         }
+    }
+
+    private float EvaluateCriticalScale(float t)
+    {
+        if (t <= criticalScaleUpPortion)
+        {
+            float popT = Mathf.Clamp01(t / criticalScaleUpPortion);
+            return Mathf.Lerp(criticalStartScale, criticalPeakScale, 1f - Mathf.Pow(1f - popT, 3f));
+        }
+
+        float settleT = Mathf.Clamp01((t - criticalScaleUpPortion) / (1f - criticalScaleUpPortion));
+        return Mathf.Lerp(criticalPeakScale, criticalEndScale, Mathf.SmoothStep(0f, 1f, settleT));
     }
 }

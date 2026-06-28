@@ -41,7 +41,7 @@ public class BossController : MonoBehaviour
         get
         {
             EnsureAimPointsResolved();
-            return currentCombatAimPoint != null ? currentCombatAimPoint : aimPoint != null ? aimPoint : transform;
+            return aimPoint != null ? aimPoint : combatAimPoints.Length > 0 ? combatAimPoints[0] : transform;
         }
     }
     public Transform OrbitCenter => transform;
@@ -73,8 +73,6 @@ public class BossController : MonoBehaviour
 
     private void Update()
     {
-        UpdateCombatAimPoint(Time.deltaTime);
-
         if (cinematicPaused)
         {
             return;
@@ -132,6 +130,18 @@ public class BossController : MonoBehaviour
         aimPointRetargetRemaining = Mathf.Min(aimPointRetargetRemaining, aimPointRetargetInterval);
     }
 
+    public int GetCombatAimPointCount()
+    {
+        EnsureAimPointsResolved();
+        return combatAimPoints.Length;
+    }
+
+    public Transform GetCombatAimPoint(int index)
+    {
+        EnsureAimPointsResolved();
+        return index >= 0 && index < combatAimPoints.Length ? combatAimPoints[index] : null;
+    }
+
     public void SetCinematicPaused(bool paused)
     {
         cinematicPaused = paused;
@@ -177,9 +187,11 @@ public class BossController : MonoBehaviour
 
     public bool CheckHit(Vector3 worldPoint, float projectileHitRadius, Collider projectileCollider = null)
     {
-        if (projectileCollider != null && TryCheckHurtboxColliderHit(projectileCollider, out bool colliderHit))
+        if (projectileCollider != null &&
+            TryCheckHurtboxColliderHit(projectileCollider, out bool colliderHit) &&
+            colliderHit)
         {
-            return colliderHit;
+            return true;
         }
 
         float clampedProjectileHitRadius = Mathf.Max(0f, projectileHitRadius);
@@ -189,6 +201,26 @@ public class BossController : MonoBehaviour
         }
 
         return Vector3.Distance(worldPoint, HitPoint) <= clampedProjectileHitRadius + hitRadius;
+    }
+
+    public bool CheckHit(
+        Vector3 previousWorldPoint,
+        Vector3 worldPoint,
+        float projectileHitRadius,
+        Collider projectileCollider = null)
+    {
+        if (CheckHit(worldPoint, projectileHitRadius, projectileCollider))
+        {
+            return true;
+        }
+
+        float clampedProjectileHitRadius = Mathf.Max(0f, projectileHitRadius);
+        if (TryCheckHurtboxSegmentHit(previousWorldPoint, worldPoint, clampedProjectileHitRadius, out bool segmentHit))
+        {
+            return segmentHit;
+        }
+
+        return DistancePointToSegment(HitPoint, previousWorldPoint, worldPoint) <= clampedProjectileHitRadius + hitRadius;
     }
 
     public bool ApplyDamage(float damage)
@@ -426,6 +458,60 @@ public class BossController : MonoBehaviour
         return hasActiveHurtbox;
     }
 
+    private bool TryCheckHurtboxSegmentHit(
+        Vector3 previousWorldPoint,
+        Vector3 worldPoint,
+        float projectileHitRadius,
+        out bool hit)
+    {
+        ResolveDamageHurtboxes();
+        if (damageHurtboxes == null || damageHurtboxes.Length == 0)
+        {
+            hit = false;
+            return false;
+        }
+
+        float maxDistanceSqr = projectileHitRadius * projectileHitRadius;
+        Vector3 segment = worldPoint - previousWorldPoint;
+        float segmentLength = segment.magnitude;
+        bool canRaycast = segmentLength > 0.0001f;
+        Ray segmentRay = canRaycast ? new Ray(previousWorldPoint, segment / segmentLength) : default;
+
+        bool hasActiveHurtbox = false;
+        for (int i = 0; i < damageHurtboxes.Length; i++)
+        {
+            Collider hurtbox = damageHurtboxes[i];
+            if (hurtbox == null || !hurtbox.enabled || !hurtbox.gameObject.activeInHierarchy)
+            {
+                continue;
+            }
+
+            hasActiveHurtbox = true;
+            if (IsPointWithinHurtboxRadius(hurtbox, previousWorldPoint, maxDistanceSqr) ||
+                IsPointWithinHurtboxRadius(hurtbox, worldPoint, maxDistanceSqr))
+            {
+                hit = true;
+                return true;
+            }
+
+            if (canRaycast && hurtbox.Raycast(segmentRay, out RaycastHit _, segmentLength))
+            {
+                hit = true;
+                return true;
+            }
+
+            Vector3 nearestSegmentPoint = ClosestPointOnSegment(hurtbox.bounds.center, previousWorldPoint, worldPoint);
+            if (IsPointWithinHurtboxRadius(hurtbox, nearestSegmentPoint, maxDistanceSqr))
+            {
+                hit = true;
+                return true;
+            }
+        }
+
+        hit = false;
+        return hasActiveHurtbox;
+    }
+
     private bool TryCheckHurtboxColliderHit(Collider projectileCollider, out bool hit)
     {
         ResolveDamageHurtboxes();
@@ -494,6 +580,30 @@ public class BossController : MonoBehaviour
         }
 
         return hasActiveHurtbox;
+    }
+
+    private static bool IsPointWithinHurtboxRadius(Collider hurtbox, Vector3 worldPoint, float maxDistanceSqr)
+    {
+        Vector3 closestPoint = hurtbox.ClosestPoint(worldPoint);
+        return (closestPoint - worldPoint).sqrMagnitude <= maxDistanceSqr;
+    }
+
+    private static Vector3 ClosestPointOnSegment(Vector3 point, Vector3 segmentStart, Vector3 segmentEnd)
+    {
+        Vector3 segment = segmentEnd - segmentStart;
+        float lengthSqr = segment.sqrMagnitude;
+        if (lengthSqr <= 0.000001f)
+        {
+            return segmentEnd;
+        }
+
+        float t = Mathf.Clamp01(Vector3.Dot(point - segmentStart, segment) / lengthSqr);
+        return segmentStart + segment * t;
+    }
+
+    private static float DistancePointToSegment(Vector3 point, Vector3 segmentStart, Vector3 segmentEnd)
+    {
+        return Vector3.Distance(point, ClosestPointOnSegment(point, segmentStart, segmentEnd));
     }
 
     private static Transform FindDeepChild(Transform root, string targetName)

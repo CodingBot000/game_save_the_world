@@ -42,6 +42,7 @@ public class PlayerSpecialAttackController : MonoBehaviour
     private PlayerCombatController playerCombatController;
     private PlayerOrbitController playerOrbitController;
     private HUDPresenter hudPresenter;
+    private BattleAimPointTargetingPresenter aimPointTargetingPresenter;
     private SpecialAttackOverlayPresenter overlayPresenter;
     private Coroutine activeRoutine;
     private Texture2D sceneTopTextureFallback;
@@ -58,7 +59,8 @@ public class PlayerSpecialAttackController : MonoBehaviour
         PlayerCombatController playerCombat,
         PlayerOrbitController playerOrbit,
         ArenaCameraRig cameraRig,
-        HUDPresenter hud)
+        HUDPresenter hud,
+        BattleAimPointTargetingPresenter targetingPresenter = null)
     {
         battleController = battle;
         bossController = boss;
@@ -69,6 +71,7 @@ public class PlayerSpecialAttackController : MonoBehaviour
         playerCombatController = playerCombat;
         playerOrbitController = playerOrbit;
         hudPresenter = hud;
+        aimPointTargetingPresenter = targetingPresenter;
         ResolveTextureCatalog();
     }
 
@@ -273,11 +276,15 @@ public class PlayerSpecialAttackController : MonoBehaviour
         GameObject missileInstance = new("PlayerSpecialMissileRuntime");
         missileInstance.transform.position = launcher.position;
         missileInstance.transform.rotation = Quaternion.LookRotation(launchDirection.normalized, Vector3.up);
+        Transform targetTransform = ResolveSpecialTarget();
+        float criticalChance = playerCombatController != null
+            ? playerCombatController.ResolveCurrentWeaponCriticalChance()
+            : ResolveSpecialCriticalChance(targetTransform);
 
         SpecialHomingMissileController missile = missileInstance.AddComponent<SpecialHomingMissileController>();
         missile.Launch(
             battleController,
-            bossController.AimPoint,
+            targetTransform,
             ProjectileTeam.Player,
             launchDirection,
             playerCombatController.DebugMissileLaunchSpeed,
@@ -302,7 +309,8 @@ public class PlayerSpecialAttackController : MonoBehaviour
             playerCombatController.DebugMissileImpactEffectScale,
             playerCombatController.DebugMissileUseTemplateOriginalMaterials,
             playerCombatController.DebugMissileTemplateTint,
-            playerCombatController.DebugMissileTemplateLocalEulerAngles);
+            playerCombatController.DebugMissileTemplateLocalEulerAngles,
+            criticalChance);
 
         if (hasSideArc)
         {
@@ -388,8 +396,9 @@ public class PlayerSpecialAttackController : MonoBehaviour
                 Vector3.Dot(launcher.position - mainCamera.transform.position, mainCamera.transform.forward));
         }
 
-        Vector3 targetPoint = bossController != null && bossController.AimPoint != null
-            ? bossController.AimPoint.position
+        Transform specialTarget = ResolveSpecialTarget();
+        Vector3 targetPoint = specialTarget != null
+            ? specialTarget.position
             : launcher.position + playerCombatController.GetMissileLaunchDirectionForSpecial() * 25f;
         Vector3 targetViewportPoint = mainCamera.WorldToViewportPoint(targetPoint);
         float targetDepth = targetViewportPoint.z > mainCamera.nearClipPlane + 0.5f
@@ -429,6 +438,35 @@ public class PlayerSpecialAttackController : MonoBehaviour
 
         initialDirection = resolvedDirection.normalized;
         return true;
+    }
+
+    private Transform ResolveSpecialTarget()
+    {
+        if (playerCombatController != null)
+        {
+            Transform playerTarget = playerCombatController.ResolveCurrentWeaponTarget();
+            if (playerTarget != null)
+            {
+                return playerTarget;
+            }
+        }
+
+        if (aimPointTargetingPresenter != null && aimPointTargetingPresenter.TryGetSelectedAimPoint(out Transform selectedAimPoint))
+        {
+            return selectedAimPoint;
+        }
+
+        return bossController != null ? bossController.AimPoint : null;
+    }
+
+    private float ResolveSpecialCriticalChance(Transform targetTransform)
+    {
+        if (aimPointTargetingPresenter != null && aimPointTargetingPresenter.TryGetSelectedAimPoint(out Transform selectedAimPoint))
+        {
+            return aimPointTargetingPresenter.GetCriticalChanceForShot(targetTransform, selectedAimPoint == targetTransform);
+        }
+
+        return 0.05f;
     }
 
     private Transform SelectSpecialLauncher(int index)

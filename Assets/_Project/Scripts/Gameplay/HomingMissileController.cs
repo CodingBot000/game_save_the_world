@@ -32,6 +32,7 @@ public class HomingMissileController : MonoBehaviour
     private float remainingLifetime;
     private float damage;
     private float hitRadius;
+    private float criticalChance;
     private float visualScale = 1f;
     private float smokeScale = 1f;
     private float impactEffectScale = 1f;
@@ -84,7 +85,8 @@ public class HomingMissileController : MonoBehaviour
         float customImpactEffectScale = 1f,
         bool preserveTemplateMaterials = false,
         Color customTemplateTint = default,
-        Vector3 customTemplateLocalEulerAngles = default)
+        Vector3 customTemplateLocalEulerAngles = default,
+        float criticalChanceOverride = 0f)
     {
         battleController = owner;
         targetTransform = target;
@@ -119,6 +121,7 @@ public class HomingMissileController : MonoBehaviour
         remainingLifetime = Mathf.Max(0.5f, lifetime);
         damage = Mathf.Max(1f, damageAmount);
         hitRadius = Mathf.Max(0.1f, projectileHitRadius);
+        criticalChance = Mathf.Clamp01(criticalChanceOverride);
 
         EnsureVisuals(visualTemplate);
     }
@@ -143,7 +146,7 @@ public class HomingMissileController : MonoBehaviour
         EmitCartoonSmoke();
 
         bool hit = team == ProjectileTeam.Player
-            ? battleController.TryHitBoss(transform.position, hitRadius, damage)
+            ? battleController.TryHitBoss(transform.position, hitRadius, damage, criticalChance: criticalChance)
             : battleController.TryHitPlayer(transform.position, hitRadius, damage);
 
         if (hit)

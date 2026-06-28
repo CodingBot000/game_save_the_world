@@ -26,6 +26,7 @@ public class ProjectileController : MonoBehaviour
     private Collider cachedHitCollider;
     private float effectiveHitRadius;
     private float fallbackHitRadiusMultiplier = 1f;
+    private float criticalChance;
 
     public ProjectileTeam Team => team;
 
@@ -35,12 +36,19 @@ public class ProjectileController : MonoBehaviour
         effectiveHitRadius = ResolveHitRadius();
     }
 
-    public void Launch(BattleController owner, ProjectileTeam projectileTeam, Vector3 direction, float speedOverride, float damageOverride)
+    public void Launch(
+        BattleController owner,
+        ProjectileTeam projectileTeam,
+        Vector3 direction,
+        float speedOverride,
+        float damageOverride,
+        float criticalChanceOverride = 0f)
     {
         battleController = owner;
         team = projectileTeam;
         speed = speedOverride > 0f ? speedOverride : defaultSpeed;
         damage = damageOverride > 0f ? damageOverride : defaultDamage;
+        criticalChance = Mathf.Clamp01(criticalChanceOverride);
         velocity = direction.normalized * speed;
         remainingLifetime = lifetime;
         CacheHitCollider();
@@ -67,6 +75,7 @@ public class ProjectileController : MonoBehaviour
             return;
         }
 
+        Vector3 previousPosition = transform.position;
         transform.position += velocity * Time.deltaTime;
         remainingLifetime -= Time.deltaTime;
 
@@ -77,8 +86,8 @@ public class ProjectileController : MonoBehaviour
         }
 
         bool hit = team == ProjectileTeam.Player
-            ? battleController.TryHitBoss(transform.position, effectiveHitRadius, damage, cachedHitCollider)
-            : battleController.TryHitPlayer(transform.position, effectiveHitRadius, damage, cachedHitCollider);
+            ? battleController.TryHitBoss(previousPosition, transform.position, effectiveHitRadius, damage, cachedHitCollider, criticalChance)
+            : battleController.TryHitPlayer(previousPosition, transform.position, effectiveHitRadius, damage, cachedHitCollider);
 
         if (hit)
         {
