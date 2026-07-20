@@ -6,6 +6,11 @@ public enum ProjectileTeam
     Boss,
 }
 
+public interface IProjectilePlayerHitListener
+{
+    void OnProjectilePlayerHit(Vector3 previousWorldPoint, Vector3 worldPoint, float projectileHitRadius);
+}
+
 public class ProjectileController : MonoBehaviour
 {
     [SerializeField] private float defaultSpeed = 30f;
@@ -29,6 +34,7 @@ public class ProjectileController : MonoBehaviour
     private float criticalChance;
 
     public ProjectileTeam Team => team;
+    public float EffectiveHitRadius => effectiveHitRadius;
 
     private void Awake()
     {
@@ -91,7 +97,21 @@ public class ProjectileController : MonoBehaviour
 
         if (hit)
         {
+            if (team == ProjectileTeam.Boss)
+            {
+                NotifyPlayerHitListeners(previousPosition, transform.position, effectiveHitRadius);
+            }
+
             Destroy(gameObject);
+        }
+    }
+
+    private void NotifyPlayerHitListeners(Vector3 previousWorldPoint, Vector3 worldPoint, float projectileHitRadius)
+    {
+        IProjectilePlayerHitListener[] listeners = GetComponents<IProjectilePlayerHitListener>();
+        for (int i = 0; i < listeners.Length; i++)
+        {
+            listeners[i]?.OnProjectilePlayerHit(previousWorldPoint, worldPoint, projectileHitRadius);
         }
     }
 

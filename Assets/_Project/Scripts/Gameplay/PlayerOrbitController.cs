@@ -88,6 +88,10 @@ public class PlayerOrbitController : MonoBehaviour
     private bool cinematicVisualOverrideActive;
     private Quaternion cinematicVisualDisplayRotation = Quaternion.identity;
     private Quaternion cinematicReturnDisplayRotation = Quaternion.identity;
+    private Coroutine airPressureImpulseRoutine;
+    private Coroutine airPressureRollRoutine;
+    private float airPressureRollDegrees;
+    private float airPressureSwayDegrees;
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
     private static void ClearScreenSpaceVisualObjectsBeforeSceneLoad()
@@ -102,6 +106,10 @@ public class PlayerOrbitController : MonoBehaviour
     public float DebugForwardSpeed => forwardSpeed;
     public float DebugMaxVisualTiltAngle => maxVisualTiltAngle;
     public float DebugVisualTiltDuration => visualTiltDuration;
+    public bool IsAirPressureRotationActive =>
+        airPressureRollRoutine != null ||
+        Mathf.Abs(airPressureRollDegrees) > 0.001f ||
+        Mathf.Abs(airPressureSwayDegrees) > 0.001f;
     public Vector3 OrbitCenterPosition => orbitCenter != null ? orbitCenter.position : Vector3.zero;
     public Vector3 OutwardDirection
     {
@@ -210,6 +218,106 @@ public class PlayerOrbitController : MonoBehaviour
     {
         maxVisualTiltAngle = Mathf.Max(0f, maxAngle);
         visualTiltDuration = Mathf.Max(0f, duration);
+    }
+
+    public void ApplyAirPressureImpulse(
+        Vector3 worldDirection,
+        float distance,
+        float pushDuration,
+        int rollCount,
+        float rollDuration)
+    {
+        Vector3 planeDirection = ResolveMovementPlaneDirection(worldDirection);
+        float clampedDistance = Mathf.Max(0f, distance);
+        float clampedPushDuration = Mathf.Max(0.01f, pushDuration);
+        int clampedRollCount = Mathf.Max(0, rollCount);
+        float clampedRollDuration = Mathf.Max(0.01f, rollDuration);
+
+        if (airPressureImpulseRoutine != null)
+        {
+            StopCoroutine(airPressureImpulseRoutine);
+            airPressureImpulseRoutine = null;
+        }
+
+        if (airPressureRollRoutine != null)
+        {
+            StopCoroutine(airPressureRollRoutine);
+            airPressureRollRoutine = null;
+        }
+
+        airPressureRollDegrees = 0f;
+        airPressureSwayDegrees = 0f;
+
+        if (clampedDistance > 0.001f)
+        {
+            airPressureImpulseRoutine = StartCoroutine(ApplyAirPressureImpulseRoutine(
+                planeDirection,
+                clampedDistance,
+                clampedPushDuration));
+        }
+
+        if (clampedRollCount > 0)
+        {
+            airPressureRollRoutine = StartCoroutine(ApplyAirPressureRollRoutine(
+                ResolveAirPressureRollSign(planeDirection),
+                clampedRollCount,
+                clampedRollDuration));
+        }
+    }
+
+    private IEnumerator ApplyAirPressureImpulseRoutine(Vector3 direction, float distance, float duration)
+    {
+        float elapsed = 0f;
+        float previousProgress = 0f;
+
+        while (elapsed < duration)
+        {
+            elapsed += Time.deltaTime;
+            float normalizedTime = Mathf.Clamp01(elapsed / duration);
+            float easedProgress = 1f - Mathf.Pow(1f - normalizedTime, 3f);
+            float deltaDistance = (easedProgress - previousProgress) * distance;
+            transform.position = ClampToMovementPlane(transform.position + direction * deltaDistance);
+            previousProgress = easedProgress;
+            yield return null;
+        }
+
+        airPressureImpulseRoutine = null;
+        ResetVelocityTracking();
+    }
+
+    private IEnumerator ApplyAirPressureRollRoutine(float rollSign, int rollCount, float duration)
+    {
+        float elapsed = 0f;
+        float totalDegrees = 360f * Mathf.Max(1, rollCount) * (rollSign >= 0f ? 1f : -1f);
+        const float swayAmplitudeDegrees = 8f;
+
+        while (elapsed < duration)
+        {
+            elapsed += Time.deltaTime;
+            float normalizedTime = Mathf.Clamp01(elapsed / duration);
+            float easedProgress = 1f - Mathf.Pow(1f - normalizedTime, 3.4f);
+            airPressureRollDegrees = totalDegrees * easedProgress;
+            airPressureSwayDegrees = Mathf.Sin(normalizedTime * Mathf.PI * 2f) * swayAmplitudeDegrees;
+            yield return null;
+        }
+
+        airPressureRollDegrees = 0f;
+        airPressureSwayDegrees = 0f;
+        airPressureRollRoutine = null;
+    }
+
+    private Vector3 ResolveMovementPlaneDirection(Vector3 worldDirection)
+    {
+        ResolveMovementAxes(out Vector3 right, out Vector3 up, out _);
+        Vector3 safeDirection = worldDirection.sqrMagnitude > 0.0001f ? worldDirection.normalized : right;
+        Vector3 projectedDirection = right * Vector3.Dot(safeDirection, right) + up * Vector3.Dot(safeDirection, up);
+        return projectedDirection.sqrMagnitude > 0.0001f ? projectedDirection.normalized : right;
+    }
+
+    private float ResolveAirPressureRollSign(Vector3 planeDirection)
+    {
+        ResolveMovementAxes(out Vector3 right, out _, out _);
+        return Vector3.Dot(planeDirection, right) >= 0f ? -1f : 1f;
     }
 
     public void SetCinematicVisualLookAt(Vector3 worldTarget)
@@ -463,9 +571,10 @@ public class PlayerOrbitController : MonoBehaviour
 
     private void ApplyLockedVisualPose(Quaternion visualTiltOffset)
     {
+        Quaternion composedVisualOffset = ComposeAirPressureVisualOffset(visualTiltOffset);
         if (screenSpaceVisualRoot != null || screenSpaceVisualInstance != null)
         {
-            ApplyScreenSpaceVisualPose(visualTiltOffset);
+            ApplyScreenSpaceVisualPose(composedVisualOffset);
             if (screenSpaceVisualActive)
             {
                 return;
@@ -480,7 +589,7 @@ public class PlayerOrbitController : MonoBehaviour
 
         if (!lockVisualRootToCamera)
         {
-            target.localRotation = visualTiltBaseLocalRotation * visualTiltOffset;
+            target.localRotation = visualTiltBaseLocalRotation * composedVisualOffset;
             return;
         }
 
@@ -495,7 +604,17 @@ public class PlayerOrbitController : MonoBehaviour
             baseWorldRotation = movementCamera.transform.rotation * lockedVisualCameraRelativeRotation;
         }
 
-        target.rotation = baseWorldRotation * visualTiltOffset;
+        target.rotation = baseWorldRotation * composedVisualOffset;
+    }
+
+    private Quaternion ComposeAirPressureVisualOffset(Quaternion visualOffset)
+    {
+        if (Mathf.Abs(airPressureRollDegrees) <= 0.001f && Mathf.Abs(airPressureSwayDegrees) <= 0.001f)
+        {
+            return visualOffset;
+        }
+
+        return visualOffset * Quaternion.Euler(0f, airPressureRollDegrees, airPressureSwayDegrees);
     }
 
     private void ApplyScreenSpaceVisualPose(Quaternion visualTiltOffset)

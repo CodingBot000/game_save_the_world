@@ -55,6 +55,7 @@ public class PlayerCombatController : MonoBehaviour
     private BattleController battleController;
     private BossController bossController;
     private BattleAimPointTargetingPresenter aimPointTargetingPresenter;
+    private PlayerOrbitController playerOrbitController;
     private GameObject projectileTemplate;
     private Renderer[] cachedRenderers;
     private Color[] rendererBaseColors;
@@ -105,7 +106,11 @@ public class PlayerCombatController : MonoBehaviour
         bossController.IsAlive &&
         HasMissileLaunchers;
     public bool MissileReady => MissileSystemAvailable && missileCooldownRemaining <= 0f;
-    public bool MissileInputAvailable => MissileSystemAvailable && (GameplayDebugFlags.IgnoreMissileCooldown || missileCooldownRemaining <= 0f);
+    public bool WeaponFireBlockedByAirPressure => IsAirPressureWeaponLocked();
+    public bool MissileInputAvailable =>
+        MissileSystemAvailable &&
+        !WeaponFireBlockedByAirPressure &&
+        (GameplayDebugFlags.IgnoreMissileCooldown || missileCooldownRemaining <= 0f);
     public float MissileCooldownRemaining => Mathf.Max(0f, missileCooldownRemaining);
     public float MissileCooldownDuration => Mathf.Max(0.01f, missileCooldown);
     public float DebugFireCooldown => fireCooldown;
@@ -170,6 +175,11 @@ public class PlayerCombatController : MonoBehaviour
             return "Player destroyed.";
         }
 
+        if (IsAirPressureWeaponLocked())
+        {
+            return "Weapon system disrupted.";
+        }
+
         if (!ResolveMissileLaunchers())
         {
             return "Missile launcher offline.";
@@ -229,7 +239,9 @@ public class PlayerCombatController : MonoBehaviour
         bool mouseFire = mouse != null && mouse.leftButton.isPressed && !blockPointerFire;
         bool mouseMissileFire = mouse != null && mouse.rightButton.wasPressedThisFrame && !blockPointerFire;
         bool keyboardFire = keyboard != null && keyboard.spaceKey.isPressed;
-        bool gunFireInput = mouseFire || keyboardFire;
+        bool weaponFireLocked = IsAirPressureWeaponLocked();
+        bool gunFireInput = !weaponFireLocked && (mouseFire || keyboardFire);
+        mouseMissileFire = mouseMissileFire && !weaponFireLocked;
         UpdateGunFireLoop(gunFireInput);
         if (gunFireInput)
         {
@@ -603,7 +615,7 @@ public class PlayerCombatController : MonoBehaviour
 
     private void TryFire()
     {
-        if (shootCooldownRemaining > 0f || projectileTemplate == null)
+        if (IsAirPressureWeaponLocked() || shootCooldownRemaining > 0f || projectileTemplate == null)
         {
             return;
         }
@@ -628,7 +640,7 @@ public class PlayerCombatController : MonoBehaviour
 
     public bool TryFireMissile()
     {
-        if (!MissileSystemAvailable)
+        if (!MissileSystemAvailable || IsAirPressureWeaponLocked())
         {
             return false;
         }
@@ -688,6 +700,16 @@ public class PlayerCombatController : MonoBehaviour
             missileTemplateLocalEulerAngles,
             criticalChance);
         return true;
+    }
+
+    private bool IsAirPressureWeaponLocked()
+    {
+        if (playerOrbitController == null)
+        {
+            playerOrbitController = FindAnyObjectByType<PlayerOrbitController>();
+        }
+
+        return playerOrbitController != null && playerOrbitController.IsAirPressureRotationActive;
     }
 
     public Transform ResolveCurrentWeaponTarget()

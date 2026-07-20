@@ -17,6 +17,7 @@ public enum BossBulletPatternType
     AcceleratingSweepBeam,
     TrackingResidualBeam,
     DebrisFragmentScatter,
+    PressureSniperShot,
 }
 
 public enum BossBulletPatternSet
@@ -484,7 +485,7 @@ public class BossBulletPatternController : MonoBehaviour
                     cooldownMultiplier = 1.25f,
                     speedMultiplier = 1f,
                     damageMultiplier = 1.8f,
-                    telegraphDuration = 2f,
+                    telegraphDuration = 3f,
                     flashingDuration = 0.6f,
                     warningWidth = 2.8f,
                     warningHeight = 10f,
@@ -533,7 +534,7 @@ public class BossBulletPatternController : MonoBehaviour
                 burstInterval = 0.025f,
                 speedMultiplier = 0.25f,
                 damageMultiplier = 0.35f,
-                telegraphDuration = 0.25f,
+                telegraphDuration = 0f,
                 warningWidth = 0.65f,
                 projectileScale = 0.45f,
                 aimJitterPlayerScale = 6f,
@@ -562,6 +563,29 @@ public class BossBulletPatternController : MonoBehaviour
                 approachEndScale = 1.19f,
                 approachInitialSpeedMultiplier = 0.5f,
                 approachFlightDuration = 1f,
+            },
+            new()
+            {
+                displayName = "Pressure Sniper Shot",
+                patternType = BossBulletPatternType.PressureSniperShot,
+                enabled = true,
+                minHealthRatio = 0f,
+                maxHealthRatio = 1f,
+                cooldownMultiplier = 1.25f,
+                projectileCount = 1,
+                secondaryProjectileCount = 1,
+                burstCount = 1,
+                speedMultiplier = 10f,
+                damageMultiplier = 2.2f,
+                telegraphDuration = 0.7f,
+                flashingDuration = 0.12f,
+                warningWidth = 1.9f,
+                projectileScale = 1.4f,
+                activeDuration = 1.1f,
+                hazardRadius = 1.65f,
+                hazardThickness = 2.8f,
+                safeRadius = 1.15f,
+                fixedDuration = 0.18f,
             },
             new()
             {
@@ -681,7 +705,7 @@ public class BossBulletPatternController : MonoBehaviour
 
     private IEnumerator ExecutePatternRoutine(BossBulletPatternDefinition pattern)
     {
-        yield return pattern.patternType switch
+        IEnumerator patternRoutine = pattern.patternType switch
         {
             BossBulletPatternType.FanSpread => ExecuteFanSpread(pattern),
             BossBulletPatternType.AimedBurst => ExecuteAimedBurst(pattern),
@@ -696,8 +720,14 @@ public class BossBulletPatternController : MonoBehaviour
             BossBulletPatternType.AcceleratingSweepBeam => ExecuteAcceleratingSweepBeam(pattern),
             BossBulletPatternType.TrackingResidualBeam => ExecuteTrackingResidualBeam(pattern),
             BossBulletPatternType.DebrisFragmentScatter => ExecuteDebrisFragmentScatter(pattern),
+            BossBulletPatternType.PressureSniperShot => ExecutePressureSniperShot(pattern),
             _ => ExecuteFanSpread(pattern),
         };
+
+        while (patternRoutine != null && patternRoutine.MoveNext())
+        {
+            yield return patternRoutine.Current;
+        }
 
         attackCooldownRemaining = ResolveCooldown(pattern.cooldownMultiplier);
         preserveActiveTelegraphUntilPatternEnds = false;
@@ -1069,6 +1099,54 @@ public class BossBulletPatternController : MonoBehaviour
         }
     }
 
+    private IEnumerator ExecutePressureSniperShot(BossBulletPatternDefinition pattern)
+    {
+        Vector3 lockedTarget = ResolvePressureShotTargetPoint();
+        float warningRadius = ResolvePressureWarningRadius(pattern);
+
+        attackController.PlayHeavyAttackAnimation();
+        GameObject warning = CreatePressureWarningCircle(
+            lockedTarget,
+            warningRadius,
+            new Color(1f, 0.02f, 0.02f, 0.34f));
+        yield return FlashPressureWarning(
+            warning,
+            lockedTarget,
+            warningRadius,
+            Mathf.Max(0.05f, pattern.telegraphDuration),
+            Mathf.Max(0.04f, pattern.flashingDuration));
+        DestroyTelegraph(warning);
+
+        Vector3 origin = attackController.CurrentFireOrigin;
+        Vector3 shotDirection = ResolveSafeDirection(lockedTarget - origin);
+        attackController.PlayQuickAttackAnimation();
+        ProjectileController projectile = attackController.SpawnProjectile(
+            origin,
+            shotDirection,
+            ResolvePrimarySpeed(pattern),
+            ResolvePrimaryDamage(pattern),
+            "BossPressureSniperShotRuntime",
+            pattern.projectileScale,
+            spawnCosmeticBurst: false);
+
+        if (projectile == null)
+        {
+            yield break;
+        }
+
+        BossPressureProjectileRuntime pressureRuntime =
+            projectile.gameObject.AddComponent<BossPressureProjectileRuntime>();
+        pressureRuntime.Configure(
+            playerCombatController,
+            playerOrbitController,
+            projectile.EffectiveHitRadius,
+            Mathf.Max(0f, projectile.EffectiveHitRadius * 4f),
+            Mathf.Max(0f, pattern.safeRadius),
+            Mathf.Max(0.01f, pattern.fixedDuration),
+            Mathf.Max(1, pattern.secondaryProjectileCount),
+            Mathf.Max(0.05f, pattern.activeDuration));
+    }
+
     private IEnumerator ExecuteDebrisFragmentScatter(BossBulletPatternDefinition pattern)
     {
         EnsureDebrisFragmentBatches(
@@ -1085,8 +1163,11 @@ public class BossBulletPatternController : MonoBehaviour
         Transform selectedFirePoint = ResolveDebrisFragmentFirePoint();
         Vector3 warningOrigin = ResolveDebrisFragmentFireOrigin(selectedFirePoint);
         Vector3 warningTarget = playerCombatController != null ? playerCombatController.HitPoint : attackController.CurrentPlayerHitPoint;
+        bool useStompWindup = debrisFragmentStompCount > 0 &&
+                              debrisFragmentStompDuration > 0f &&
+                              debrisFragmentJumpHeightRatio > 0f;
         GameObject warning = null;
-        if (pattern.telegraphDuration > 0f)
+        if (!useStompWindup && pattern.telegraphDuration > 0f)
         {
             warning = CreateLineTelegraph(
                 warningOrigin,
@@ -1097,9 +1178,13 @@ public class BossBulletPatternController : MonoBehaviour
                 scaleThickness: false);
         }
 
-        if (debrisFragmentStompCount > 0 && debrisFragmentStompDuration > 0f && debrisFragmentJumpHeightRatio > 0f)
+        if (useStompWindup)
         {
-            yield return PerformDebrisFragmentStompWindup();
+            IEnumerator stompWindup = PerformDebrisFragmentStompWindup();
+            while (stompWindup.MoveNext())
+            {
+                yield return stompWindup.Current;
+            }
         }
         else if (pattern.telegraphDuration > 0f)
         {
@@ -1527,7 +1612,6 @@ public class BossBulletPatternController : MonoBehaviour
         Transform jumpTransform = bossController != null ? bossController.transform : null;
         if (jumpTransform == null)
         {
-            yield return new WaitForSeconds(Mathf.Max(0f, debrisFragmentStompDuration) * Mathf.Max(1, debrisFragmentStompCount));
             yield break;
         }
 
@@ -1535,14 +1619,18 @@ public class BossBulletPatternController : MonoBehaviour
         float jumpHeight = ResolveDebrisFragmentJumpHeight();
         if (jumpHeight <= 0.001f)
         {
-            yield return new WaitForSeconds(duration * Mathf.Max(1, debrisFragmentStompCount));
             yield break;
         }
 
         int stompCount = Mathf.Max(1, debrisFragmentStompCount);
         for (int stompIndex = 0; stompIndex < stompCount; stompIndex++)
         {
-            yield return PerformSingleDebrisFragmentStomp(jumpTransform, duration, jumpHeight);
+            IEnumerator singleStomp = PerformSingleDebrisFragmentStomp(jumpTransform, duration, jumpHeight);
+            while (singleStomp.MoveNext())
+            {
+                yield return singleStomp.Current;
+            }
+
             TriggerDebrisFragmentStompShake();
         }
     }
@@ -1557,14 +1645,15 @@ public class BossBulletPatternController : MonoBehaviour
         activeDebrisJumpBaseY = baseY;
         hasActiveDebrisJump = true;
 
+        elapsed = Mathf.Min(duration, Mathf.Max(Time.deltaTime, duration * 0.04f));
+        ApplyDebrisFragmentStompPose(jumpTransform, baseY, initialVelocity, gravity, elapsed);
+        yield return null;
+
         while (elapsed < duration)
         {
             elapsed += Time.deltaTime;
             float t = Mathf.Min(elapsed, duration);
-            float verticalOffset = initialVelocity * t - 0.5f * gravity * t * t;
-            Vector3 position = jumpTransform.position;
-            position.y = baseY + Mathf.Max(0f, verticalOffset);
-            jumpTransform.position = position;
+            ApplyDebrisFragmentStompPose(jumpTransform, baseY, initialVelocity, gravity, t);
             yield return null;
         }
 
@@ -1573,6 +1662,24 @@ public class BossBulletPatternController : MonoBehaviour
         jumpTransform.position = landedPosition;
         hasActiveDebrisJump = false;
         activeDebrisJumpTransform = null;
+    }
+
+    private static void ApplyDebrisFragmentStompPose(
+        Transform jumpTransform,
+        float baseY,
+        float initialVelocity,
+        float gravity,
+        float time)
+    {
+        if (jumpTransform == null)
+        {
+            return;
+        }
+
+        float verticalOffset = initialVelocity * time - 0.5f * gravity * time * time;
+        Vector3 position = jumpTransform.position;
+        position.y = baseY + Mathf.Max(0f, verticalOffset);
+        jumpTransform.position = position;
     }
 
     private float ResolveDebrisFragmentJumpHeight()
@@ -1883,6 +1990,89 @@ public class BossBulletPatternController : MonoBehaviour
         float pulse = 1f + Mathf.Sin(Mathf.Clamp01(normalizedTime) * Mathf.PI * 4f) * 0.16f;
         chargeWarning.transform.position = origin;
         chargeWarning.transform.localScale = Vector3.one * Mathf.Max(0.1f, baseRadius * pulse);
+    }
+
+    private IEnumerator FlashPressureWarning(
+        GameObject warning,
+        Vector3 lockedTarget,
+        float radius,
+        float duration,
+        float blinkInterval)
+    {
+        float elapsed = 0f;
+        float clampedDuration = Mathf.Max(0.05f, duration);
+        float clampedBlinkInterval = Mathf.Max(0.04f, blinkInterval);
+
+        while (elapsed < clampedDuration)
+        {
+            float blink = Mathf.PingPong(elapsed / clampedBlinkInterval, 1f);
+            float pulse = 1f + Mathf.Sin(elapsed * Mathf.PI * 8f) * 0.08f;
+            UpdatePressureWarningCircle(warning, lockedTarget, radius * pulse);
+            SetTelegraphColor(
+                warning,
+                Color.Lerp(
+                    new Color(1f, 0.02f, 0.02f, 0.16f),
+                    new Color(1f, 0.02f, 0.02f, 0.72f),
+                    blink));
+
+            elapsed += Time.deltaTime;
+            yield return null;
+        }
+
+        UpdatePressureWarningCircle(warning, lockedTarget, radius);
+    }
+
+    private GameObject CreatePressureWarningCircle(Vector3 target, float radius, Color color)
+    {
+        Vector3 normal = ResolveCameraFacingNormal();
+        return CreateTelegraphPrimitive(
+            "BossPressureSniperWarning",
+            PrimitiveType.Cylinder,
+            target + normal * 0.08f,
+            Quaternion.FromToRotation(Vector3.up, normal),
+            new Vector3(radius * 2f, 0.025f, radius * 2f),
+            color,
+            false);
+    }
+
+    private void UpdatePressureWarningCircle(GameObject warning, Vector3 target, float radius)
+    {
+        if (warning == null)
+        {
+            return;
+        }
+
+        Vector3 normal = ResolveCameraFacingNormal();
+        warning.transform.SetPositionAndRotation(
+            target + normal * 0.08f,
+            Quaternion.FromToRotation(Vector3.up, normal));
+        warning.transform.localScale = new Vector3(
+            Mathf.Max(0.1f, radius * 2f),
+            0.025f,
+            Mathf.Max(0.1f, radius * 2f));
+    }
+
+    private Vector3 ResolvePressureShotTargetPoint()
+    {
+        return playerCombatController != null ? playerCombatController.HitPoint : attackController.CurrentPlayerHitPoint;
+    }
+
+    private float ResolvePressureWarningRadius(BossBulletPatternDefinition pattern)
+    {
+        float playerRadius = playerCombatController != null ? playerCombatController.HitRadius : 1f;
+        return Mathf.Max(playerRadius * 0.9f, pattern.warningWidth);
+    }
+
+    private static Vector3 ResolveCameraFacingNormal()
+    {
+        Camera camera = Camera.main;
+        if (camera == null)
+        {
+            return Vector3.up;
+        }
+
+        Vector3 normal = -camera.transform.forward;
+        return normal.sqrMagnitude > 0.0001f ? normal.normalized : Vector3.up;
     }
 
     private GameObject CreateLineTelegraph(
