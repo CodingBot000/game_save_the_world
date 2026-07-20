@@ -17,7 +17,7 @@ public class EnvironmentThemeDebugPanel : MonoBehaviour
     [Header("Scene References")]
     [SerializeField] private Canvas targetCanvas;
     [SerializeField] private EnvironmentBackgroundController environmentController;
-    [SerializeField] private ArenaCameraRig arenaCameraRig;
+    [SerializeField] private MoonOrbitController worldRotationController;
 
     private GameObject panelRoot;
     private Text currentThemeText;
@@ -120,7 +120,7 @@ public class EnvironmentThemeDebugPanel : MonoBehaviour
     public void ToggleRotate()
     {
         ResolveReferences();
-        if (arenaCameraRig == null && environmentController == null)
+        if (worldRotationController == null)
         {
             return;
         }
@@ -185,9 +185,9 @@ public class EnvironmentThemeDebugPanel : MonoBehaviour
             environmentController = FindAnyObjectByType<EnvironmentBackgroundController>();
         }
 
-        if (arenaCameraRig == null)
+        if (worldRotationController == null)
         {
-            arenaCameraRig = FindAnyObjectByType<ArenaCameraRig>();
+            worldRotationController = FindAnyObjectByType<MoonOrbitController>();
         }
     }
 
@@ -337,21 +337,14 @@ public class EnvironmentThemeDebugPanel : MonoBehaviour
 
     private bool IsRotateEnabled()
     {
-        bool cameraRotationEnabled = arenaCameraRig == null || !arenaCameraRig.FreezeOrbitWithBoolToggle;
-        bool backgroundMotionEnabled = environmentController == null || environmentController.MotionEnabled;
-        return cameraRotationEnabled && backgroundMotionEnabled;
+        return worldRotationController != null && worldRotationController.OrbitEnabled;
     }
 
     private void SetRotateEnabled(bool enabled)
     {
-        if (arenaCameraRig != null)
+        if (worldRotationController != null)
         {
-            arenaCameraRig.FreezeOrbitWithBoolToggle = !enabled;
-        }
-
-        if (environmentController != null)
-        {
-            environmentController.MotionEnabled = enabled;
+            worldRotationController.OrbitEnabled = enabled;
         }
     }
 

@@ -8,6 +8,12 @@ public class MoonOrbitController : MonoBehaviour
     [SerializeField] private Vector3 orbitAxis = new Vector3(0f, 1f, 0f);
     [SerializeField] private float orbitSpeed = 4f;
 
+    public bool OrbitEnabled
+    {
+        get => !temporarilyDisableOrbit;
+        set => temporarilyDisableOrbit = !value;
+    }
+
     private void Update()
     {
         if (temporarilyDisableOrbit)
