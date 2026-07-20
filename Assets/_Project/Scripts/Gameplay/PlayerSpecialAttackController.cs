@@ -7,30 +7,36 @@ public class PlayerSpecialAttackController : MonoBehaviour
     private const string SceneTopTextureResourcePath = "Battle/SpecialAttack/special_scene1";
     private const string SceneBottomTextureResourcePath = "Battle/SpecialAttack/special_scene2";
     private const int DefaultMissileCountPerSide = 15;
-    private static readonly Vector2[] MissileSideArcPattern =
-    {
-        new(1f, 0f),
-        new(0.65f, 0.55f),
-        new(0.65f, -0.55f),
-        new(0f, 1f),
-        new(0f, -1f),
-    };
 
     [Header("Timing")]
     [SerializeField] private float cutInDuration = 0.4f;
-    [SerializeField] private float missileSalvoDuration = 2f;
+    [SerializeField] private float missileSalvoDuration = 0.6f;
     [SerializeField] private float visualReturnDuration = 0.35f;
     [SerializeField] private float visualTurnTowardBossAngle = 60f;
 
     [Header("Missiles")]
     [SerializeField] private int missileCountPerSide = DefaultMissileCountPerSide;
-    [SerializeField] private int missilesPerVolley = 2;
-    [SerializeField, Range(0f, 1f)] private float missileSideArcMinScreenOffset = 0.2f;
-    [SerializeField, Range(0f, 1.2f)] private float missileSideArcMaxScreenOffset = 0.5f;
-    [SerializeField, Range(0f, 1f)] private float missileSideArcMaxVerticalScreenOffset = 0.4f;
-    [SerializeField] private float missileSideArcDuration = 0.5f;
-    [SerializeField] private float missileFallbackSpreadAngle = 70f;
+    [SerializeField] private int missilesPerVolley = 4;
     [SerializeField] private float specialMissileDamage = 0f;
+
+    [Header("Missile Strike Distribution")]
+    [SerializeField] private float targetSpreadRadius = 1.6f;
+    [SerializeField] private float targetSpreadVerticalScale = 1.25f;
+    [SerializeField] private float targetSpreadDepth = 0.2f;
+
+    [Header("Missile Strike Flight")]
+    [SerializeField] private float fanOutDuration = 0.28f;
+    [SerializeField] private float fanOutDistance = 5.5f;
+    [SerializeField] private float fanOutHorizontal = 1f;
+    [SerializeField] private float fanOutVertical = 0.65f;
+    [SerializeField] private float arcDuration = 0.75f;
+    [SerializeField] private float arcDurationJitter = 0.18f;
+    [SerializeField] private float arcHorizontalRadius = 10f;
+    [SerializeField] private float arcVerticalRadius = 7f;
+    [SerializeField] private float terminalEntryDistance = 8f;
+
+    [Header("Missile Strike Pool")]
+    [SerializeField] private int missilePoolPrewarmCount = 40;
 
     [Header("Resources")]
     [SerializeField] private SpecialAttackTextureCatalog textureCatalog;
@@ -48,6 +54,8 @@ public class PlayerSpecialAttackController : MonoBehaviour
     private Texture2D sceneTopTextureFallback;
     private Texture2D sceneBottomTextureFallback;
     private bool lastMissileSalvoCompleted;
+    private int salvoSequence;
+    private SpecialMissilePool missilePool;
 
     public bool IsActive => activeRoutine != null;
     public event System.Action SpecialMissileSalvoCompleted;
@@ -73,6 +81,7 @@ public class PlayerSpecialAttackController : MonoBehaviour
         hudPresenter = hud;
         aimPointTargetingPresenter = targetingPresenter;
         ResolveTextureCatalog();
+        EnsureMissilePool();
     }
 
     public bool TryActivate()
@@ -221,8 +230,13 @@ public class PlayerSpecialAttackController : MonoBehaviour
 
     private IEnumerator LaunchMissileSalvo()
     {
+        EnsureMissilePool();
         int countPerSide = Mathf.Max(1, missileCountPerSide);
         int totalCount = countPerSide * 2;
+        int combatAimPointCount = bossController != null
+            ? bossController.GetCombatAimPointCount()
+            : 0;
+        int currentSalvoSequence = unchecked(++salvoSequence);
         int volleySize = Mathf.Max(1, missilesPerVolley);
         int volleyCount = Mathf.CeilToInt(totalCount / (float)volleySize);
         float launchInterval = volleyCount > 1
@@ -239,7 +253,11 @@ public class PlayerSpecialAttackController : MonoBehaviour
             int volleyEnd = Mathf.Min(volleyStart + volleySize, totalCount);
             for (int i = volleyStart; i < volleyEnd; i++)
             {
-                LaunchSpecialMissile(i, countPerSide);
+                LaunchSpecialMissile(
+                    i,
+                    totalCount,
+                    combatAimPointCount,
+                    currentSalvoSequence);
             }
 
             if (volleyEnd < totalCount)
@@ -251,7 +269,11 @@ public class PlayerSpecialAttackController : MonoBehaviour
         lastMissileSalvoCompleted = true;
     }
 
-    private void LaunchSpecialMissile(int index, int countPerSide)
+    private void LaunchSpecialMissile(
+        int index,
+        int totalCount,
+        int combatAimPointCount,
+        int currentSalvoSequence)
     {
         Transform launcher = SelectSpecialLauncher(index);
         if (launcher == null || playerCombatController == null || bossController == null)
@@ -259,32 +281,55 @@ public class PlayerSpecialAttackController : MonoBehaviour
             return;
         }
 
-        int totalCount = Mathf.Max(1, countPerSide * 2);
-        Vector3 launchDirection = ResolveSpecialMissileLaunchDirection(
+        int distributionAnchorCount = Mathf.Max(1, combatAimPointCount);
+        int anchorIndex = MissileStrikeDistribution.GetAnchorIndex(
+            index,
+            distributionAnchorCount,
+            currentSalvoSequence);
+        Transform targetAnchor = ResolveStrikeAnchor(anchorIndex, combatAimPointCount);
+        int anchorOrdinal = MissileStrikeDistribution.GetAnchorOrdinal(index, distributionAnchorCount);
+        int assignedMissileCount = MissileStrikeDistribution.GetAnchorAssignmentCount(
+            anchorIndex,
+            totalCount,
+            distributionAnchorCount,
+            currentSalvoSequence);
+        Vector3 targetLocalOffset = MissileStrikeDistribution.GetLocalOffset(
+            index,
+            anchorIndex,
+            anchorOrdinal,
+            assignedMissileCount,
+            currentSalvoSequence,
+            targetSpreadRadius,
+            targetSpreadVerticalScale,
+            targetSpreadDepth);
+        SpecialMissileStrikePath strikePath = CreateStrikePath(
             launcher,
             index,
-            countPerSide,
-            totalCount,
-            out bool hasSideArc,
-            out Vector3 sideArcControlPosition,
-            out Vector3 sideArcEndPosition);
+            currentSalvoSequence,
+            targetAnchor,
+            targetLocalOffset);
+        Vector3 launchDirection = strikePath.FanOutDirection;
         float boostAcceleration = Mathf.Max(
             playerCombatController.DebugMissileAcceleration,
             Mathf.Abs(playerCombatController.DebugMissileCruiseSpeed - playerCombatController.DebugMissileLaunchSpeed) /
             Mathf.Max(0.01f, playerCombatController.DebugMissileBoostPhaseDuration));
 
-        GameObject missileInstance = new("PlayerSpecialMissileRuntime");
-        missileInstance.transform.position = launcher.position;
-        missileInstance.transform.rotation = Quaternion.LookRotation(launchDirection.normalized, Vector3.up);
-        Transform targetTransform = ResolveSpecialTarget();
+        SpecialHomingMissileController missile = missilePool != null ? missilePool.Get() : null;
+        if (missile == null)
+        {
+            GameObject missileInstance = new("PlayerSpecialMissileRuntime");
+            missile = missileInstance.AddComponent<SpecialHomingMissileController>();
+        }
+
+        missile.transform.position = launcher.position;
+        missile.transform.rotation = Quaternion.LookRotation(launchDirection.normalized, Vector3.up);
         float criticalChance = playerCombatController != null
             ? playerCombatController.ResolveCurrentWeaponCriticalChance()
-            : ResolveSpecialCriticalChance(targetTransform);
+            : ResolveSpecialCriticalChance(targetAnchor);
 
-        SpecialHomingMissileController missile = missileInstance.AddComponent<SpecialHomingMissileController>();
         missile.Launch(
             battleController,
-            targetTransform,
+            targetAnchor,
             ProjectileTeam.Player,
             launchDirection,
             playerCombatController.DebugMissileLaunchSpeed,
@@ -311,14 +356,7 @@ public class PlayerSpecialAttackController : MonoBehaviour
             playerCombatController.DebugMissileTemplateTint,
             playerCombatController.DebugMissileTemplateLocalEulerAngles,
             criticalChance);
-
-        if (hasSideArc)
-        {
-            missile.ConfigureSideArc(
-                sideArcControlPosition,
-                sideArcEndPosition,
-                missileSideArcDuration);
-        }
+        missile.ConfigureStrikePath(strikePath);
     }
 
     private void SetSpecialAttackVisualPose()
@@ -333,130 +371,136 @@ public class PlayerSpecialAttackController : MonoBehaviour
             visualTurnTowardBossAngle);
     }
 
-    private Vector3 ResolveSpecialMissileLaunchDirection(
+    private SpecialMissileStrikePath CreateStrikePath(
         Transform launcher,
-        int index,
-        int countPerSide,
-        int totalCount,
-        out bool hasSideArc,
-        out Vector3 sideArcControlPosition,
-        out Vector3 sideArcEndPosition)
+        int missileIndex,
+        int currentSalvoSequence,
+        Transform targetAnchor,
+        Vector3 targetLocalOffset)
     {
-        hasSideArc = false;
-        sideArcControlPosition = launcher != null ? launcher.position : Vector3.zero;
-        sideArcEndPosition = sideArcControlPosition;
+        Vector3 baseDirection = playerCombatController != null
+            ? playerCombatController.GetMissileLaunchDirectionForSpecial()
+            : launcher.forward;
+        if (baseDirection.sqrMagnitude < 0.001f)
+        {
+            baseDirection = launcher.forward.sqrMagnitude > 0.001f ? launcher.forward : Vector3.forward;
+        }
 
+        baseDirection.Normalize();
         Camera mainCamera = Camera.main;
-        if (mainCamera != null &&
-            TryResolveSideArc(
-                mainCamera,
-                launcher,
-                index,
-                countPerSide,
-                out sideArcControlPosition,
-                out sideArcEndPosition,
-                out Vector3 sideArcDirection))
+        Vector3 cameraRight = mainCamera != null ? mainCamera.transform.right : launcher.right;
+        Vector3 cameraUp = mainCamera != null ? mainCamera.transform.up : Vector3.up;
+        Vector3 cameraForward = mainCamera != null ? mainCamera.transform.forward : baseDirection;
+        float sideSign = missileIndex % 2 == 0 ? -1f : 1f;
+        float outwardAmount = Mathf.Lerp(
+            0.58f,
+            1f,
+            MissileStrikeDistribution.Hash01(currentSalvoSequence, missileIndex, 0x31A7));
+        float verticalAmount = MissileStrikeDistribution.HashSigned(
+            currentSalvoSequence,
+            missileIndex,
+            0x6E2B);
+        Vector3 fanDirection =
+            baseDirection * 0.45f +
+            cameraRight * (sideSign * Mathf.Max(0f, fanOutHorizontal) * outwardAmount) +
+            cameraUp * (verticalAmount * Mathf.Max(0f, fanOutVertical));
+        if (fanDirection.sqrMagnitude < 0.001f)
         {
-            hasSideArc = true;
-            return sideArcDirection;
+            fanDirection = baseDirection;
         }
 
-        Vector3 baseDirection = playerCombatController.GetMissileLaunchDirectionForSpecial();
-        float normalizedIndex = totalCount <= 1 ? 0.5f : index / (totalCount - 1f);
-        float spreadOffset = Mathf.Lerp(
-            -missileFallbackSpreadAngle * 0.5f,
-            missileFallbackSpreadAngle * 0.5f,
-            normalizedIndex);
-        return Quaternion.AngleAxis(spreadOffset, Vector3.up) * baseDirection;
+        fanDirection.Normalize();
+        Vector3 fanEndPosition = launcher.position + fanDirection * Mathf.Max(0f, fanOutDistance);
+        Vector3 targetWorldPosition = targetAnchor != null
+            ? targetAnchor.TransformPoint(targetLocalOffset)
+            : bossController != null
+                ? bossController.HitPoint
+                : launcher.position + baseDirection * 25f;
+        Vector3 approachVector = targetWorldPosition - fanEndPosition;
+        Vector3 approachDirection = approachVector.sqrMagnitude > 0.001f
+            ? approachVector.normalized
+            : baseDirection;
+        float entryDistance = Mathf.Min(
+            Mathf.Max(0f, terminalEntryDistance),
+            approachVector.magnitude * 0.55f);
+        Vector3 terminalEntryPoint = targetWorldPosition - approachDirection * entryDistance;
+        Vector3 arcMidPoint = Vector3.Lerp(fanEndPosition, terminalEntryPoint, 0.5f);
+        float arcSideAmount = sideSign * Mathf.Lerp(
+            0.55f,
+            1f,
+            MissileStrikeDistribution.Hash01(currentSalvoSequence, missileIndex, 0x19C3));
+        float arcVerticalAmount = MissileStrikeDistribution.HashSigned(
+            currentSalvoSequence,
+            missileIndex,
+            0x52D1);
+        float arcDepthAmount = MissileStrikeDistribution.HashSigned(
+            currentSalvoSequence,
+            missileIndex,
+            0x73A9);
+        Vector3 arcControlPoint =
+            arcMidPoint +
+            cameraRight * (arcSideAmount * Mathf.Max(0f, arcHorizontalRadius)) +
+            cameraUp * (arcVerticalAmount * Mathf.Max(0f, arcVerticalRadius)) +
+            cameraForward * (arcDepthAmount * Mathf.Max(0f, arcHorizontalRadius) * 0.18f);
+        float resolvedArcDuration = Mathf.Max(
+            0.1f,
+            arcDuration + MissileStrikeDistribution.HashSigned(
+                currentSalvoSequence,
+                missileIndex,
+                0x4F1B) * Mathf.Abs(arcDurationJitter));
+
+        return new SpecialMissileStrikePath
+        {
+            TargetAnchor = targetAnchor,
+            TargetLocalOffset = targetLocalOffset,
+            FanOutDirection = fanDirection,
+            FanOutDuration = Mathf.Max(0.01f, fanOutDuration),
+            FanOutDistance = Mathf.Max(0f, fanOutDistance),
+            ArcControlPoint = arcControlPoint,
+            TerminalEntryPoint = terminalEntryPoint,
+            ArcDuration = resolvedArcDuration,
+        };
     }
 
-    private bool TryResolveSideArc(
-        Camera mainCamera,
-        Transform launcher,
-        int index,
-        int countPerSide,
-        out Vector3 controlPosition,
-        out Vector3 endPosition,
-        out Vector3 initialDirection)
+    private Transform ResolveStrikeAnchor(int anchorIndex, int combatAimPointCount)
     {
-        controlPosition = launcher != null ? launcher.position : Vector3.zero;
-        endPosition = controlPosition;
-        initialDirection = Vector3.zero;
-        if (mainCamera == null || launcher == null)
+        if (bossController == null)
         {
-            return false;
+            return null;
         }
 
-        Vector3 launcherViewportPoint = mainCamera.WorldToViewportPoint(launcher.position);
-        float launcherDepth = launcherViewportPoint.z;
-        if (launcherDepth <= mainCamera.nearClipPlane + 0.5f)
+        if (combatAimPointCount > 0)
         {
-            launcherDepth = Mathf.Max(
-                mainCamera.nearClipPlane + 5f,
-                Vector3.Dot(launcher.position - mainCamera.transform.position, mainCamera.transform.forward));
-        }
-
-        Transform specialTarget = ResolveSpecialTarget();
-        Vector3 targetPoint = specialTarget != null
-            ? specialTarget.position
-            : launcher.position + playerCombatController.GetMissileLaunchDirectionForSpecial() * 25f;
-        Vector3 targetViewportPoint = mainCamera.WorldToViewportPoint(targetPoint);
-        float targetDepth = targetViewportPoint.z > mainCamera.nearClipPlane + 0.5f
-            ? targetViewportPoint.z
-            : launcherDepth + 25f;
-
-        int sideIndex = Mathf.Clamp(index / 2, 0, Mathf.Max(0, countPerSide - 1));
-        Vector2 patternPoint = MissileSideArcPattern[sideIndex % MissileSideArcPattern.Length];
-        float minOffset = Mathf.Clamp01(missileSideArcMinScreenOffset);
-        float maxOffset = Mathf.Max(minOffset, missileSideArcMaxScreenOffset);
-        float sideOffset = Mathf.Lerp(minOffset, maxOffset, Mathf.Clamp01(patternPoint.x));
-        float verticalOffset = Mathf.Clamp(
-            patternPoint.y,
-            -1f,
-            1f) * Mathf.Clamp01(missileSideArcMaxVerticalScreenOffset);
-        float sideSign = index % 2 == 0 ? -1f : 1f;
-
-        float endDepth = Mathf.Lerp(launcherDepth, targetDepth, 0.18f);
-        float controlDepth = Mathf.Lerp(launcherDepth, targetDepth, 0.08f);
-        Vector3 endViewportPoint = new(
-            launcherViewportPoint.x + sideSign * sideOffset,
-            launcherViewportPoint.y + verticalOffset,
-            endDepth);
-        Vector3 controlViewportPoint = new(
-            launcherViewportPoint.x + sideSign * sideOffset * 1.15f,
-            launcherViewportPoint.y + verticalOffset * 0.8f,
-            controlDepth);
-
-        controlPosition = mainCamera.ViewportToWorldPoint(controlViewportPoint);
-        endPosition = mainCamera.ViewportToWorldPoint(endViewportPoint);
-
-        Vector3 resolvedDirection = controlPosition - launcher.position;
-        if (resolvedDirection.sqrMagnitude < 0.001f)
-        {
-            return false;
-        }
-
-        initialDirection = resolvedDirection.normalized;
-        return true;
-    }
-
-    private Transform ResolveSpecialTarget()
-    {
-        if (playerCombatController != null)
-        {
-            Transform playerTarget = playerCombatController.ResolveCurrentWeaponTarget();
-            if (playerTarget != null)
+            Transform combatAimPoint = bossController.GetCombatAimPoint(anchorIndex);
+            if (combatAimPoint != null)
             {
-                return playerTarget;
+                return combatAimPoint;
             }
         }
 
-        if (aimPointTargetingPresenter != null && aimPointTargetingPresenter.TryGetSelectedAimPoint(out Transform selectedAimPoint))
+        return bossController.AimPoint != null ? bossController.AimPoint : bossController.transform;
+    }
+
+    private SpecialMissilePool EnsureMissilePool()
+    {
+        if (missilePool == null)
         {
-            return selectedAimPoint;
+            missilePool = GetComponentInChildren<SpecialMissilePool>(true);
+            if (missilePool == null)
+            {
+                missilePool = SpecialMissilePool.Create(transform);
+            }
         }
 
-        return bossController != null ? bossController.AimPoint : null;
+        missilePool.Prewarm(Mathf.Max(0, missilePoolPrewarmCount));
+        if (playerCombatController != null)
+        {
+            missilePool.PrewarmImpacts(
+                playerCombatController.DebugMissileImpactEffectTemplate,
+                Mathf.Max(1, missileCountPerSide * 2));
+        }
+
+        return missilePool;
     }
 
     private float ResolveSpecialCriticalChance(Transform targetTransform)
@@ -562,5 +606,14 @@ public class PlayerSpecialAttackController : MonoBehaviour
 
         ResolveTextureCatalog();
         return textureCatalog != null ? textureCatalog.SceneBottomTexture : null;
+    }
+
+    private void OnDestroy()
+    {
+        if (missilePool != null)
+        {
+            missilePool.Dispose();
+            missilePool = null;
+        }
     }
 }

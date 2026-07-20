@@ -1,34 +1,43 @@
 using System.Collections.Generic;
 using UnityEngine;
 
+public struct SpecialMissileStrikePath
+{
+    public Transform TargetAnchor;
+    public Vector3 TargetLocalOffset;
+    public Vector3 FanOutDirection;
+    public float FanOutDuration;
+    public float FanOutDistance;
+    public Vector3 ArcControlPoint;
+    public Vector3 TerminalEntryPoint;
+    public float ArcDuration;
+}
+
 public class SpecialHomingMissileController : MonoBehaviour
 {
     private const float DefaultMissileVisualLength = 0.92f;
-    private const float CartoonSmokeSpacing = 0.34f;
-    private const float CartoonSmokeLifetime = 0.68f;
-    private const int MaxCartoonSmokePuffsPerFrame = 8;
+    private const float DefaultTrailTime = 1.6f;
+    private static Material sharedTrailCoreMaterial;
+    private static Material sharedTrailGlowMaterial;
     private enum MissilePhase
     {
-        SideArc,
-        Straight,
-        Turning,
-        Boost,
+        FanOut,
+        Arc,
+        Terminal,
+        ImpactFade,
     }
 
     private const string ExhaustAnchorName = "MissileExhaustAnchor";
 
     private BattleController battleController;
-    private Transform targetTransform;
+    private Transform targetAnchor;
+    private Vector3 targetLocalOffset;
     private ProjectileTeam team;
     private MissilePhase phase;
     private float currentSpeed;
     private float cruiseSpeed;
     private float acceleration;
     private float turnRate;
-    private float straightPhaseDuration;
-    private float straightPhaseDistance;
-    private float turnPhaseDuration;
-    private float boostPhaseDuration;
     private float phaseElapsed;
     private float remainingLifetime;
     private float damage;
@@ -40,27 +49,27 @@ public class SpecialHomingMissileController : MonoBehaviour
     private bool useTemplateOriginalMaterials;
     private Color templateTint = Color.white;
     private Vector3 templateLocalEulerAngles;
-    private Vector3 straightPhaseStartPosition;
-    private Vector3 straightDirection;
-    private Vector3 sideArcStartPosition;
-    private Vector3 sideArcControlPosition;
-    private Vector3 sideArcEndPosition;
-    private float sideArcDuration;
-    private Vector3 boostDirection;
-    private Quaternion turnStartRotation;
-    private Quaternion turnTargetRotation;
+    private Vector3 fanOutStartPosition;
+    private Vector3 fanOutEndPosition;
+    private Vector3 fanOutDirection;
+    private float fanOutDuration;
+    private Vector3 arcStartPosition;
+    private Vector3 arcControlPosition;
+    private Vector3 arcEndPosition;
+    private float arcDuration;
+    private float impactFadeDuration;
     private Transform exhaustAnchor;
+    private Transform visualRoot;
     private GameObject smokeTemplate;
     private GameObject impactEffectTemplate;
     private Texture2D visualTexture;
     private Texture2D smokeTexture;
     private GameObject smokeInstance;
     private TrailRenderer trailRenderer;
+    private TrailRenderer glowTrailRenderer;
     private ParticleSystem smokeTrail;
-    private Vector3 lastSmokePuffPosition;
-    private float smokeDistanceCarry;
-    private bool hasLastSmokePuffPosition;
-    private int smokePuffSequence;
+    private Renderer[] visualRenderers = new Renderer[0];
+    private SpecialMissilePool pool;
     private readonly List<Material> runtimeMaterials = new();
 
     public void Launch(
@@ -94,7 +103,8 @@ public class SpecialHomingMissileController : MonoBehaviour
         float criticalChanceOverride = 0f)
     {
         battleController = owner;
-        targetTransform = target;
+        targetAnchor = target;
+        targetLocalOffset = Vector3.zero;
         team = projectileTeam;
         smokeTemplate = smokePrefab;
         impactEffectTemplate = impactEffectPrefab;
@@ -114,72 +124,151 @@ public class SpecialHomingMissileController : MonoBehaviour
         cruiseSpeed = Mathf.Max(currentSpeed, maxSpeed);
         acceleration = Mathf.Max(0f, accelerationRate);
         turnRate = Mathf.Max(0f, turnRateDegrees);
-        straightDirection = launchDirection;
-        boostDirection = launchDirection;
-        straightPhaseDuration = Mathf.Max(0f, straightDuration, lockOnDelay);
-        straightPhaseDistance = Mathf.Max(0f, straightDistance);
-        straightPhaseStartPosition = transform.position;
-        turnPhaseDuration = Mathf.Max(0f, turnDuration);
-        boostPhaseDuration = Mathf.Max(0.01f, boostDuration);
         phaseElapsed = 0f;
-        phase = MissilePhase.Straight;
+        phase = MissilePhase.Terminal;
         remainingLifetime = Mathf.Max(0.5f, lifetime);
         damage = Mathf.Max(0f, damageAmount);
         hitRadius = Mathf.Max(0.1f, projectileHitRadius);
         criticalChance = Mathf.Clamp01(criticalChanceOverride);
 
         EnsureVisuals(visualTemplate);
+        SetVisualsVisible(true);
+        BeginTrailEmission();
     }
 
-    public void ConfigureSideArc(Vector3 controlPosition, Vector3 endPosition, float duration)
+    public void ConfigureStrikePath(SpecialMissileStrikePath path)
     {
-        sideArcStartPosition = transform.position;
-        sideArcControlPosition = controlPosition;
-        sideArcEndPosition = endPosition;
-        sideArcDuration = Mathf.Max(0.05f, duration);
+        targetAnchor = path.TargetAnchor != null ? path.TargetAnchor : targetAnchor;
+        targetLocalOffset = path.TargetLocalOffset;
+        fanOutStartPosition = transform.position;
+        fanOutDirection = path.FanOutDirection.sqrMagnitude > 0.001f
+            ? path.FanOutDirection.normalized
+            : transform.forward;
+        fanOutDuration = Mathf.Max(0.01f, path.FanOutDuration);
+        fanOutEndPosition = fanOutStartPosition + fanOutDirection * Mathf.Max(0f, path.FanOutDistance);
+        arcStartPosition = fanOutEndPosition;
+        arcControlPosition = path.ArcControlPoint;
+        arcEndPosition = path.TerminalEntryPoint;
+        arcDuration = Mathf.Max(0.05f, path.ArcDuration);
         phaseElapsed = 0f;
-        phase = MissilePhase.SideArc;
+        phase = MissilePhase.FanOut;
 
-        Vector3 initialTangent = GetQuadraticBezierTangent(0f);
-        if (initialTangent.sqrMagnitude > 0.001f)
+        if (fanOutDirection.sqrMagnitude > 0.001f)
         {
-            straightDirection = initialTangent.normalized;
-            transform.rotation = Quaternion.LookRotation(straightDirection, Vector3.up);
+            transform.rotation = Quaternion.LookRotation(fanOutDirection, Vector3.up);
+        }
+    }
+
+    internal void SetPool(SpecialMissilePool ownerPool)
+    {
+        pool = ownerPool;
+    }
+
+    internal void PrepareForPool()
+    {
+        battleController = null;
+        targetAnchor = null;
+        targetLocalOffset = Vector3.zero;
+        smokeTemplate = null;
+        impactEffectTemplate = null;
+        visualTexture = null;
+        smokeTexture = null;
+        phase = MissilePhase.ImpactFade;
+        phaseElapsed = 0f;
+        remainingLifetime = 0f;
+        SetVisualsVisible(false);
+        ClearRuntimeTrail();
+
+        if (smokeTrail != null)
+        {
+            smokeTrail.Stop(true, ParticleSystemStopBehavior.StopEmittingAndClear);
         }
     }
 
     private void Update()
     {
-        if (battleController == null)
+        float deltaTime = Time.deltaTime;
+        if (phase == MissilePhase.ImpactFade)
         {
-            DestroyMissile();
+            phaseElapsed += deltaTime;
+            if (phaseElapsed >= impactFadeDuration)
+            {
+                CompleteLifecycle();
+            }
+
             return;
         }
 
-        float deltaTime = Time.deltaTime;
+        if (battleController == null)
+        {
+            BeginImpactFade(false);
+            return;
+        }
+
         remainingLifetime -= deltaTime;
         if (remainingLifetime <= 0f || transform.position.magnitude > 150f || transform.position.y < -20f)
         {
-            DestroyMissile();
+            BeginImpactFade(false);
             return;
         }
 
+        Vector3 previousPosition = transform.position;
         UpdateFlight(deltaTime);
-        EmitCartoonSmoke();
 
         bool hit = team == ProjectileTeam.Player
-            ? battleController.TryHitBoss(transform.position, hitRadius, damage, criticalChance: criticalChance)
-            : battleController.TryHitPlayer(transform.position, hitRadius, damage);
+            ? battleController.TryHitBoss(
+                previousPosition,
+                transform.position,
+                hitRadius,
+                damage,
+                projectileCollider: null,
+                criticalChance: criticalChance)
+            : battleController.TryHitPlayer(
+                previousPosition,
+                transform.position,
+                hitRadius,
+                damage);
 
         if (hit)
         {
-            SpawnImpactEffect();
-            DestroyMissile();
+            BeginImpactFade(true);
         }
     }
 
-    private void DestroyMissile()
+    private void BeginImpactFade(bool spawnImpact)
     {
+        if (phase == MissilePhase.ImpactFade)
+        {
+            return;
+        }
+
+        if (spawnImpact)
+        {
+            SpawnImpactEffect();
+        }
+
+        phase = MissilePhase.ImpactFade;
+        phaseElapsed = 0f;
+        impactFadeDuration = Mathf.Max(
+            trailRenderer != null ? trailRenderer.time : 0f,
+            glowTrailRenderer != null ? glowTrailRenderer.time : 0f);
+        SetVisualsVisible(false);
+        StopTrailEmission();
+
+        if (impactFadeDuration <= 0.01f)
+        {
+            CompleteLifecycle();
+        }
+    }
+
+    private void CompleteLifecycle()
+    {
+        if (pool != null)
+        {
+            pool.Release(this);
+            return;
+        }
+
         ClearRuntimeTrail();
         Destroy(gameObject);
     }
@@ -190,11 +279,31 @@ public class SpecialHomingMissileController : MonoBehaviour
 
         switch (phase)
         {
-            case MissilePhase.SideArc:
-                float sideArcProgress = sideArcDuration > 0.001f
-                    ? Mathf.Clamp01(phaseElapsed / sideArcDuration)
+            case MissilePhase.FanOut:
+                float fanOutProgress = fanOutDuration > 0.001f
+                    ? Mathf.Clamp01(phaseElapsed / fanOutDuration)
                     : 1f;
-                float easedArcProgress = Mathf.SmoothStep(0f, 1f, sideArcProgress);
+                float easedFanOutProgress = Mathf.SmoothStep(0f, 1f, fanOutProgress);
+                transform.position = Vector3.LerpUnclamped(
+                    fanOutStartPosition,
+                    fanOutEndPosition,
+                    easedFanOutProgress);
+                transform.rotation = Quaternion.LookRotation(fanOutDirection, Vector3.up);
+
+                if (fanOutProgress >= 1f)
+                {
+                    transform.position = fanOutEndPosition;
+                    phase = MissilePhase.Arc;
+                    phaseElapsed = 0f;
+                }
+
+                break;
+
+            case MissilePhase.Arc:
+                float arcProgress = arcDuration > 0.001f
+                    ? Mathf.Clamp01(phaseElapsed / arcDuration)
+                    : 1f;
+                float easedArcProgress = Mathf.SmoothStep(0f, 1f, arcProgress);
                 transform.position = EvaluateQuadraticBezier(easedArcProgress);
 
                 Vector3 arcTangent = GetQuadraticBezierTangent(easedArcProgress);
@@ -203,56 +312,33 @@ public class SpecialHomingMissileController : MonoBehaviour
                     transform.rotation = Quaternion.LookRotation(arcTangent.normalized, Vector3.up);
                 }
 
-                if (sideArcProgress >= 1f)
+                if (arcProgress >= 1f)
                 {
-                    transform.position = sideArcEndPosition;
-                    BeginTurnPhase();
+                    transform.position = arcEndPosition;
+                    phase = MissilePhase.Terminal;
+                    phaseElapsed = 0f;
                 }
 
                 break;
 
-            case MissilePhase.Straight:
-                transform.rotation = Quaternion.LookRotation(straightDirection, Vector3.up);
-                float straightProgress = straightPhaseDuration > 0.001f
-                    ? Mathf.Clamp01(phaseElapsed / straightPhaseDuration)
-                    : 1f;
-                transform.position = straightPhaseStartPosition + straightDirection * (straightPhaseDistance * straightProgress);
-                if (phaseElapsed >= straightPhaseDuration)
+            case MissilePhase.Terminal:
+                currentSpeed = Mathf.MoveTowards(currentSpeed, cruiseSpeed, acceleration * deltaTime);
+                Vector3 targetDirection = GetTargetDirection(transform.forward);
+                Vector3 terminalDirection = turnRate > 0f
+                    ? Vector3.RotateTowards(
+                        transform.forward,
+                        targetDirection,
+                        Mathf.Deg2Rad * turnRate * deltaTime,
+                        0f).normalized
+                    : targetDirection;
+                if (terminalDirection.sqrMagnitude > 0.001f)
                 {
-                    BeginTurnPhase();
+                    transform.rotation = Quaternion.LookRotation(terminalDirection, Vector3.up);
                 }
 
-                break;
-
-            case MissilePhase.Turning:
-                float turnProgress = turnPhaseDuration > 0.001f
-                    ? Mathf.Clamp01(phaseElapsed / turnPhaseDuration)
-                    : 1f;
-                transform.rotation = Quaternion.Slerp(turnStartRotation, turnTargetRotation, turnProgress);
                 transform.position += transform.forward * (currentSpeed * deltaTime);
-                if (turnProgress >= 1f)
-                {
-                    BeginBoostPhase();
-                }
-
-                break;
-
-            case MissilePhase.Boost:
-                float appliedAcceleration = phaseElapsed <= boostPhaseDuration ? acceleration : 0f;
-                currentSpeed = Mathf.MoveTowards(currentSpeed, cruiseSpeed, appliedAcceleration * deltaTime);
-                transform.rotation = Quaternion.LookRotation(boostDirection, Vector3.up);
-                transform.position += boostDirection * (currentSpeed * deltaTime);
                 break;
         }
-    }
-
-    private void BeginTurnPhase()
-    {
-        phase = MissilePhase.Turning;
-        phaseElapsed = 0f;
-        turnStartRotation = transform.rotation;
-        Quaternion fullTurnTargetRotation = Quaternion.LookRotation(GetTargetDirection(transform.forward), Vector3.up);
-        turnTargetRotation = Quaternion.Slerp(turnStartRotation, fullTurnTargetRotation, 2f / 3f);
     }
 
     private Vector3 EvaluateQuadraticBezier(float progress)
@@ -260,160 +346,85 @@ public class SpecialHomingMissileController : MonoBehaviour
         float t = Mathf.Clamp01(progress);
         float inverseT = 1f - t;
         return
-            inverseT * inverseT * sideArcStartPosition +
-            2f * inverseT * t * sideArcControlPosition +
-            t * t * sideArcEndPosition;
+            inverseT * inverseT * arcStartPosition +
+            2f * inverseT * t * arcControlPosition +
+            t * t * arcEndPosition;
     }
 
     private Vector3 GetQuadraticBezierTangent(float progress)
     {
         float t = Mathf.Clamp01(progress);
         return
-            2f * (1f - t) * (sideArcControlPosition - sideArcStartPosition) +
-            2f * t * (sideArcEndPosition - sideArcControlPosition);
-    }
-
-    private void BeginBoostPhase()
-    {
-        phase = MissilePhase.Boost;
-        phaseElapsed = 0f;
-        boostDirection = GetTargetDirection(transform.forward);
-        transform.rotation = Quaternion.LookRotation(boostDirection, Vector3.up);
+            2f * (1f - t) * (arcControlPosition - arcStartPosition) +
+            2f * t * (arcEndPosition - arcControlPosition);
     }
 
     private Vector3 GetTargetDirection(Vector3 fallbackDirection)
     {
-        if (targetTransform == null)
+        if (targetAnchor == null)
         {
             return fallbackDirection.sqrMagnitude > 0.001f ? fallbackDirection.normalized : Vector3.forward;
         }
 
-        Vector3 desiredDirection = targetTransform.position - transform.position;
+        Vector3 desiredDirection = targetAnchor.TransformPoint(targetLocalOffset) - transform.position;
         if (desiredDirection.sqrMagnitude < 0.001f)
         {
             return fallbackDirection.sqrMagnitude > 0.001f ? fallbackDirection.normalized : Vector3.forward;
         }
 
-        Vector3 resolvedDirection = desiredDirection.normalized;
-        return turnRate > 0f
-            ? Vector3.RotateTowards(fallbackDirection.normalized, resolvedDirection, Mathf.Deg2Rad * turnRate, 0f).normalized
-            : resolvedDirection;
+        return desiredDirection.normalized;
     }
 
     private void EnsureVisuals(GameObject visualTemplate)
     {
-        if (transform.Find("MissileVisualRoot") != null)
+        visualRoot = transform.Find("MissileVisualRoot");
+        if (visualRoot == null)
         {
-            return;
-        }
+            GameObject visualRootObject = new("MissileVisualRoot");
+            visualRootObject.transform.SetParent(transform, false);
+            visualRootObject.transform.localPosition = Vector3.zero;
+            visualRootObject.transform.localRotation = Quaternion.identity;
+            visualRoot = visualRootObject.transform;
+            bool hasCustomVisual = false;
 
-        GameObject visualRoot = new("MissileVisualRoot");
-        visualRoot.transform.SetParent(transform, false);
-        visualRoot.transform.localPosition = Vector3.zero;
-        visualRoot.transform.localRotation = Quaternion.identity;
-        bool hasCustomVisual = false;
-
-        if (visualTemplate != null)
-        {
-            GameObject customVisual = InstantiateTemplate(visualTemplate, visualRoot.transform);
-            if (customVisual == null)
+            if (visualTemplate != null)
             {
-                string templateName = string.IsNullOrWhiteSpace(visualTemplate.name) ? "<unnamed>" : visualTemplate.name;
-                Debug.LogWarning(
-                    $"Missile visual template failed to instantiate. Template='{templateName}', Type='{visualTemplate.GetType().Name}'",
-                    this);
+                GameObject customVisual = InstantiateTemplate(visualTemplate, visualRoot);
+                if (customVisual == null)
+                {
+                    string templateName = string.IsNullOrWhiteSpace(visualTemplate.name) ? "<unnamed>" : visualTemplate.name;
+                    Debug.LogWarning(
+                        $"Missile visual template failed to instantiate. Template='{templateName}', Type='{visualTemplate.GetType().Name}'",
+                        this);
+                }
+                else
+                {
+                    customVisual.name = "MissileSkin";
+                    customVisual.transform.localPosition = Vector3.zero;
+                    customVisual.transform.localRotation = Quaternion.Euler(templateLocalEulerAngles);
+                    ApplyTemplateVisualAppearance(customVisual);
+                    hasCustomVisual = true;
+                    if (!NormalizeCustomVisualScale(customVisual.transform))
+                    {
+                        customVisual.transform.localScale = customVisual.transform.localScale * visualScale;
+                        Debug.LogWarning($"Missile visual bounds normalization failed, using raw scale on template: {visualTemplate.name}", this);
+                    }
+                }
             }
             else
             {
-                customVisual.name = "MissileSkin";
-                customVisual.transform.localPosition = Vector3.zero;
-                customVisual.transform.localRotation = Quaternion.Euler(templateLocalEulerAngles);
-                ApplyTemplateVisualAppearance(customVisual);
-                hasCustomVisual = true;
-                if (!NormalizeCustomVisualScale(customVisual.transform))
-                {
-                    customVisual.transform.localScale = customVisual.transform.localScale * visualScale;
-                    Debug.LogWarning($"Missile visual bounds normalization failed, using raw scale on template: {visualTemplate.name}", this);
-                }
+                Debug.LogWarning("Missile visual template is missing. Using gameplay shell only.", this);
+            }
+
+            if (!hasCustomVisual)
+            {
+                CreateGameplayShell(visualRoot);
             }
         }
-        else
-        {
-            Debug.LogWarning("Missile visual template is missing. Using gameplay shell only.", this);
-        }
 
-        if (!hasCustomVisual)
-        {
-            CreateGameplayShell(visualRoot.transform);
-        }
-
-        exhaustAnchor = ResolveExhaustAnchor(visualRoot.transform);
-        lastSmokePuffPosition = exhaustAnchor != null ? exhaustAnchor.position : transform.position;
-        smokeDistanceCarry = 0f;
-        hasLastSmokePuffPosition = exhaustAnchor != null;
-        smokePuffSequence = 0;
-    }
-
-    private void EmitCartoonSmoke()
-    {
-        if (exhaustAnchor == null)
-        {
-            return;
-        }
-
-        Vector3 currentPosition = exhaustAnchor.position;
-        if (!hasLastSmokePuffPosition)
-        {
-            lastSmokePuffPosition = currentPosition;
-            smokeDistanceCarry = 0f;
-            hasLastSmokePuffPosition = true;
-            return;
-        }
-
-        Vector3 movement = currentPosition - lastSmokePuffPosition;
-        float distance = movement.magnitude;
-        if (distance < 0.001f)
-        {
-            return;
-        }
-
-        float spacing = CartoonSmokeSpacing;
-        float nextPuffDistance = spacing - smokeDistanceCarry;
-        int spawnedThisFrame = 0;
-        while (nextPuffDistance <= distance && spawnedThisFrame < MaxCartoonSmokePuffsPerFrame)
-        {
-            float t = nextPuffDistance / distance;
-            SpawnCartoonSmokePuff(Vector3.LerpUnclamped(lastSmokePuffPosition, currentPosition, t));
-            nextPuffDistance += spacing;
-            spawnedThisFrame++;
-        }
-
-        smokeDistanceCarry = nextPuffDistance <= distance
-            ? 0f
-            : Mathf.Repeat(smokeDistanceCarry + distance, spacing);
-        lastSmokePuffPosition = currentPosition;
-    }
-
-    private void SpawnCartoonSmokePuff(Vector3 basePosition)
-    {
-        float pattern = smokePuffSequence % 4;
-        float size = 0.78f + pattern * 0.09f;
-        Vector3 sideOffset = transform.right * ((smokePuffSequence % 2 == 0 ? -1f : 1f) * 0.035f);
-        Vector3 upOffset = transform.up * (((smokePuffSequence / 2) % 2 == 0 ? 1f : -1f) * 0.025f);
-        Vector3 drift = -transform.forward * 0.42f + Vector3.up * 0.08f;
-        Color color = Color.Lerp(
-            new Color(0.82f, 0.84f, 0.88f, 0.98f),
-            new Color(0.48f, 0.51f, 0.58f, 0.96f),
-            pattern / 3f);
-
-        CartoonSmokePuff.Spawn(
-            basePosition + sideOffset + upOffset,
-            size,
-            CartoonSmokeLifetime,
-            color,
-            drift);
-
-        smokePuffSequence++;
+        exhaustAnchor = ResolveExhaustAnchor(visualRoot);
+        visualRenderers = visualRoot.GetComponentsInChildren<Renderer>(true);
+        EnsureTrailRenderer();
     }
 
     private void CreateGameplayShell(Transform parent)
@@ -556,22 +567,79 @@ public class SpecialHomingMissileController : MonoBehaviour
             return;
         }
 
-        trailRenderer.time = 0.42f;
-        trailRenderer.minVertexDistance = 0.08f;
-        trailRenderer.startWidth = 0.48f;
-        trailRenderer.endWidth = 0.12f;
-        trailRenderer.numCornerVertices = 0;
-        trailRenderer.numCapVertices = 0;
+        trailRenderer.time = DefaultTrailTime;
+        trailRenderer.minVertexDistance = 0.12f;
+        trailRenderer.startWidth = 0.1f;
+        trailRenderer.endWidth = 0.015f;
+        trailRenderer.numCornerVertices = 2;
+        trailRenderer.numCapVertices = 1;
         trailRenderer.textureMode = LineTextureMode.Stretch;
         trailRenderer.alignment = LineAlignment.View;
-        trailRenderer.colorGradient = CreateTrailGradient();
-        trailRenderer.sharedMaterial = CreateRuntimeMaterial(
-            "RuntimeMissileTrailMaterial",
-            new Color(0.92f, 0.94f, 1f, 1f),
-            true,
-            "Sprites/Default",
-            "Universal Render Pipeline/Particles/Unlit",
-            "Particles/Standard Unlit");
+        trailRenderer.colorGradient = CreateTrailGradient(false);
+        trailRenderer.sharedMaterial = GetSharedTrailMaterial(false);
+
+        Transform glowTrailTransform = transform.Find("MissileGlowTrail");
+        if (glowTrailTransform == null)
+        {
+            GameObject glowTrailObject = new("MissileGlowTrail");
+            glowTrailObject.transform.SetParent(transform, false);
+            glowTrailTransform = glowTrailObject.transform;
+        }
+
+        if (!glowTrailTransform.TryGetComponent(out glowTrailRenderer) || glowTrailRenderer == null)
+        {
+            glowTrailRenderer = glowTrailTransform.gameObject.AddComponent<TrailRenderer>();
+        }
+
+        glowTrailRenderer.time = DefaultTrailTime;
+        glowTrailRenderer.minVertexDistance = 0.12f;
+        glowTrailRenderer.startWidth = 0.24f;
+        glowTrailRenderer.endWidth = 0.03f;
+        glowTrailRenderer.numCornerVertices = 2;
+        glowTrailRenderer.numCapVertices = 1;
+        glowTrailRenderer.textureMode = LineTextureMode.Stretch;
+        glowTrailRenderer.alignment = LineAlignment.View;
+        glowTrailRenderer.colorGradient = CreateTrailGradient(true);
+        glowTrailRenderer.sharedMaterial = GetSharedTrailMaterial(true);
+    }
+
+    private void SetVisualsVisible(bool visible)
+    {
+        for (int i = 0; i < visualRenderers.Length; i++)
+        {
+            if (visualRenderers[i] != null)
+            {
+                visualRenderers[i].enabled = visible;
+            }
+        }
+    }
+
+    private void BeginTrailEmission()
+    {
+        SetTrailState(trailRenderer, true, true);
+        SetTrailState(glowTrailRenderer, true, true);
+    }
+
+    private void StopTrailEmission()
+    {
+        SetTrailState(trailRenderer, true, false);
+        SetTrailState(glowTrailRenderer, true, false);
+    }
+
+    private static void SetTrailState(TrailRenderer trail, bool enabled, bool emitting)
+    {
+        if (trail == null)
+        {
+            return;
+        }
+
+        if (emitting)
+        {
+            trail.Clear();
+        }
+
+        trail.enabled = enabled;
+        trail.emitting = emitting;
     }
 
     private void EnsureSmokeTrail()
@@ -640,6 +708,16 @@ public class SpecialHomingMissileController : MonoBehaviour
     {
         if (impactEffectTemplate == null)
         {
+            return;
+        }
+
+        if (pool != null)
+        {
+            pool.SpawnImpact(
+                impactEffectTemplate,
+                transform.position,
+                transform.rotation,
+                impactEffectScale);
             return;
         }
 
@@ -742,23 +820,97 @@ public class SpecialHomingMissileController : MonoBehaviour
         return null;
     }
 
-    private static Gradient CreateTrailGradient()
+    private static Gradient CreateTrailGradient(bool glow)
     {
         Gradient gradient = new();
         gradient.SetKeys(
             new[]
             {
-                new GradientColorKey(new Color(1f, 1f, 1f), 0f),
-                new GradientColorKey(new Color(0.9f, 0.92f, 1f), 0.35f),
-                new GradientColorKey(new Color(0.58f, 0.62f, 0.7f), 1f),
+                new GradientColorKey(
+                    glow ? new Color(0.25f, 2.2f, 2.8f) : new Color(1.4f, 3.8f, 4.2f),
+                    0f),
+                new GradientColorKey(new Color(0.08f, 1.45f, 1.9f), 0.45f),
+                new GradientColorKey(new Color(0.02f, 0.35f, 0.5f), 1f),
             },
             new[]
             {
-                new GradientAlphaKey(1f, 0f),
-                new GradientAlphaKey(0.78f, 0.38f),
+                new GradientAlphaKey(glow ? 0.52f : 1f, 0f),
+                new GradientAlphaKey(glow ? 0.3f : 0.82f, 0.38f),
                 new GradientAlphaKey(0f, 1f),
             });
         return gradient;
+    }
+
+    private static Material GetSharedTrailMaterial(bool glow)
+    {
+        Material material = glow ? sharedTrailGlowMaterial : sharedTrailCoreMaterial;
+        if (material != null)
+        {
+            return material;
+        }
+
+        Shader shader = Shader.Find("Universal Render Pipeline/Particles/Unlit") ??
+                        Shader.Find("Particles/Standard Unlit") ??
+                        Shader.Find("Sprites/Default");
+        if (shader == null)
+        {
+            return null;
+        }
+
+        material = new Material(shader)
+        {
+            name = glow ? "SharedSpecialMissileTrailGlow" : "SharedSpecialMissileTrailCore",
+            hideFlags = HideFlags.HideAndDontSave,
+            renderQueue = 3000,
+        };
+        Color color = glow
+            ? new Color(0.05f, 1.4f, 1.8f, 0.42f)
+            : new Color(0.6f, 2.8f, 3.2f, 1f);
+        ConfigureTransparentMaterial(material, color);
+
+        if (glow)
+        {
+            sharedTrailGlowMaterial = material;
+        }
+        else
+        {
+            sharedTrailCoreMaterial = material;
+        }
+
+        return material;
+    }
+
+    private static void ConfigureTransparentMaterial(Material material, Color color)
+    {
+        if (material.HasProperty("_Surface"))
+        {
+            material.SetFloat("_Surface", 1f);
+        }
+
+        if (material.HasProperty("_SrcBlend"))
+        {
+            material.SetFloat("_SrcBlend", 5f);
+        }
+
+        if (material.HasProperty("_DstBlend"))
+        {
+            material.SetFloat("_DstBlend", 10f);
+        }
+
+        if (material.HasProperty("_ZWrite"))
+        {
+            material.SetFloat("_ZWrite", 0f);
+        }
+
+        if (material.HasProperty("_BaseColor"))
+        {
+            material.SetColor("_BaseColor", color);
+        }
+
+        if (material.HasProperty("_Color"))
+        {
+            material.SetColor("_Color", color);
+        }
     }
 
     private void CreateTexturedSmokeTrail()
@@ -1109,14 +1261,20 @@ public class SpecialHomingMissileController : MonoBehaviour
             TryGetComponent(out trailRenderer);
         }
 
-        if (trailRenderer == null)
+        ClearTrail(trailRenderer);
+        ClearTrail(glowTrailRenderer);
+    }
+
+    private static void ClearTrail(TrailRenderer trail)
+    {
+        if (trail == null)
         {
             return;
         }
 
-        trailRenderer.emitting = false;
-        trailRenderer.Clear();
-        trailRenderer.enabled = false;
+        trail.emitting = false;
+        trail.Clear();
+        trail.enabled = false;
     }
 
     private void DetachSmokeEffect()

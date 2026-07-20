@@ -1,0 +1,21 @@
+{
+    "name": "TitanDestroyer.MissileStrike.EditModeTests",
+    "rootNamespace": "",
+    "references": [
+        "TitanDestroyer.MissileStrike"
+    ],
+    "includePlatforms": [
+        "Editor"
+    ],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": false,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false,
+    "optionalUnityReferences": [
+        "TestAssemblies"
+    ]
+}
