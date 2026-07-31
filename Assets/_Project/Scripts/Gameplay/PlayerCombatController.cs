@@ -78,6 +78,7 @@ public class PlayerCombatController : MonoBehaviour
     private Mesh muzzleFlashParticleMesh;
     private AudioSource gunFireLoopSource;
     private float pulseTimer;
+    private bool legacyMissileInputEnabled = true;
     private Vector3 baseScale;
     private bool launchLeftMissileNext = true;
     private VehiclePlayerStateCatalog vehiclePlayerStateCatalog;
@@ -107,6 +108,7 @@ public class PlayerCombatController : MonoBehaviour
         HasMissileLaunchers;
     public bool MissileReady => MissileSystemAvailable && missileCooldownRemaining <= 0f;
     public bool WeaponFireBlockedByAirPressure => IsAirPressureWeaponLocked();
+    public bool LegacyMissileInputEnabled => legacyMissileInputEnabled;
     public bool MissileInputAvailable =>
         MissileSystemAvailable &&
         !WeaponFireBlockedByAirPressure &&
@@ -237,7 +239,10 @@ public class PlayerCombatController : MonoBehaviour
         bool pointerOverAimPointMarker = pointerOverUi && BattleAimPointTargetMarker.IsPointerOverAnyMarker();
         bool blockPointerFire = pointerOverUi && !pointerOverAimPointMarker;
         bool mouseFire = mouse != null && mouse.leftButton.isPressed && !blockPointerFire;
-        bool mouseMissileFire = mouse != null && mouse.rightButton.wasPressedThisFrame && !blockPointerFire;
+        bool mouseMissileFire = legacyMissileInputEnabled &&
+                                mouse != null &&
+                                mouse.rightButton.wasPressedThisFrame &&
+                                !blockPointerFire;
         bool keyboardFire = keyboard != null && keyboard.spaceKey.isPressed;
         bool weaponFireLocked = IsAirPressureWeaponLocked();
         bool gunFireInput = !weaponFireLocked && (mouseFire || keyboardFire);
@@ -308,6 +313,11 @@ public class PlayerCombatController : MonoBehaviour
         {
             StopGunFireLoop();
         }
+    }
+
+    public void SetLegacyMissileInputEnabled(bool enabled)
+    {
+        legacyMissileInputEnabled = enabled;
     }
 
     public void ApplyRuntimeStats(PlayerRuntimeStats stats, bool refillDefense)

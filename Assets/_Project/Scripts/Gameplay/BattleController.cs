@@ -19,6 +19,7 @@ public class BattleController : MonoBehaviour
     [SerializeField] private PlayerOrbitController playerOrbitController;
     [SerializeField] private PlayerCombatController playerCombatController;
     [SerializeField] private PlayerSpecialAttackController playerSpecialAttackController;
+    [SerializeField] private PlayerLockOnController playerLockOnController;
     [SerializeField] private PlayerMovementBounds playerMovementBounds;
     [SerializeField] private HUDPresenter hudPresenter;
     [SerializeField] private ArenaCameraRig arenaCameraRig;
@@ -44,6 +45,7 @@ public class BattleController : MonoBehaviour
     public bool IsBattleActive => battleActive;
     public BossTestState BossTestState => bossTestState;
     public BossLockOnTargetProvider BossLockOnTargetProvider => bossLockOnTargetProvider;
+    public PlayerLockOnController PlayerLockOnController => playerLockOnController;
 
     private void Awake()
     {
@@ -196,6 +198,7 @@ public class BattleController : MonoBehaviour
         playerOrbitController ??= FindSceneComponent<PlayerOrbitController>();
         playerCombatController ??= FindSceneComponent<PlayerCombatController>();
         playerSpecialAttackController ??= FindSceneComponent<PlayerSpecialAttackController>();
+        playerLockOnController ??= FindSceneComponent<PlayerLockOnController>();
         playerMovementBounds ??= FindSceneComponent<PlayerMovementBounds>();
         hudPresenter ??= FindSceneComponent<HUDPresenter>();
         arenaCameraRig ??= FindSceneComponent<ArenaCameraRig>();
@@ -213,6 +216,11 @@ public class BattleController : MonoBehaviour
         if (playerSpecialAttackController == null)
         {
             playerSpecialAttackController = gameObject.AddComponent<PlayerSpecialAttackController>();
+        }
+
+        if (playerLockOnController == null)
+        {
+            playerLockOnController = gameObject.AddComponent<PlayerLockOnController>();
         }
 
         EnsureBossLockOnTestSystems();
@@ -498,6 +506,12 @@ public class BattleController : MonoBehaviour
             bossAttackController.Configure(this, bossController, playerCombatController, bossProjectileTemplate, playerOrbitController);
         }
 
+        playerLockOnController?.Configure(
+            this,
+            playerCombatController,
+            bossLockOnTargetProvider);
+        playerCombatController?.SetLegacyMissileInputEnabled(false);
+
         if (playerSpecialAttackController != null)
         {
             playerSpecialAttackController.Configure(
@@ -524,6 +538,7 @@ public class BattleController : MonoBehaviour
         if (hudPresenter != null && bossController != null && playerCombatController != null && playerOrbitController != null)
         {
             hudPresenter.Configure(bossController, playerCombatController, playerOrbitController, playerSpecialAttackController);
+            hudPresenter.ConfigureLockOnController(playerLockOnController);
             hudPresenter.RetryRequested += HandleRetryRequested;
             hudPresenter.QuitRequested += HandleQuitRequested;
             string modeLabel = GameFlowController.CurrentMode == GameMode.MultiPlaceholder

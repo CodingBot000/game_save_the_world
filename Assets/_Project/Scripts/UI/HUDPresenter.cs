@@ -15,7 +15,7 @@ public class HUDPresenter : MonoBehaviour
     private const string PlayerArmorFillSpritePath = "Assets/Art/UI/Battle/HUD/player_armor_fill.png";
     private const string BossBaseSpritePath = "Assets/Art/UI/Battle/HUD/boss_hp_base.png";
     private const string BossFillSpritePath = "Assets/Art/UI/Battle/HUD/boss_hp_fill.png";
-    private const string ControlHintText = "A / D left-right   W / S up-down   Space / Left click fire   Right click / Missile button fire missile   Special button fire special   R restart";
+    private const string ControlHintText = "A / D left-right   W / S up-down   Space / Left click fire   Hold Right click / LOCK ON, release to attack   R restart";
     private static readonly Vector2 MissileButtonAnchoredPosition = new(-196f, 28f);
     private static readonly Vector2 MissileButtonSize = new(208f, 74f);
     private static readonly Vector2 SpecialButtonAnchoredPosition = new(-28f, 28f);
@@ -42,6 +42,8 @@ public class HUDPresenter : MonoBehaviour
     private PlayerCombatController playerCombatController;
     private PlayerOrbitController playerOrbitController;
     private PlayerSpecialAttackController specialAttackController;
+    private PlayerLockOnController lockOnController;
+    private LockOnHudPresenter lockOnHudPresenter;
 
     private GameObject hudRoot;
     private Image bossFillImage;
@@ -176,8 +178,11 @@ public class HUDPresenter : MonoBehaviour
             statusText.text = statusMessage;
         }
 
-        UpdateMissileButtonState();
-        UpdateSpecialButtonState();
+        if (lockOnController == null)
+        {
+            UpdateMissileButtonState();
+            UpdateSpecialButtonState();
+        }
         UpdateMusicButtonState();
     }
 
@@ -193,6 +198,40 @@ public class HUDPresenter : MonoBehaviour
         playerOrbitController = orbit;
         specialAttackController = specialAttack;
         stageSelectionState = StageSelectionState.EnsureInitialized();
+    }
+
+    public void ConfigureLockOnController(PlayerLockOnController controller)
+    {
+        EnsureUiReferences();
+        lockOnController = controller;
+        if (lockOnController == null)
+        {
+            return;
+        }
+
+        if (missileButton != null)
+        {
+            missileButton.onClick.RemoveListener(FireMissile);
+        }
+
+        if (specialButton != null)
+        {
+            specialButton.onClick.RemoveListener(FireSpecial);
+        }
+
+        lockOnHudPresenter = GetComponent<LockOnHudPresenter>() ??
+                             gameObject.AddComponent<LockOnHudPresenter>();
+        lockOnHudPresenter.Configure(
+            lockOnController,
+            RuntimeCanvas,
+            missileButton,
+            missileButtonImage,
+            missileButtonLabel,
+            specialButton != null ? specialButton.gameObject : null);
+        if (hintText != null)
+        {
+            hintText.text = ControlHintText;
+        }
     }
 
     public void SetStatusMessage(string message)
@@ -411,13 +450,19 @@ public class HUDPresenter : MonoBehaviour
         if (missileButton != null)
         {
             missileButton.onClick.RemoveListener(FireMissile);
-            missileButton.onClick.AddListener(FireMissile);
+            if (lockOnController == null)
+            {
+                missileButton.onClick.AddListener(FireMissile);
+            }
         }
 
         if (specialButton != null)
         {
             specialButton.onClick.RemoveListener(FireSpecial);
-            specialButton.onClick.AddListener(FireSpecial);
+            if (lockOnController == null)
+            {
+                specialButton.onClick.AddListener(FireSpecial);
+            }
         }
 
         if (musicButton != null)
