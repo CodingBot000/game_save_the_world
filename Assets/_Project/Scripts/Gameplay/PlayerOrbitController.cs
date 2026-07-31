@@ -36,6 +36,11 @@ public class PlayerOrbitController : MonoBehaviour
     [SerializeField] private string visualTiltRootName = "PlayerVisualRoot";
     [Tooltip("Keeps the visual helicopter pose independent from the movement anchor rotation.")]
     [SerializeField] private bool lockVisualRootToCamera = true;
+    [Tooltip("Renders the original helicopter model with a depth-clearing URP overlay camera.")]
+    [SerializeField] private bool useOriginalVisualOverlay = true;
+    [SerializeField] private bool centerOriginalVisualOnMovementAnchor = true;
+    [SerializeField] private string playerVisualLayerName = "PlayerVisual";
+    [SerializeField] private Vector2 originalVisualBoundsPaddingPixels = new(16f, 16f);
     [Tooltip("Renders the helicopter into a texture, then places that texture in screen space.")]
     [SerializeField] private bool useScreenSpaceVisual = true;
     [SerializeField] private string screenSpaceVisualLayerName = "UI";
@@ -57,6 +62,7 @@ public class PlayerOrbitController : MonoBehaviour
     private Transform lookTarget;
     private Transform visualTiltRoot;
     private Transform visualPoseRoot;
+    private PlayerVisualOverlayRenderer playerVisualOverlayRenderer;
     private Transform screenSpaceVisualRoot;
     private Transform screenSpaceVisualInstance;
     private Camera screenSpaceVisualRenderCamera;
@@ -111,6 +117,12 @@ public class PlayerOrbitController : MonoBehaviour
         Mathf.Abs(airPressureRollDegrees) > 0.001f ||
         Mathf.Abs(airPressureSwayDegrees) > 0.001f;
     public Vector3 OrbitCenterPosition => orbitCenter != null ? orbitCenter.position : Vector3.zero;
+    public bool IsUsingOriginalVisualOverlay =>
+        useOriginalVisualOverlay &&
+        playerVisualOverlayRenderer != null &&
+        playerVisualOverlayRenderer.IsConfigured;
+    public PlayerVisualOverlayRenderer OriginalVisualOverlayRenderer => playerVisualOverlayRenderer;
+    public Rect DebugMovementViewportRect => GetEffectiveMovementViewportRect();
     public Vector3 OutwardDirection
     {
         get
@@ -150,14 +162,22 @@ public class PlayerOrbitController : MonoBehaviour
         }
 
         RepositionImmediate();
-        EnsureScreenSpaceVisualReady();
+        EnsurePlayerVisualOutputReady();
         UpdateVisualTilt(movementInput);
-        UpdateScreenSpaceVisual();
+        if (useOriginalVisualOverlay)
+        {
+            playerVisualOverlayRenderer?.SyncNow();
+        }
+        else
+        {
+            UpdateScreenSpaceVisual();
+        }
         UpdateWorldVelocity();
     }
 
     private void OnDestroy()
     {
+        playerVisualOverlayRenderer?.Shutdown();
         DisposeScreenSpaceVisualOutput();
     }
 
@@ -165,6 +185,12 @@ public class PlayerOrbitController : MonoBehaviour
     {
         initialViewportPosition.x = Mathf.Clamp01(initialViewportPosition.x);
         initialViewportPosition.y = Mathf.Clamp01(initialViewportPosition.y);
+        originalVisualBoundsPaddingPixels.x = Mathf.Max(0f, originalVisualBoundsPaddingPixels.x);
+        originalVisualBoundsPaddingPixels.y = Mathf.Max(0f, originalVisualBoundsPaddingPixels.y);
+        if (string.IsNullOrWhiteSpace(playerVisualLayerName))
+        {
+            playerVisualLayerName = "PlayerVisual";
+        }
     }
 
     public void Configure(Transform center, Transform targetToLookAt, PlayerMovementBounds bounds, PlayerMoveGuide moveGuide = null)
@@ -507,7 +533,7 @@ public class PlayerOrbitController : MonoBehaviour
         visualPoseRoot = ResolveVisualPoseRoot();
         visualTiltBaseLocalRotation = visualPoseRoot != null ? visualPoseRoot.localRotation : visualTiltRoot.localRotation;
         CaptureLockedVisualPose();
-        RefreshScreenSpaceVisual();
+        RefreshPlayerVisualOutput();
         currentVisualTilt = Vector2.zero;
     }
 
@@ -634,6 +660,72 @@ public class PlayerOrbitController : MonoBehaviour
         screenSpaceVisualInstance.localRotation = appliedToScreenRoot
             ? screenSpaceVisualBaseLocalRotation
             : screenSpaceVisualBaseLocalRotation * visualTiltOffset;
+    }
+
+    private void EnsurePlayerVisualOutputReady()
+    {
+        if (!Application.isPlaying)
+        {
+            return;
+        }
+
+        if (!useOriginalVisualOverlay)
+        {
+            playerVisualOverlayRenderer?.Shutdown();
+            EnsureScreenSpaceVisualReady();
+            return;
+        }
+
+        Transform sourceVisual = visualPoseRoot != null ? visualPoseRoot : visualTiltRoot;
+        if (sourceVisual == null)
+        {
+            CacheVisualTiltRoot();
+            sourceVisual = visualPoseRoot != null ? visualPoseRoot : visualTiltRoot;
+        }
+
+        if (sourceVisual == null || !TryResolveCameraPlane())
+        {
+            playerVisualOverlayRenderer?.Shutdown();
+            return;
+        }
+
+        playerVisualOverlayRenderer ??= GetComponent<PlayerVisualOverlayRenderer>();
+        playerVisualOverlayRenderer ??= gameObject.AddComponent<PlayerVisualOverlayRenderer>();
+        if (!playerVisualOverlayRenderer.IsConfigured ||
+            playerVisualOverlayRenderer.BaseCamera != movementCamera ||
+            playerVisualOverlayRenderer.VisualRoot != sourceVisual ||
+            playerVisualOverlayRenderer.CentersVisualOnOwner != centerOriginalVisualOnMovementAnchor)
+        {
+            playerVisualOverlayRenderer.Configure(
+                movementCamera,
+                sourceVisual,
+                playerVisualLayerName,
+                centerOriginalVisualOnMovementAnchor);
+        }
+    }
+
+    private void RefreshPlayerVisualOutput()
+    {
+        Transform sourceVisual = visualPoseRoot != null ? visualPoseRoot : visualTiltRoot;
+        if (!Application.isPlaying)
+        {
+            return;
+        }
+
+        if (!useOriginalVisualOverlay)
+        {
+            playerVisualOverlayRenderer?.Shutdown();
+            RefreshScreenSpaceVisual();
+            return;
+        }
+
+        if (screenSpaceVisualActive)
+        {
+            SetRenderersEnabled(sourceVisual, true);
+        }
+
+        DisposeScreenSpaceVisualOutput();
+        EnsurePlayerVisualOutputReady();
     }
 
     private void EnsureScreenSpaceVisualReady()
@@ -1363,6 +1455,40 @@ public class PlayerOrbitController : MonoBehaviour
     private Rect GetEffectiveMovementViewportRect()
     {
         Rect configuredRect = playerMoveGuide != null ? playerMoveGuide.ViewportRect : DefaultViewportRect;
+        if (useOriginalVisualOverlay &&
+            Screen.width > 0 &&
+            Screen.height > 0 &&
+            playerVisualOverlayRenderer != null &&
+            playerVisualOverlayRenderer.TryGetVisualViewportExtents(
+                out float overlayLeftExtent,
+                out float overlayRightExtent,
+                out float overlayBottomExtent,
+                out float overlayTopExtent))
+        {
+            float overlayHorizontalPadding = Mathf.Max(0f, originalVisualBoundsPaddingPixels.x) / Screen.width;
+            float overlayVerticalPadding = Mathf.Max(0f, originalVisualBoundsPaddingPixels.y) / Screen.height;
+            float overlayMinX = Mathf.Max(configuredRect.xMin, overlayLeftExtent + overlayHorizontalPadding);
+            float overlayMaxX = Mathf.Min(configuredRect.xMax, 1f - overlayRightExtent - overlayHorizontalPadding);
+            float overlayMinY = Mathf.Max(configuredRect.yMin, overlayBottomExtent + overlayVerticalPadding);
+            float overlayMaxY = Mathf.Min(configuredRect.yMax, 1f - overlayTopExtent - overlayVerticalPadding);
+
+            if (overlayMinX > overlayMaxX)
+            {
+                float centerX = Mathf.Clamp01((configuredRect.xMin + configuredRect.xMax) * 0.5f);
+                overlayMinX = centerX;
+                overlayMaxX = centerX;
+            }
+
+            if (overlayMinY > overlayMaxY)
+            {
+                float centerY = Mathf.Clamp01((configuredRect.yMin + configuredRect.yMax) * 0.5f);
+                overlayMinY = centerY;
+                overlayMaxY = centerY;
+            }
+
+            return Rect.MinMaxRect(overlayMinX, overlayMinY, overlayMaxX, overlayMaxY);
+        }
+
         if (!useScreenSpaceVisual || Screen.width <= 0 || Screen.height <= 0)
         {
             return configuredRect;
@@ -1486,7 +1612,7 @@ public class PlayerOrbitController : MonoBehaviour
             CacheVisualTiltRoot();
         }
 
-        EnsureScreenSpaceVisualReady();
+        EnsurePlayerVisualOutputReady();
     }
 
     private Quaternion ResolveCurrentVisualDisplayRotation()
@@ -1614,7 +1740,9 @@ public class PlayerOrbitController : MonoBehaviour
     private void EnsureRuntimeDefaults()
     {
         MigrateLegacyMovementSpeedsIfNeeded();
-        useScreenSpaceVisual = true;
+        useOriginalVisualOverlay = true;
+        centerOriginalVisualOnMovementAnchor = true;
+        useScreenSpaceVisual = false;
         lockVisualRootToCamera = true;
         enableVisualTilt = true;
         screenSpaceVisualScaleMultiplier = 0.65f;
@@ -1638,6 +1766,14 @@ public class PlayerOrbitController : MonoBehaviour
         {
             screenSpaceVisualLayerName = "UI";
         }
+
+        if (string.IsNullOrWhiteSpace(playerVisualLayerName))
+        {
+            playerVisualLayerName = "PlayerVisual";
+        }
+
+        originalVisualBoundsPaddingPixels.x = Mathf.Max(0f, originalVisualBoundsPaddingPixels.x);
+        originalVisualBoundsPaddingPixels.y = Mathf.Max(0f, originalVisualBoundsPaddingPixels.y);
 
         if (screenSpaceVisualDepth <= 0.01f)
         {
