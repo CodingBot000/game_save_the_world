@@ -36,8 +36,14 @@ public class BattleController : MonoBehaviour
 
     private bool battleActive = true;
     private bool awaitingDefeatChoice;
+    private BossTestState bossTestState;
+    private BossLockOnTargetProvider bossLockOnTargetProvider;
+    private BossWeakPointDebugFlash bossWeakPointDebugFlash;
+    private BossPhaseDebugHud bossPhaseDebugHud;
 
     public bool IsBattleActive => battleActive;
+    public BossTestState BossTestState => bossTestState;
+    public BossLockOnTargetProvider BossLockOnTargetProvider => bossLockOnTargetProvider;
 
     private void Awake()
     {
@@ -140,6 +146,7 @@ public class BattleController : MonoBehaviour
         bool damageApplied = appliedDamage <= 0f || bossController.ApplyDamage(appliedDamage);
         if (damageApplied && appliedDamage > 0f)
         {
+            bossLockOnTargetProvider?.MarkNearestTargetRecentlyAttacked(worldPoint);
             EnsureDamageNumberPresenter();
             damageNumberPresenter?.ShowDamage(worldPoint, appliedDamage, critical);
         }
@@ -208,6 +215,8 @@ public class BattleController : MonoBehaviour
             playerSpecialAttackController = gameObject.AddComponent<PlayerSpecialAttackController>();
         }
 
+        EnsureBossLockOnTestSystems();
+
         EnsureDamageNumberPresenter();
 
         if (aimPointTargetingPresenter == null)
@@ -237,6 +246,27 @@ public class BattleController : MonoBehaviour
         {
             bool showAlly = GameFlowController.CurrentMode == GameMode.MultiPlaceholder;
             allyPlaceholder.SetActive(showAlly);
+        }
+    }
+
+    private void EnsureBossLockOnTestSystems()
+    {
+        if (bossController == null)
+        {
+            return;
+        }
+
+        bossTestState = bossController.GetComponent<BossTestState>() ??
+                        bossController.gameObject.AddComponent<BossTestState>();
+        bossLockOnTargetProvider = bossController.GetComponent<BossLockOnTargetProvider>() ??
+                                   bossController.gameObject.AddComponent<BossLockOnTargetProvider>();
+        bossWeakPointDebugFlash = bossController.GetComponent<BossWeakPointDebugFlash>() ??
+                                  bossController.gameObject.AddComponent<BossWeakPointDebugFlash>();
+
+        if (hudPresenter != null)
+        {
+            bossPhaseDebugHud = hudPresenter.GetComponent<BossPhaseDebugHud>() ??
+                                hudPresenter.gameObject.AddComponent<BossPhaseDebugHud>();
         }
     }
 
@@ -444,6 +474,23 @@ public class BattleController : MonoBehaviour
         if (bossController != null)
         {
             bossController.Died += HandleBossDied;
+
+            bossLockOnTargetProvider?.Configure(
+                bossController,
+                bossTestState,
+                Camera.main);
+            Transform bossVisualRoot = FindDeepChild(bossController.transform, "BossVisualRoot");
+            if (bossVisualRoot == null)
+            {
+                Debug.LogWarning(
+                    "BossWeakPointDebugFlash could not find BossVisualRoot; flash targets are left empty.",
+                    bossController);
+            }
+
+            bossWeakPointDebugFlash?.Configure(bossTestState, bossVisualRoot);
+            bossPhaseDebugHud?.Configure(
+                bossTestState,
+                hudPresenter != null ? hudPresenter.RuntimeCanvas : FindSceneComponent<Canvas>());
         }
 
         if (bossAttackController != null)

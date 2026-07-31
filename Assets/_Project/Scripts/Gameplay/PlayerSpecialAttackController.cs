@@ -20,6 +20,7 @@ public sealed class PlayerSpecialAttackController : MonoBehaviour
     private BossController bossController;
     private PlayerCombatController playerCombatController;
     private PlayerMissileSalvoLauncher salvoLauncher;
+    private BossLockOnTargetProvider lockOnTargetProvider;
     private int adapterSalvoId;
 
     public string LastAttemptReason { get; private set; } = string.Empty;
@@ -47,6 +48,11 @@ public sealed class PlayerSpecialAttackController : MonoBehaviour
         battleController = battle;
         bossController = boss;
         playerCombatController = playerCombat;
+        lockOnTargetProvider = battle != null
+            ? battle.BossLockOnTargetProvider
+            : bossController != null
+                ? bossController.GetComponent<BossLockOnTargetProvider>()
+                : null;
 
         if (salvoLauncher != null)
         {
@@ -80,7 +86,7 @@ public sealed class PlayerSpecialAttackController : MonoBehaviour
             return false;
         }
 
-        List<SalvoTargetSnapshot> targets = BuildLegacyTargetSnapshots();
+        List<SalvoTargetSnapshot> targets = BuildLockOnTargetSnapshots();
         SalvoRequest request = new(
             "LegacySpecialTestAdapter",
             totalMissileCount,
@@ -153,66 +159,37 @@ public sealed class PlayerSpecialAttackController : MonoBehaviour
             return "Special launcher offline.";
         }
 
-        return HasLegacyTarget()
+        return HasLockOnTarget()
             ? string.Empty
             : "No special attack target.";
     }
 
-    private bool HasLegacyTarget()
+    private bool HasLockOnTarget()
     {
-        int aimPointCount = bossController != null
-            ? bossController.GetCombatAimPointCount()
-            : 0;
-        for (int i = 0; i < aimPointCount; i++)
-        {
-            Transform candidate = bossController.GetCombatAimPoint(i);
-            if (candidate != null && candidate.gameObject.activeInHierarchy)
-            {
-                return true;
-            }
-        }
-
-        Transform fallback = bossController != null ? bossController.AimPoint : null;
-        return fallback != null && fallback.gameObject.activeInHierarchy;
+        return lockOnTargetProvider != null && lockOnTargetProvider.HasValidTargets;
     }
 
-    private List<SalvoTargetSnapshot> BuildLegacyTargetSnapshots()
+    private List<SalvoTargetSnapshot> BuildLockOnTargetSnapshots()
     {
         List<SalvoTargetSnapshot> targets = new();
-        if (bossController == null)
+        if (lockOnTargetProvider == null)
         {
             return targets;
         }
 
-        int aimPointCount = bossController.GetCombatAimPointCount();
-        for (int i = 0; i < aimPointCount; i++)
+        List<BossLockOnTarget> selectedTargets = new();
+        int seed = unchecked(Environment.TickCount ^ (Time.frameCount * 397));
+        lockOnTargetProvider.BuildTargetSequence(5, seed, selectedTargets);
+        for (int i = 0; i < selectedTargets.Count; i++)
         {
-            Transform target = bossController.GetCombatAimPoint(i);
-            if (target == null || !target.gameObject.activeInHierarchy)
+            SalvoTargetSnapshot snapshot =
+                lockOnTargetProvider.CreateSalvoSnapshot(selectedTargets[i]);
+            if (snapshot == null)
             {
                 continue;
             }
 
-            targets.Add(new SalvoTargetSnapshot(
-                target,
-                $"LegacyAimPoint:{target.GetEntityId()}",
-                weakPointOpen: false,
-                damageMultiplier: 1f));
-        }
-
-        if (targets.Count == 0)
-        {
-            Transform fallback = bossController.AimPoint != null
-                ? bossController.AimPoint
-                : bossController.transform;
-            if (fallback != null && fallback.gameObject.activeInHierarchy)
-            {
-                targets.Add(new SalvoTargetSnapshot(
-                    fallback,
-                    $"LegacyBoss:{fallback.GetEntityId()}",
-                    weakPointOpen: false,
-                    damageMultiplier: 1f));
-            }
+            targets.Add(snapshot);
         }
 
         return targets;
