@@ -87,6 +87,7 @@ public sealed class PlayerLockOnController : MonoBehaviour
     private PlayerCombatController playerCombatController;
     private BossLockOnTargetProvider targetProvider;
     private PlayerMissileSalvoLauncher salvoLauncher;
+    private LockOnCombatFeedback combatFeedback;
     private HUDPresenter hudPresenter;
     private LockOnCombatState state = LockOnCombatState.Ready;
     private LockOnInputSource activeInputSource;
@@ -132,6 +133,7 @@ public sealed class PlayerLockOnController : MonoBehaviour
     public bool LastFirstMissileWasInvincible { get; private set; }
     public string LastSalvoFailureStatus { get; private set; } = string.Empty;
     public string LastSalvoFailureReason { get; private set; } = string.Empty;
+    public LockOnCombatFeedback CombatFeedback => combatFeedback;
 
     public event Action<bool> OnLockAvailabilityChanged;
     public event Action<LockOnInputSource> OnLockStart;
@@ -165,6 +167,9 @@ public sealed class PlayerLockOnController : MonoBehaviour
             : GetComponent<PlayerMissileSalvoLauncher>() ??
               gameObject.AddComponent<PlayerMissileSalvoLauncher>();
         salvoLauncher.Configure(battleController, playerCombatController);
+        combatFeedback ??= GetComponent<LockOnCombatFeedback>() ??
+                           gameObject.AddComponent<LockOnCombatFeedback>();
+        combatFeedback.Configure(this, Camera.main);
         EnsureStageConfiguration();
         EnsureSalvoConfiguration();
         ResetChargeData();

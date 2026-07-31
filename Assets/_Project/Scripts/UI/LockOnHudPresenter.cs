@@ -7,6 +7,7 @@ public sealed class LockOnHudPresenter : MonoBehaviour
     private const string RuntimeRootName = "LockOnHudRuntime";
     private const string ChargeBackgroundName = "LockChargeBackground";
     private const string ChargeFillName = "LockChargeFill";
+    private const float MarkerPulseDuration = 0.28f;
     private static readonly Color[] StageColors =
     {
         new(0.35f, 0.90f, 1f, 1f),
@@ -26,6 +27,7 @@ public sealed class LockOnHudPresenter : MonoBehaviour
     private RectTransform runtimeRoot;
     private Image chargeFill;
     private readonly Text[] lockMarkers = new Text[5];
+    private readonly float[] markerPulseStartedAt = { -1f, -1f, -1f, -1f, -1f };
     private bool ownsRuntimeRoot;
     private bool ownsChargeBackground;
     private bool configured;
@@ -35,6 +37,23 @@ public sealed class LockOnHudPresenter : MonoBehaviour
     public bool ButtonInteractable => lockButton != null && lockButton.interactable;
     public bool LegacySpecialHidden => legacySpecialButton == null || !legacySpecialButton.activeSelf;
     public float ChargeFillAmount => chargeFill != null ? chargeFill.fillAmount : 0f;
+    public int ActiveMarkerPulseCount
+    {
+        get
+        {
+            int count = 0;
+            for (int i = 0; i < markerPulseStartedAt.Length; i++)
+            {
+                float elapsed = Time.unscaledTime - markerPulseStartedAt[i];
+                if (markerPulseStartedAt[i] >= 0f && elapsed < MarkerPulseDuration)
+                {
+                    count++;
+                }
+            }
+
+            return count;
+        }
+    }
 
     public void Configure(
         PlayerLockOnController controller,
@@ -44,6 +63,7 @@ public sealed class LockOnHudPresenter : MonoBehaviour
         Text buttonLabel,
         GameObject specialButton)
     {
+        UnsubscribeController();
         lockOnController = controller;
         battleCanvas = canvas;
         worldCamera = Camera.main;
@@ -68,6 +88,7 @@ public sealed class LockOnHudPresenter : MonoBehaviour
 
         EnsureChargeGauge();
         EnsureWorldMarkers();
+        SubscribeController();
         configured = true;
         RefreshAll();
     }
@@ -177,9 +198,57 @@ public sealed class LockOnHudPresenter : MonoBehaviour
             marker.rectTransform.anchoredPosition = canvasPosition;
             marker.text = $"◇{i + 1}";
             marker.color = StageColors[Mathf.Clamp(i, 0, StageColors.Length - 1)];
-            float scale = 1f + i * 0.08f;
+            float baseScale = 1f + i * 0.08f;
+            float pulse = ResolveMarkerPulse(i);
+            float scale = baseScale * (1f + pulse * 0.42f);
             marker.rectTransform.localScale = new Vector3(scale, scale, 1f);
             VisibleMarkerCount++;
+        }
+    }
+
+    private float ResolveMarkerPulse(int markerIndex)
+    {
+        float startedAt = markerPulseStartedAt[markerIndex];
+        if (startedAt < 0f)
+        {
+            return 0f;
+        }
+
+        float progress = (Time.unscaledTime - startedAt) / MarkerPulseDuration;
+        if (progress >= 1f)
+        {
+            markerPulseStartedAt[markerIndex] = -1f;
+            return 0f;
+        }
+
+        return Mathf.Sin(Mathf.PI * Mathf.Clamp01(progress));
+    }
+
+    private void HandleLockStageUp(int successfulLockCount)
+    {
+        int markerIndex = successfulLockCount - 1;
+        if (markerIndex >= 0 && markerIndex < markerPulseStartedAt.Length)
+        {
+            markerPulseStartedAt[markerIndex] = Time.unscaledTime;
+        }
+    }
+
+    private void SubscribeController()
+    {
+        if (lockOnController == null)
+        {
+            return;
+        }
+
+        lockOnController.OnLockStageUp -= HandleLockStageUp;
+        lockOnController.OnLockStageUp += HandleLockStageUp;
+    }
+
+    private void UnsubscribeController()
+    {
+        if (lockOnController != null)
+        {
+            lockOnController.OnLockStageUp -= HandleLockStageUp;
         }
     }
 
@@ -342,6 +411,7 @@ public sealed class LockOnHudPresenter : MonoBehaviour
 
     private void OnDestroy()
     {
+        UnsubscribeController();
         if (ownsRuntimeRoot && runtimeRoot != null)
         {
             Destroy(runtimeRoot.gameObject);
