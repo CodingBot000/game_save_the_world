@@ -303,6 +303,8 @@ public sealed class PlayerMissileSalvoLauncher : MonoBehaviour
     public int PoolAvailableMissiles => missilePool != null ? missilePool.AvailableMissiles : 0;
     public int PoolReservedMissiles => missilePool != null ? missilePool.ReservedMissiles : 0;
     public int PoolLeasedMissiles => missilePool != null ? missilePool.LeasedMissiles : 0;
+    public int PoolCapacityReclaimedMissiles =>
+        missilePool != null ? missilePool.CapacityReclaimedMissiles : 0;
     public bool HasValidPoolCounts => missilePool != null && missilePool.HasValidMissileCounts;
     public event Action<int, string> SalvoStarted;
     public event Action<int, SalvoTargetSnapshot> MissileFired;

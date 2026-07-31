@@ -3,7 +3,20 @@ using UnityEngine;
 
 public sealed class SpecialMissilePool : MonoBehaviour
 {
+    public const float MinimumCapacityReclaimAge = 4.25f;
     private static Material sharedFallbackImpactMaterial;
+
+    private readonly struct CapacityReclaimCandidate
+    {
+        public CapacityReclaimCandidate(SpecialHomingMissileController missile, float leasedAt)
+        {
+            Missile = missile;
+            LeasedAt = leasedAt;
+        }
+
+        public SpecialHomingMissileController Missile { get; }
+        public float LeasedAt { get; }
+    }
 
     private sealed class ImpactInstance
     {
@@ -15,6 +28,8 @@ public sealed class SpecialMissilePool : MonoBehaviour
     }
 
     private readonly Dictionary<int, MissilePoolLease> activeMissileLeases = new();
+    private readonly Dictionary<int, float> activeMissileLeaseStartTimes = new();
+    private readonly List<CapacityReclaimCandidate> capacityReclaimCandidates = new();
     private readonly Dictionary<int, Queue<ImpactInstance>> availableImpacts = new();
     private readonly List<ImpactInstance> activeImpacts = new();
     private MissilePoolLedger missileLedger;
@@ -28,6 +43,7 @@ public sealed class SpecialMissilePool : MonoBehaviour
     public int AvailableMissiles => missileLedger != null ? missileLedger.AvailableCount : 0;
     public int ReservedMissiles => missileLedger != null ? missileLedger.ReservedCount : 0;
     public int LeasedMissiles => missileLedger != null ? missileLedger.LeasedCount : 0;
+    public int CapacityReclaimedMissiles { get; private set; }
     public int CreatedMissiles
     {
         get
@@ -58,6 +74,7 @@ public sealed class SpecialMissilePool : MonoBehaviour
         missileSlots.Length == missileLedger.TotalCount &&
         CreatedMissiles == missileLedger.TotalCount &&
         activeMissileLeases.Count == missileLedger.LeasedCount &&
+        activeMissileLeaseStartTimes.Count == activeMissileLeases.Count &&
         missileLedger.HasValidCounts;
 
     public static SpecialMissilePool Create(Transform owner)
@@ -119,6 +136,12 @@ public sealed class SpecialMissilePool : MonoBehaviour
             return false;
         }
 
+        if (missileCount > 0 && missileCount <= missileLedger.MaximumReservationSize &&
+            missileLedger.AvailableCount < missileCount)
+        {
+            ReclaimAgedMissiles(missileCount - missileLedger.AvailableCount);
+        }
+
         return missileLedger.TryReserve(missileCount, out reservation, out failure);
     }
 
@@ -156,6 +179,7 @@ public sealed class SpecialMissilePool : MonoBehaviour
         }
 
         activeMissileLeases.Add(instanceId, lease);
+        activeMissileLeaseStartTimes.Add(instanceId, Time.time);
         missile.transform.SetParent(null, true);
         missile.gameObject.SetActive(true);
         return true;
@@ -206,6 +230,8 @@ public sealed class SpecialMissilePool : MonoBehaviour
             Debug.LogError("Rejected duplicate or foreign missile return.", this);
             return;
         }
+
+        activeMissileLeaseStartTimes.Remove(instanceId);
 
         missile.PrepareForPool();
         missile.transform.SetParent(transform, false);
@@ -300,6 +326,61 @@ public sealed class SpecialMissilePool : MonoBehaviour
             impact.GameObject.SetActive(false);
             GetImpactQueue(impact.TemplateId).Enqueue(impact);
         }
+    }
+
+    private void ReclaimAgedMissiles(int requiredCount)
+    {
+        if (requiredCount <= 0 || missileSlots == null || activeMissileLeases.Count == 0)
+        {
+            return;
+        }
+
+        capacityReclaimCandidates.Clear();
+        float now = Time.time;
+        foreach (KeyValuePair<int, MissilePoolLease> pair in activeMissileLeases)
+        {
+            MissilePoolLease lease = pair.Value;
+            if (lease == null || lease.SlotId < 0 || lease.SlotId >= missileSlots.Length ||
+                !activeMissileLeaseStartTimes.TryGetValue(pair.Key, out float leasedAt) ||
+                now - leasedAt < MinimumCapacityReclaimAge)
+            {
+                continue;
+            }
+
+            SpecialHomingMissileController missile = missileSlots[lease.SlotId];
+            if (missile != null)
+            {
+                capacityReclaimCandidates.Add(new CapacityReclaimCandidate(missile, leasedAt));
+            }
+        }
+
+        capacityReclaimCandidates.Sort(
+            (left, right) => left.LeasedAt.CompareTo(right.LeasedAt));
+        int reclaimed = 0;
+        for (int i = 0; i < capacityReclaimCandidates.Count && reclaimed < requiredCount; i++)
+        {
+            SpecialHomingMissileController missile = capacityReclaimCandidates[i].Missile;
+            if (missile == null || !activeMissileLeases.ContainsKey(missile.GetInstanceID()))
+            {
+                continue;
+            }
+
+            Release(missile);
+            reclaimed++;
+        }
+
+        capacityReclaimCandidates.Clear();
+        if (reclaimed <= 0)
+        {
+            return;
+        }
+
+        CapacityReclaimedMissiles += reclaimed;
+        Debug.Log(
+            $"[MissilePool] Reclaimed {reclaimed} aged missile slot(s) for a new " +
+            $"reservation. MinimumAge={MinimumCapacityReclaimAge:0.00}s, " +
+            $"available={AvailableMissiles}, leased={LeasedMissiles}.",
+            this);
     }
 
     private SpecialHomingMissileController CreateMissile(int slotId)
