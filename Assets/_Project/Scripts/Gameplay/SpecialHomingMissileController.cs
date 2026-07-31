@@ -47,6 +47,7 @@ public class SpecialHomingMissileController : MonoBehaviour
     private float smokeScale = 1f;
     private float impactEffectScale = 1f;
     private bool useTemplateOriginalMaterials;
+    private bool targetLost;
     private Color templateTint = Color.white;
     private Vector3 templateLocalEulerAngles;
     private Vector3 fanOutStartPosition;
@@ -104,6 +105,7 @@ public class SpecialHomingMissileController : MonoBehaviour
     {
         battleController = owner;
         targetAnchor = target;
+        targetLost = false;
         targetLocalOffset = Vector3.zero;
         team = projectileTeam;
         smokeTemplate = smokePrefab;
@@ -168,6 +170,7 @@ public class SpecialHomingMissileController : MonoBehaviour
     {
         battleController = null;
         targetAnchor = null;
+        targetLost = false;
         targetLocalOffset = Vector3.zero;
         smokeTemplate = null;
         impactEffectTemplate = null;
@@ -210,6 +213,14 @@ public class SpecialHomingMissileController : MonoBehaviour
         {
             BeginImpactFade(false);
             return;
+        }
+
+        if (!targetLost && (targetAnchor == null || !targetAnchor.gameObject.activeInHierarchy))
+        {
+            targetLost = true;
+            targetAnchor = null;
+            phase = MissilePhase.Terminal;
+            phaseElapsed = 0f;
         }
 
         Vector3 previousPosition = transform.position;
@@ -361,7 +372,7 @@ public class SpecialHomingMissileController : MonoBehaviour
 
     private Vector3 GetTargetDirection(Vector3 fallbackDirection)
     {
-        if (targetAnchor == null)
+        if (targetLost || targetAnchor == null || !targetAnchor.gameObject.activeInHierarchy)
         {
             return fallbackDirection.sqrMagnitude > 0.001f ? fallbackDirection.normalized : Vector3.forward;
         }
