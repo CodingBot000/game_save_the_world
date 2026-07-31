@@ -14,10 +14,51 @@ public sealed class SpecialMissilePool : MonoBehaviour
         public float ReleaseTime;
     }
 
-    private readonly Queue<SpecialHomingMissileController> availableMissiles = new();
+    private readonly Dictionary<int, MissilePoolLease> activeMissileLeases = new();
     private readonly Dictionary<int, Queue<ImpactInstance>> availableImpacts = new();
     private readonly List<ImpactInstance> activeImpacts = new();
+    private MissilePoolLedger missileLedger;
+    private SpecialHomingMissileController[] missileSlots;
+    private bool missilePoolInitializationAttempted;
+    private bool missilePoolInitialized;
+    private bool missilePoolCorrupted;
     private bool disposed;
+
+    public int TotalMissiles => missileLedger != null ? missileLedger.TotalCount : 0;
+    public int AvailableMissiles => missileLedger != null ? missileLedger.AvailableCount : 0;
+    public int ReservedMissiles => missileLedger != null ? missileLedger.ReservedCount : 0;
+    public int LeasedMissiles => missileLedger != null ? missileLedger.LeasedCount : 0;
+    public int CreatedMissiles
+    {
+        get
+        {
+            if (missileSlots == null)
+            {
+                return 0;
+            }
+
+            int count = 0;
+            for (int i = 0; i < missileSlots.Length; i++)
+            {
+                if (missileSlots[i] != null)
+                {
+                    count++;
+                }
+            }
+
+            return count;
+        }
+    }
+
+    public bool HasValidMissileCounts =>
+        missilePoolInitialized &&
+        !missilePoolCorrupted &&
+        missileLedger != null &&
+        missileSlots != null &&
+        missileSlots.Length == missileLedger.TotalCount &&
+        CreatedMissiles == missileLedger.TotalCount &&
+        activeMissileLeases.Count == missileLedger.LeasedCount &&
+        missileLedger.HasValidCounts;
 
     public static SpecialMissilePool Create(Transform owner)
     {
@@ -26,15 +67,106 @@ public sealed class SpecialMissilePool : MonoBehaviour
         return poolObject.AddComponent<SpecialMissilePool>();
     }
 
-    public void Prewarm(int count)
+    public bool InitializeFixedCapacity(int capacity, int maximumReservationSize)
     {
-        int targetCount = Mathf.Max(0, count);
-        while (!disposed && availableMissiles.Count < targetCount)
+        if (disposed || capacity <= 0 || maximumReservationSize <= 0 || maximumReservationSize > capacity)
         {
-            SpecialHomingMissileController missile = CreateMissile();
-            missile.gameObject.SetActive(false);
-            availableMissiles.Enqueue(missile);
+            return false;
         }
+
+        if (missilePoolInitialized)
+        {
+            return missileLedger != null &&
+                   missileLedger.Capacity == capacity &&
+                   missileLedger.MaximumReservationSize == maximumReservationSize &&
+                   HasValidMissileCounts;
+        }
+
+        if (missilePoolInitializationAttempted)
+        {
+            return false;
+        }
+
+        missilePoolInitializationAttempted = true;
+        missileLedger = new MissilePoolLedger(capacity, maximumReservationSize);
+        missileSlots = new SpecialHomingMissileController[capacity];
+        for (int slotId = 0; slotId < capacity; slotId++)
+        {
+            SpecialHomingMissileController missile = CreateMissile(slotId);
+            if (missile == null)
+            {
+                Debug.LogError($"Failed to create fixed missile pool slot {slotId} of {capacity}.", this);
+                return false;
+            }
+
+            missile.gameObject.SetActive(false);
+            missileSlots[slotId] = missile;
+        }
+
+        missilePoolInitialized = true;
+        return HasValidMissileCounts;
+    }
+
+    public bool TryReserve(
+        int missileCount,
+        out MissilePoolReservation reservation,
+        out MissilePoolReservationFailure failure)
+    {
+        reservation = null;
+        if (disposed || !missilePoolInitialized || missileLedger == null || !HasValidMissileCounts)
+        {
+            failure = MissilePoolReservationFailure.PoolCapacityUnavailable;
+            return false;
+        }
+
+        return missileLedger.TryReserve(missileCount, out reservation, out failure);
+    }
+
+    public bool TryLeaseReserved(
+        MissilePoolReservation reservation,
+        out SpecialHomingMissileController missile)
+    {
+        missile = null;
+        if (disposed || !missilePoolInitialized || missileLedger == null || missileSlots == null)
+        {
+            return false;
+        }
+
+        if (!missileLedger.TryLeaseReserved(reservation, out MissilePoolLease lease))
+        {
+            return false;
+        }
+
+        int slotId = lease.SlotId;
+        if (slotId < 0 || slotId >= missileSlots.Length || missileSlots[slotId] == null)
+        {
+            missileLedger.ReturnLeased(lease);
+            Debug.LogError($"Fixed missile pool slot {slotId} is unavailable.", this);
+            return false;
+        }
+
+        missile = missileSlots[slotId];
+        int instanceId = missile.GetInstanceID();
+        if (activeMissileLeases.ContainsKey(instanceId))
+        {
+            missileLedger.ReturnLeased(lease);
+            missile = null;
+            Debug.LogError($"Fixed missile pool slot {slotId} was leased twice.", this);
+            return false;
+        }
+
+        activeMissileLeases.Add(instanceId, lease);
+        missile.transform.SetParent(null, true);
+        missile.gameObject.SetActive(true);
+        return true;
+    }
+
+    public bool ReleaseUnusedReservation(MissilePoolReservation reservation, out int releasedCount)
+    {
+        releasedCount = 0;
+        return !disposed &&
+               missileLedger != null &&
+               missileLedger.ReleaseUnusedReservation(reservation, out releasedCount);
     }
 
     public void PrewarmImpacts(GameObject template, int count)
@@ -53,29 +185,6 @@ public sealed class SpecialMissilePool : MonoBehaviour
         }
     }
 
-    public SpecialHomingMissileController Get()
-    {
-        if (disposed)
-        {
-            return null;
-        }
-
-        SpecialHomingMissileController missile = null;
-        while (availableMissiles.Count > 0 && missile == null)
-        {
-            missile = availableMissiles.Dequeue();
-        }
-
-        if (missile == null)
-        {
-            missile = CreateMissile();
-        }
-
-        missile.transform.SetParent(null, true);
-        missile.gameObject.SetActive(true);
-        return missile;
-    }
-
     internal void Release(SpecialHomingMissileController missile)
     {
         if (missile == null)
@@ -89,10 +198,35 @@ public sealed class SpecialMissilePool : MonoBehaviour
             return;
         }
 
+        int instanceId = missile.GetInstanceID();
+        if (!activeMissileLeases.Remove(instanceId, out MissilePoolLease lease) ||
+            missileLedger == null ||
+            !missileLedger.ReturnLeased(lease))
+        {
+            Debug.LogError("Rejected duplicate or foreign missile return.", this);
+            return;
+        }
+
         missile.PrepareForPool();
         missile.transform.SetParent(transform, false);
         missile.gameObject.SetActive(false);
-        availableMissiles.Enqueue(missile);
+    }
+
+    internal void NotifyMissileDestroyedOutsidePool(SpecialHomingMissileController missile)
+    {
+        if (disposed ||
+            missile == null ||
+            !Application.isPlaying ||
+            gameObject == null ||
+            !gameObject.scene.isLoaded)
+        {
+            return;
+        }
+
+        missilePoolCorrupted = true;
+        Debug.LogError(
+            $"A fixed-pool missile was destroyed outside the pool. Runtime replacement is forbidden; subsequent reservations will fail. Missile={missile.name}",
+            this);
     }
 
     internal void SpawnImpact(
@@ -138,6 +272,7 @@ public sealed class SpecialMissilePool : MonoBehaviour
         }
 
         disposed = true;
+        DestroyDetachedMissiles();
         if (this != null && gameObject != null)
         {
             Destroy(gameObject);
@@ -167,13 +302,30 @@ public sealed class SpecialMissilePool : MonoBehaviour
         }
     }
 
-    private SpecialHomingMissileController CreateMissile()
+    private SpecialHomingMissileController CreateMissile(int slotId)
     {
-        GameObject missileObject = new("PlayerSpecialMissileRuntime");
+        GameObject missileObject = new($"PlayerSpecialMissileRuntime_{slotId:00}");
         missileObject.transform.SetParent(transform, false);
         SpecialHomingMissileController missile = missileObject.AddComponent<SpecialHomingMissileController>();
         missile.SetPool(this);
         return missile;
+    }
+
+    private void DestroyDetachedMissiles()
+    {
+        if (missileSlots == null)
+        {
+            return;
+        }
+
+        for (int i = 0; i < missileSlots.Length; i++)
+        {
+            SpecialHomingMissileController missile = missileSlots[i];
+            if (missile != null && missile.transform.parent != transform)
+            {
+                Destroy(missile.gameObject);
+            }
+        }
     }
 
     private ImpactInstance CreateImpact(GameObject template, int templateId)
@@ -383,7 +535,13 @@ public sealed class SpecialMissilePool : MonoBehaviour
     private void OnDestroy()
     {
         disposed = true;
-        availableMissiles.Clear();
+        DestroyDetachedMissiles();
+        activeMissileLeases.Clear();
+        missileSlots = null;
+        missileLedger = null;
+        missilePoolInitializationAttempted = false;
+        missilePoolInitialized = false;
+        missilePoolCorrupted = false;
         activeImpacts.Clear();
         availableImpacts.Clear();
     }

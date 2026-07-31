@@ -1188,7 +1188,7 @@ OnBossBodyDebugFlashDisabled():
 | 단계 | 상태 | 구현·검증 기록 | 커밋 |
 | --- | --- | --- | --- |
 | 1. 기존 Special 발사 코어 분리 | 완료 | `PlayerMissileSalvoLauncher`에 `TryPrepareSalvo`·`StartPreparedSalvo`·`CancelPreparedSalvo`와 요청/타겟/비행·VFX 불변 스냅샷을 구현했다. 기존 30발·최대 4발 묶음·첫 묶음부터 마지막 묶음까지 0.6초, 좌우 교대, FanOut→Arc→Terminal 유도와 기본·발광 Trail을 유지했다. 구 Special은 이 API만 호출하는 테스트 어댑터이며 입력·보스·투사체 정지/삭제, 컷인·카메라·HUD·AimPoint 선택·랜덤 크리티컬 의존성을 공용 코어에서 제거했다. MCP Play Mode에서 공용 API로 30발 발사, 풀 인스턴스 총 40개, 활성 미사일 최대 30개를 확인했다. 발사 중 보스 위치·회전 변화와 플레이어 방어 피해가 계속되어 보스/플레이어 전투가 정지되지 않았고, 화면에서 기존 청색 기본·발광 Trail과 좌우 살보를 확인했다. 스크립트 진단 오류 0개, 신규 게임 예외 0개, EditMode 테스트 6/6 통과. | `refactor: extract reusable missile salvo launcher` |
-| 2. 풀·요청 트랜잭션 완성 | 대기 |  |  |
+| 2. 풀·요청 트랜잭션 완성 | 완료 | 순수 C# `MissilePoolLedger`와 고정 슬롯 `SpecialMissilePool`을 연결해 초기화 시 정확히 40개만 만들고 런타임 추가 생성을 제거했다. `TryPrepareSalvo`는 1~30발 검증 뒤 요청 전량을 원자적으로 예약하고 성공 후에만 ID를 발급한다. 실제 발사·미사일 반환·준비 만료·취소·일부 발사 실패는 각각 `reserved→leased→available` 및 미사용분 롤백으로 처리하며 중복·외부·만료 토큰을 거부한다. MCP BattleArena에서 5·10·15·20·30발이 모두 시작되고 각 최초 스냅샷에서 `created=total=40`, `available+reserved+leased=40`, `valid=True`를 확인했다. 31발은 `MissileCountExceedsConfiguredMaximum`으로 첫 발 전 거절되고 상태가 40/0/0으로 유지됐다. 30발을 5.1초 간격으로 두 번 호출한 정상 전투도 두 번째 요청이 성공했으며 두 세대가 겹친 순간에도 총 40을 유지했다. 전역 연기 정리 후에도 40개 슬롯이 보존되고 30발 발사가 가능했다. EditMode 테스트 24/24, Unity 전체 컴파일 및 실행 예외 검사 통과. | `feat: add fixed-capacity missile salvo pool` |
 | 3. 락온 타겟·보스 테스트 상태 구현 | 대기 |  |  |
 | 4. 락온 입력·상태 머신·HUD 구현 | 대기 |  |  |
 | 5. 데미지·무적·재사용 대기 통합 | 대기 |  |  |
@@ -1206,6 +1206,9 @@ OnBossBodyDebugFlashDisabled():
 | DEV-003 | 1 | 우회 중 | 현재 MCP 플러그인의 `read_console` 호출이 Unity 6.4 Editor에서 reflection 초기화 오류를 반환한다. 컴파일·Play Mode 제어·테스트는 MCP로 수행하되 Console 오류 확인은 MCP 복구 전까지 Unity `Editor.log`의 해당 검증 시점 이후 `error CS`·Exception·Error 항목을 함께 검사한다. |
 | DEV-004 | 1 | 해결 | MCP `refresh_unity`가 컴파일만 요청하고 외부에서 새로 만든 Editor 스크립트를 즉시 AssetDatabase에 등록하지 않아 첫 디버그 메뉴 호출이 `menu not found`로 실패했다. MCP의 `Assets/Refresh` 메뉴를 실행해 신규 파일을 가져온 뒤 재컴파일했으며, 같은 메뉴 호출로 30발 살보가 정상 시작되는 로그와 런타임 개수를 확인했다. 이후 새 Unity 파일을 추가한 단계는 `Assets/Refresh` 후 컴파일 검증한다. |
 | DEV-005 | 1 | 해결 | 1단계 코드 리뷰에서 발사 Coroutine 내부 예외 시 현재 핸들이 남아 영구 `Busy`가 될 수 있고, 한 번 비활성화된 타겟이 다시 활성화되면 이미 발사된 미사일이 재추적할 수 있는 경로를 발견했다. Coroutine의 모든 비정상 종료를 `Canceled`로 정리하는 `finally` 경로를 추가하고, 외부 정지와 내부 종료의 중복 취소를 막았다. 미사일에는 `targetLost`를 한 번만 설정하는 상태를 추가해 소실 감지 즉시 현재 방향의 종말 관성 비행으로 전환하고 해당 발사에서는 다시 타겟을 조회하지 않게 했다. |
+| DEV-006 | 2 | 관찰 중 | 고정 풀 40개와 최대 요청 30발만으로는 모든 상황에서 5초 뒤 다음 30발을 수학적으로 보장하지 못한다. 현재 미사일 수명 상한은 6초이고 Trail 페이드는 최대 약 1.6초이므로, 타겟 소실 등으로 이전 30발이 오래 남으면 5초 시점 가용량은 10개뿐일 수 있다. 기존 Special의 비행 수명과 이미 발사된 미사일을 강제 회수하지 않는 원칙은 유지한다. BattleArena 정상 타겟에서는 30발을 5.1초 간격으로 두 번 발사하는 데 성공했고 두 번째 시작 시 이전 세대 4발과 신규 첫 묶음 4발이 함께 `leased`인 상태에서도 총 40 불변식을 유지했다. 2단계는 부족 요청을 첫 발 전 `PoolCapacityUnavailable`로 원자적 거절하며, 5단계에서 플레이어 릴리즈에 `SHOOT ERROR`를 연결하고 6단계에서 타겟 소실·저사양을 포함해 반복 검증한다. 정상 전투에서도 실패가 재현되면 풀을 암묵적으로 늘리지 않고 미사일 최대 점유 시간 또는 재사용 대기 사양을 별도 조정한다. |
+| DEV-007 | 2 | 해결 | MCP `validate_script`는 신규 풀 연동 파일들에 오류 0개를 보고했지만 Unity 전체 컴파일은 `TryPrepareSalvo`의 단락 평가 경로에서 예약 실패 지역 변수가 초기화되지 않은 `CS0165`를 검출했다. 명시 초기화 과정의 중복 `out` 선언으로 이어진 `CS0128`까지 정리해 최종 전체 컴파일을 통과했다. 이후에도 개별 스크립트 진단만 신뢰하지 않고 `Assets/Refresh` 뒤 Unity 전체 컴파일과 `Editor.log`를 함께 검사한다. |
+| DEV-008 | 2 | 해결 | 코드 리뷰에서 풀 소유 `SpecialHomingMissileController`가 기존 전역 연기 정리 루틴 또는 외부 코드에 의해 직접 `Destroy`되면 lease와 실제 슬롯 수가 어긋나 풀을 영구 오염시킬 수 있는 경로를 발견했다. 전역 연기 정리는 미사일 본체뿐 아니라 자식 Trail·이름 기반 후속 검색에서도 고정 풀 소유 계층을 제외하고, 풀·씬 정상 종료는 발사 서비스의 `Dispose`가 분리된 활성 미사일까지 정리하게 했다. BattleArena에서 정리 루틴 실행 직후 `created=total=available=40`, `valid=True`와 후속 30발 발사를 확인했다. 그 밖의 플레이 중 외부 직접 삭제는 41번째 대체품을 생성하지 않고 풀을 손상 상태로 표시해 이후 예약을 명시적으로 실패시키며 오류 로그를 남긴다. |
 
 ## 부록 A. 개발자 전달 핵심 요약
 

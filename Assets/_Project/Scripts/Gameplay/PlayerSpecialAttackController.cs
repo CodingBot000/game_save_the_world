@@ -22,6 +22,8 @@ public sealed class PlayerSpecialAttackController : MonoBehaviour
     private PlayerMissileSalvoLauncher salvoLauncher;
     private int adapterSalvoId;
 
+    public string LastAttemptReason { get; private set; } = string.Empty;
+
     public bool IsActive => salvoLauncher != null && salvoLauncher.IsSalvoActive(adapterSalvoId);
 
     // Kept only so existing scene scripts compile while the broadcast path is removed later.
@@ -65,13 +67,20 @@ public sealed class PlayerSpecialAttackController : MonoBehaviour
 
     public bool TryActivate()
     {
+        int totalMissileCount = Mathf.Max(1, missileCountPerSide) * 2;
+        return TryActivateForDebug(totalMissileCount);
+    }
+
+    public bool TryActivateForDebug(int totalMissileCount)
+    {
+        LastAttemptReason = string.Empty;
         if (!CanActivate())
         {
+            LastAttemptReason = GetUnavailableReason();
             return false;
         }
 
         List<SalvoTargetSnapshot> targets = BuildLegacyTargetSnapshots();
-        int totalMissileCount = Mathf.Max(1, missileCountPerSide) * 2;
         SalvoRequest request = new(
             "LegacySpecialTestAdapter",
             totalMissileCount,
@@ -85,6 +94,7 @@ public sealed class PlayerSpecialAttackController : MonoBehaviour
         SalvoStartResult prepareResult = salvoLauncher.TryPrepareSalvo(request, out SalvoHandle handle);
         if (!prepareResult.IsPrepared)
         {
+            LastAttemptReason = prepareResult.Reason;
             Debug.LogWarning(
                 $"Legacy Special salvo prepare failed: {prepareResult.Status} {prepareResult.Reason}",
                 this);
@@ -94,6 +104,7 @@ public sealed class PlayerSpecialAttackController : MonoBehaviour
         SalvoCommitResult commitResult = salvoLauncher.StartPreparedSalvo(handle);
         if (!commitResult.IsStarted)
         {
+            LastAttemptReason = commitResult.Reason;
             Debug.LogWarning(
                 $"Legacy Special salvo start failed: {commitResult.Status} {commitResult.Reason}",
                 this);

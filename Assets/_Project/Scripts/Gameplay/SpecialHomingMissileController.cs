@@ -48,6 +48,7 @@ public class SpecialHomingMissileController : MonoBehaviour
     private float impactEffectScale = 1f;
     private bool useTemplateOriginalMaterials;
     private bool targetLost;
+    private bool lifecycleCompleted;
     private Color templateTint = Color.white;
     private Vector3 templateLocalEulerAngles;
     private Vector3 fanOutStartPosition;
@@ -72,6 +73,8 @@ public class SpecialHomingMissileController : MonoBehaviour
     private Renderer[] visualRenderers = new Renderer[0];
     private SpecialMissilePool pool;
     private readonly List<Material> runtimeMaterials = new();
+
+    internal bool IsOwnedByFixedPool => pool != null;
 
     public void Launch(
         BattleController owner,
@@ -106,6 +109,7 @@ public class SpecialHomingMissileController : MonoBehaviour
         battleController = owner;
         targetAnchor = target;
         targetLost = false;
+        lifecycleCompleted = false;
         targetLocalOffset = Vector3.zero;
         team = projectileTeam;
         smokeTemplate = smokePrefab;
@@ -171,6 +175,7 @@ public class SpecialHomingMissileController : MonoBehaviour
         battleController = null;
         targetAnchor = null;
         targetLost = false;
+        lifecycleCompleted = true;
         targetLocalOffset = Vector3.zero;
         smokeTemplate = null;
         impactEffectTemplate = null;
@@ -274,6 +279,12 @@ public class SpecialHomingMissileController : MonoBehaviour
 
     private void CompleteLifecycle()
     {
+        if (lifecycleCompleted)
+        {
+            return;
+        }
+
+        lifecycleCompleted = true;
         if (pool != null)
         {
             pool.Release(this);
@@ -1248,6 +1259,11 @@ public class SpecialHomingMissileController : MonoBehaviour
 
     private void OnDestroy()
     {
+        if (pool != null)
+        {
+            pool.NotifyMissileDestroyedOutsidePool(this);
+        }
+
         ClearRuntimeTrail();
         DetachSmokeEffect();
 
@@ -1380,7 +1396,7 @@ public class CartoonSmokePuff : MonoBehaviour
         SpecialHomingMissileController[] specialMissiles = Resources.FindObjectsOfTypeAll<SpecialHomingMissileController>();
         for (int i = 0; i < specialMissiles.Length; i++)
         {
-            if (specialMissiles[i] != null)
+            if (specialMissiles[i] != null && !specialMissiles[i].IsOwnedByFixedPool)
             {
                 HideAndDestroyRuntimeObject(specialMissiles[i].gameObject);
             }
@@ -1399,7 +1415,9 @@ public class CartoonSmokePuff : MonoBehaviour
         for (int i = 0; i < existingTrails.Length; i++)
         {
             TrailRenderer trail = existingTrails[i];
-            if (!IsRuntimeMissileTrail(trail))
+            if (trail == null ||
+                IsOwnedByFixedMissilePool(trail.gameObject) ||
+                !IsRuntimeMissileTrail(trail))
             {
                 continue;
             }
@@ -1414,7 +1432,8 @@ public class CartoonSmokePuff : MonoBehaviour
         for (int i = 0; i < existingObjects.Length; i++)
         {
             GameObject existingObject = existingObjects[i];
-            if (!IsRuntimeSmokeObject(existingObject))
+            if (IsOwnedByFixedMissilePool(existingObject) ||
+                !IsRuntimeSmokeObject(existingObject))
             {
                 continue;
             }
@@ -1461,6 +1480,18 @@ public class CartoonSmokePuff : MonoBehaviour
         }
 
         return false;
+    }
+
+    private static bool IsOwnedByFixedMissilePool(GameObject target)
+    {
+        if (target == null)
+        {
+            return false;
+        }
+
+        SpecialHomingMissileController missile =
+            target.GetComponentInParent<SpecialHomingMissileController>(true);
+        return missile != null && missile.IsOwnedByFixedPool;
     }
 
     private static bool IsRuntimeMissileTrail(TrailRenderer trail)

@@ -229,11 +229,13 @@ public sealed class SalvoHandle
     internal SalvoHandle(
         int salvoId,
         int preparedFrame,
-        SalvoRequestSnapshot request)
+        SalvoRequestSnapshot request,
+        MissilePoolReservation reservation)
     {
         SalvoId = salvoId;
         PreparedFrame = preparedFrame;
         Request = request;
+        Reservation = reservation;
         State = HandleState.Prepared;
     }
 
@@ -242,6 +244,7 @@ public sealed class SalvoHandle
     public int MissileCount => Request.MissileCount;
     internal int PreparedFrame { get; }
     internal SalvoRequestSnapshot Request { get; }
+    internal MissilePoolReservation Reservation { get; }
     internal HandleState State { get; set; }
     internal string LastReason { get; set; }
 }
@@ -264,7 +267,8 @@ public sealed class PlayerMissileSalvoLauncher : MonoBehaviour
 {
     private const int DefaultMissilesPerVolley = 4;
     private const float DefaultSalvoDuration = 0.6f;
-    private const int StageOnePoolPrewarmCount = 40;
+    public const int MaxSalvoMissileCount = 30;
+    public const int MissilePoolCapacity = 40;
 
     [Header("Missile Strike Distribution")]
     [SerializeField] private float targetSpreadRadius = 1.6f;
@@ -320,8 +324,23 @@ public sealed class PlayerMissileSalvoLauncher : MonoBehaviour
         }
 
         SalvoRequestSnapshot snapshot = CreateRequestSnapshot(request);
+        SpecialMissilePool pool = EnsureMissilePool();
+        MissilePoolReservationFailure reservationFailure =
+            MissilePoolReservationFailure.PoolCapacityUnavailable;
+        if (pool == null ||
+            !pool.TryReserve(
+                request.MissileCount,
+                out MissilePoolReservation reservation,
+                out reservationFailure))
+        {
+            string reason = pool == null
+                ? "PoolCapacityUnavailable"
+                : reservationFailure.ToString();
+            return SalvoStartResult.Rejected(reason);
+        }
+
         int salvoId = NextSalvoId();
-        handle = new SalvoHandle(salvoId, Time.frameCount, snapshot);
+        handle = new SalvoHandle(salvoId, Time.frameCount, snapshot, reservation);
         currentHandle = handle;
         return SalvoStartResult.Prepared();
     }
@@ -355,6 +374,13 @@ public sealed class PlayerMissileSalvoLauncher : MonoBehaviour
         {
             handle.State = SalvoHandle.HandleState.Launching;
             SalvoStarted?.Invoke(handle.SalvoId, handle.Source);
+            if (currentHandle != handle || handle.State != SalvoHandle.HandleState.Launching)
+            {
+                return SalvoCommitResult.Rejected(
+                    string.IsNullOrEmpty(handle.LastReason) ? "SalvoCanceledBeforeStart" : handle.LastReason,
+                    handle.SalvoId);
+            }
+
             Coroutine startedRoutine = StartCoroutine(LaunchMissileSalvo(handle));
             if (startedRoutine == null)
             {
@@ -498,45 +524,54 @@ public sealed class PlayerMissileSalvoLauncher : MonoBehaviour
             targetLocalOffset);
         Vector3 launchDirection = strikePath.FanOutDirection;
 
-        SpecialHomingMissileController missile = EnsureMissilePool()?.Get();
-        if (missile == null)
+        SpecialMissilePool pool = EnsureMissilePool();
+        if (pool == null || !pool.TryLeaseReserved(handle.Reservation, out SpecialHomingMissileController missile))
         {
             return false;
         }
 
-        SalvoMissileProfileSnapshot profile = request.MissileProfile;
-        missile.transform.position = launcher.position;
-        missile.transform.rotation = Quaternion.LookRotation(launchDirection.normalized, Vector3.up);
-        missile.Launch(
-            battleController,
-            target.Target,
-            ProjectileTeam.Player,
-            launchDirection,
-            profile.LaunchSpeed,
-            profile.CruiseSpeed,
-            profile.Acceleration,
-            profile.TurnRate,
-            profile.LockOnDelay,
-            profile.StraightPhaseDuration,
-            profile.StraightPhaseDistance,
-            profile.TurnPhaseDuration,
-            profile.BoostPhaseDuration,
-            profile.Lifetime,
-            request.DamagePerMissile * target.DamageMultiplier,
-            profile.HitRadius,
-            profile.VisualTemplate,
-            profile.SmokeTemplate,
-            profile.ImpactEffectTemplate,
-            profile.VisualTexture,
-            profile.SmokeTexture,
-            profile.VisualScale,
-            profile.SmokeScale,
-            profile.ImpactEffectScale,
-            profile.UseTemplateOriginalMaterials,
-            profile.TemplateTint,
-            profile.TemplateLocalEulerAngles,
-            criticalChanceOverride: 0f);
-        missile.ConfigureStrikePath(strikePath);
+        try
+        {
+            SalvoMissileProfileSnapshot profile = request.MissileProfile;
+            missile.transform.position = launcher.position;
+            missile.transform.rotation = Quaternion.LookRotation(launchDirection.normalized, Vector3.up);
+            missile.Launch(
+                battleController,
+                target.Target,
+                ProjectileTeam.Player,
+                launchDirection,
+                profile.LaunchSpeed,
+                profile.CruiseSpeed,
+                profile.Acceleration,
+                profile.TurnRate,
+                profile.LockOnDelay,
+                profile.StraightPhaseDuration,
+                profile.StraightPhaseDistance,
+                profile.TurnPhaseDuration,
+                profile.BoostPhaseDuration,
+                profile.Lifetime,
+                request.DamagePerMissile * target.DamageMultiplier,
+                profile.HitRadius,
+                profile.VisualTemplate,
+                profile.SmokeTemplate,
+                profile.ImpactEffectTemplate,
+                profile.VisualTexture,
+                profile.SmokeTexture,
+                profile.VisualScale,
+                profile.SmokeScale,
+                profile.ImpactEffectScale,
+                profile.UseTemplateOriginalMaterials,
+                profile.TemplateTint,
+                profile.TemplateLocalEulerAngles,
+                criticalChanceOverride: 0f);
+            missile.ConfigureStrikePath(strikePath);
+        }
+        catch (Exception exception)
+        {
+            Debug.LogException(exception, this);
+            pool.Release(missile);
+            return false;
+        }
         try
         {
             MissileFired?.Invoke(handle.SalvoId, target);
@@ -645,6 +680,11 @@ public sealed class PlayerMissileSalvoLauncher : MonoBehaviour
         if (request.MissileCount <= 0)
         {
             return "MissileCountInvalid";
+        }
+
+        if (request.MissileCount > MaxSalvoMissileCount)
+        {
+            return "MissileCountExceedsConfiguredMaximum";
         }
 
         if (request.MissilesPerVolley <= 0)
@@ -800,12 +840,19 @@ public sealed class PlayerMissileSalvoLauncher : MonoBehaviour
                 missilePool = SpecialMissilePool.Create(transform);
             }
 
-            missilePool.Prewarm(StageOnePoolPrewarmCount);
+            if (!missilePool.InitializeFixedCapacity(MissilePoolCapacity, MaxSalvoMissileCount))
+            {
+                Debug.LogError(
+                    $"Failed to initialize fixed missile pool. Capacity={MissilePoolCapacity}, MaxRequest={MaxSalvoMissileCount}",
+                    this);
+                return null;
+            }
+
             if (playerCombatController != null)
             {
                 missilePool.PrewarmImpacts(
                     playerCombatController.DebugMissileImpactEffectTemplate,
-                    StageOnePoolPrewarmCount);
+                    MissilePoolCapacity);
             }
         }
 
@@ -830,6 +877,7 @@ public sealed class PlayerMissileSalvoLauncher : MonoBehaviour
             return;
         }
 
+        ReleaseUnusedReservation(handle);
         handle.State = SalvoHandle.HandleState.Completed;
         activeRoutine = null;
         currentHandle = null;
@@ -854,6 +902,7 @@ public sealed class PlayerMissileSalvoLauncher : MonoBehaviour
         }
 
         Coroutine routineToStop = activeRoutine;
+        ReleaseUnusedReservation(handle);
         handle.State = SalvoHandle.HandleState.Canceled;
         handle.LastReason = reason;
         currentHandle = null;
@@ -872,6 +921,16 @@ public sealed class PlayerMissileSalvoLauncher : MonoBehaviour
         {
             Debug.LogException(exception, this);
         }
+    }
+
+    private void ReleaseUnusedReservation(SalvoHandle handle)
+    {
+        if (handle == null || handle.Reservation == null || missilePool == null)
+        {
+            return;
+        }
+
+        missilePool.ReleaseUnusedReservation(handle.Reservation, out _);
     }
 
     private void OnDisable()
