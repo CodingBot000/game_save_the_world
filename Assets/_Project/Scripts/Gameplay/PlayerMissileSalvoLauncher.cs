@@ -194,7 +194,8 @@ public sealed class SalvoRequest
         int missilesPerVolley = 4,
         float salvoDuration = 0.6f,
         int randomSeed = 0,
-        SalvoMissileProfileSnapshot missileProfile = null)
+        SalvoMissileProfileSnapshot missileProfile = null,
+        int successfulLockCount = 0)
     {
         Source = string.IsNullOrWhiteSpace(source) ? "Unknown" : source;
         MissileCount = missileCount;
@@ -204,6 +205,7 @@ public sealed class SalvoRequest
         SalvoDuration = salvoDuration;
         RandomSeed = randomSeed;
         MissileProfile = missileProfile;
+        SuccessfulLockCount = successfulLockCount;
     }
 
     public string Source { get; }
@@ -214,6 +216,7 @@ public sealed class SalvoRequest
     public float SalvoDuration { get; }
     public int RandomSeed { get; }
     public SalvoMissileProfileSnapshot MissileProfile { get; }
+    public int SuccessfulLockCount { get; }
 }
 
 public sealed class SalvoHandle
@@ -242,6 +245,7 @@ public sealed class SalvoHandle
     public int SalvoId { get; }
     public string Source => Request.Source;
     public int MissileCount => Request.MissileCount;
+    public int SuccessfulLockCount => Request.SuccessfulLockCount;
     internal int PreparedFrame { get; }
     internal SalvoRequestSnapshot Request { get; }
     internal MissilePoolReservation Reservation { get; }
@@ -253,6 +257,7 @@ internal sealed class SalvoRequestSnapshot
 {
     public string Source;
     public int MissileCount;
+    public int SuccessfulLockCount;
     public float DamagePerMissile;
     public SalvoTargetSnapshot[] Targets;
     public int MissilesPerVolley;
@@ -295,6 +300,10 @@ public sealed class PlayerMissileSalvoLauncher : MonoBehaviour
 
     public bool IsBusy => currentHandle != null;
     public int ActiveSalvoId => currentHandle != null ? currentHandle.SalvoId : 0;
+    public int PoolAvailableMissiles => missilePool != null ? missilePool.AvailableMissiles : 0;
+    public int PoolReservedMissiles => missilePool != null ? missilePool.ReservedMissiles : 0;
+    public int PoolLeasedMissiles => missilePool != null ? missilePool.LeasedMissiles : 0;
+    public bool HasValidPoolCounts => missilePool != null && missilePool.HasValidMissileCounts;
     public event Action<int, string> SalvoStarted;
     public event Action<int, SalvoTargetSnapshot> MissileFired;
     public event Action<int> SalvoCompleted;
@@ -773,6 +782,7 @@ public sealed class PlayerMissileSalvoLauncher : MonoBehaviour
         {
             Source = request.Source,
             MissileCount = request.MissileCount,
+            SuccessfulLockCount = request.SuccessfulLockCount,
             DamagePerMissile = request.DamagePerMissile,
             Targets = targets,
             MissilesPerVolley = request.MissilesPerVolley > 0

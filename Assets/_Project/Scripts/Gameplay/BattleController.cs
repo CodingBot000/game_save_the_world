@@ -509,7 +509,9 @@ public class BattleController : MonoBehaviour
         playerLockOnController?.Configure(
             this,
             playerCombatController,
-            bossLockOnTargetProvider);
+            bossLockOnTargetProvider,
+            GetComponent<PlayerMissileSalvoLauncher>(),
+            hudPresenter);
         playerCombatController?.SetLegacyMissileInputEnabled(false);
 
         if (playerSpecialAttackController != null)

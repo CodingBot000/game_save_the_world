@@ -104,6 +104,7 @@ public class BossBulletPatternController : MonoBehaviour
 
     private readonly List<GameObject> runtimeTelegraphs = new();
     private readonly List<Transform> debrisFragmentFirePoints = new();
+    private readonly HashSet<ContinuousDamageTickState> activeContinuousDamageTickStates = new();
 
     private BossAttackController attackController;
     private BattleController battleController;
@@ -159,6 +160,7 @@ public class BossBulletPatternController : MonoBehaviour
     private void OnDisable()
     {
         CancelActivePattern();
+        UnregisterAllContinuousDamageTickStates();
         CleanupTelegraphs();
     }
 
@@ -169,6 +171,11 @@ public class BossBulletPatternController : MonoBehaviour
         PlayerCombatController player,
         PlayerOrbitController playerOrbit = null)
     {
+        if (playerCombatController != player)
+        {
+            UnregisterAllContinuousDamageTickStates();
+        }
+
         attackController = attack;
         battleController = battle;
         bossController = boss;
@@ -366,6 +373,30 @@ public class BossBulletPatternController : MonoBehaviour
     {
         CancelActivePattern();
         CleanupTelegraphs();
+    }
+
+    public bool TryRunPatternForDebug(BossBulletPatternType patternType)
+    {
+        if (!Application.isPlaying || activePatternRoutine != null)
+        {
+            return false;
+        }
+
+        EnsureDefaultPatterns();
+        List<BossBulletPatternDefinition> activeSequence = GetActivePatternSequence();
+        for (int i = 0; i < activeSequence.Count; i++)
+        {
+            BossBulletPatternDefinition pattern = activeSequence[i];
+            if (pattern == null || pattern.patternType != patternType)
+            {
+                continue;
+            }
+
+            activePatternRoutine = StartCoroutine(ExecutePatternRoutine(pattern));
+            return activePatternRoutine != null;
+        }
+
+        return false;
     }
 
     private BossBulletPatternDefinition GetPatternForDebug(int patternIndex)
@@ -1348,30 +1379,38 @@ public class BossBulletPatternController : MonoBehaviour
             new Color(1f, 0.03f, 0.02f, 0.72f));
 
         float trackingElapsed = 0f;
-        float damageTickElapsed = 0f;
         float trackingDuration = Mathf.Max(0.05f, pattern.trackingDuration);
         SetTelegraphColor(beam, new Color(1f, 0.08f, 0.03f, 0.66f));
-
-        while (trackingElapsed < trackingDuration)
+        ContinuousDamageTickState damageTickState = new(
+            "boss.trackingResidualBeam",
+            TrackingResidualBeamDamageTickInterval);
+        RegisterContinuousDamageTickState(damageTickState);
+        try
         {
-            Vector3 trackingOrigin = attackController.CurrentFireOrigin;
-            trackedAimPoint = MoveAimPointTowardPlayer(
-                trackedAimPoint,
-                pattern.beamActiveTrackingSpeedMultiplier);
-            beamDirection = ResolveSafeDirection(trackedAimPoint - trackingOrigin);
+            while (trackingElapsed < trackingDuration)
+            {
+                Vector3 trackingOrigin = attackController.CurrentFireOrigin;
+                trackedAimPoint = MoveAimPointTowardPlayer(
+                    trackedAimPoint,
+                    pattern.beamActiveTrackingSpeedMultiplier);
+                beamDirection = ResolveSafeDirection(trackedAimPoint - trackingOrigin);
 
-            UpdateBeamTelegraph(beam, trackingOrigin, beamDirection, width, radius);
-            TryApplyTrackingResidualBeamDamage(
-                trackingOrigin,
-                trackingOrigin + beamDirection * radius,
-                ResolveTrackingResidualBeamDamageHalfWidth(width),
-                ref damageTickElapsed);
+                UpdateBeamTelegraph(beam, trackingOrigin, beamDirection, width, radius);
+                TryApplyTrackingResidualBeamDamage(
+                    trackingOrigin,
+                    trackingOrigin + beamDirection * radius,
+                    ResolveTrackingResidualBeamDamageHalfWidth(width),
+                    damageTickState);
 
-            trackingElapsed += Time.deltaTime;
-            yield return null;
+                trackingElapsed += Time.deltaTime;
+                yield return null;
+            }
         }
-
-        DestroyTelegraph(beam);
+        finally
+        {
+            UnregisterContinuousDamageTickState(damageTickState);
+            DestroyTelegraph(beam);
+        }
     }
 
     private void SpawnSpread(Vector3 origin, Vector3 target, int projectileCount, float spreadAngle, float speed, float damage)
@@ -2198,25 +2237,77 @@ public class BossBulletPatternController : MonoBehaviour
         }
     }
 
-    private void TryApplyTrackingResidualBeamDamage(Vector3 start, Vector3 end, float halfWidth, ref float damageTickElapsed)
+    private void TryApplyTrackingResidualBeamDamage(
+        Vector3 start,
+        Vector3 end,
+        float halfWidth,
+        ContinuousDamageTickState damageTickState)
     {
-        Vector3 closestPoint = ClosestPointOnSegment(playerCombatController.HitPoint, start, end);
-        if (!playerCombatController.CheckHit(closestPoint, Mathf.Max(0f, halfWidth)))
+        if (playerCombatController == null || damageTickState == null)
         {
-            damageTickElapsed = 0f;
             return;
         }
 
-        damageTickElapsed += Time.deltaTime;
-        while (damageTickElapsed >= TrackingResidualBeamDamageTickInterval)
+        if (playerCombatController.IsSalvoInvincible)
+        {
+            damageTickState.ResetElapsed();
+            return;
+        }
+
+        Vector3 closestPoint = ClosestPointOnSegment(playerCombatController.HitPoint, start, end);
+        if (!playerCombatController.CheckHit(closestPoint, Mathf.Max(0f, halfWidth)))
+        {
+            damageTickState.ResetElapsed();
+            return;
+        }
+
+        damageTickState.AddElapsed(Time.deltaTime);
+        while (damageTickState.TryConsumeTick())
         {
             if (!playerCombatController.ApplyContinuousDamage(TrackingResidualBeamDamagePerTick))
             {
                 break;
             }
-
-            damageTickElapsed -= TrackingResidualBeamDamageTickInterval;
         }
+    }
+
+    private void RegisterContinuousDamageTickState(ContinuousDamageTickState state)
+    {
+        if (state == null || playerCombatController == null ||
+            !activeContinuousDamageTickStates.Add(state))
+        {
+            return;
+        }
+
+        if (!playerCombatController.ContinuousDamageTickRegistry.Register(state))
+        {
+            activeContinuousDamageTickStates.Remove(state);
+        }
+    }
+
+    private void UnregisterContinuousDamageTickState(ContinuousDamageTickState state)
+    {
+        if (state == null || !activeContinuousDamageTickStates.Remove(state))
+        {
+            return;
+        }
+
+        playerCombatController?.ContinuousDamageTickRegistry.Unregister(state);
+    }
+
+    private void UnregisterAllContinuousDamageTickStates()
+    {
+        if (activeContinuousDamageTickStates.Count == 0)
+        {
+            return;
+        }
+
+        foreach (ContinuousDamageTickState state in activeContinuousDamageTickStates)
+        {
+            playerCombatController?.ContinuousDamageTickRegistry.Unregister(state);
+        }
+
+        activeContinuousDamageTickStates.Clear();
     }
 
     private void TryApplyShockwaveDamage(Vector3 center, float radius, float thickness, float height, float damage)
@@ -2459,6 +2550,7 @@ public class BossBulletPatternController : MonoBehaviour
         StopCoroutine(activePatternRoutine);
         activePatternRoutine = null;
         preserveActiveTelegraphUntilPatternEnds = false;
+        UnregisterAllContinuousDamageTickStates();
     }
 
     private float ResolveCooldown(float patternCooldownMultiplier)

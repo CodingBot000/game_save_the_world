@@ -39,18 +39,26 @@ public static class LockOnChargeDebugMenu
         bool released = controller.TryReleaseCharging(LockOnInputSource.Debug);
         hud?.RefreshForDebug();
         LockOnReleaseIntent intent = controller.LastReleaseIntent;
+        PlayerCombatController combat =
+            Object.FindAnyObjectByType<PlayerCombatController>();
         bool verified = began && chargedStage == 5 && successfulLocks == 5 &&
                         assignedLocks == 5 && released && intent != null &&
                         intent.SuccessfulLockCount == 5 &&
                         intent.TargetSnapshots.Count == 5 &&
-                        controller.State == LockOnCombatState.Ready;
+                        controller.State == LockOnCombatState.ReuseWait &&
+                        controller.LastRequestedMissileCount == 30 &&
+                        controller.LastFirstMissileWasInvincible &&
+                        combat != null && combat.IsSalvoInvincible;
         Debug.Log(
             $"[LockChargeDebug] full charge verified={verified}, began={began}, " +
             $"stage={chargedStage}, success={successfulLocks}, assigned={assignedLocks}, " +
             $"visibleMarkers={visibleMarkers}, released={released}, " +
             $"intentLocks={(intent != null ? intent.SuccessfulLockCount : -1)}, " +
             $"snapshots={(intent != null ? intent.TargetSnapshots.Count : -1)}, " +
-            $"finalState={controller.State}. No missiles are fired by the stage-4 preview.");
+            $"requested={controller.LastRequestedMissileCount}, " +
+            $"firedNow={controller.LastFiredMissileCount}, " +
+            $"firstMissileInvincible={controller.LastFirstMissileWasInvincible}, " +
+            $"finalState={controller.State}.");
     }
 
     [MenuItem(MenuRoot + "Run UI Pointer Exit Cancel", priority = 282)]
@@ -247,6 +255,20 @@ public static class LockOnChargeDebugMenu
         if (controller.State == LockOnCombatState.Charging)
         {
             controller.HandleGamePaused();
+        }
+
+        if (controller.State == LockOnCombatState.ReuseWait)
+        {
+            controller.AdvanceReuseWaitForDebug(controller.LockReuseWaitDuration + 0.1f);
+        }
+
+        PlayerMissileSalvoLauncher launcher =
+            Object.FindAnyObjectByType<PlayerMissileSalvoLauncher>();
+        if (launcher != null && launcher.IsBusy)
+        {
+            Debug.LogWarning(
+                $"[LockChargeDebug] Wait for active salvo {launcher.ActiveSalvoId} to finish before running this diagnostic.");
+            return false;
         }
 
         if (controller.State == LockOnCombatState.Ready)

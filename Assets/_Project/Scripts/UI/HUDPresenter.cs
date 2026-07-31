@@ -8,6 +8,7 @@ using UnityEditor.SceneManagement;
 
 public class HUDPresenter : MonoBehaviour
 {
+    private const float ShootErrorDisplayDuration = 3f;
     private const string HudRootName = "GeneratedHUD";
     private const string MusicObjectName = "BattleArenaMusic";
     private const string PlayerStatusBaseSpritePath = "Assets/Art/UI/Battle/HUD/player_hp_armor_base.png";
@@ -80,6 +81,19 @@ public class HUDPresenter : MonoBehaviour
     private string statusMessage = string.Empty;
     private float statusTimer;
     private bool musicEnabled;
+    private bool shootErrorVisible;
+    private float shootErrorRemaining;
+    private string statusMessageBeforeShootError = string.Empty;
+    private float statusTimerBeforeShootError;
+    private int statusFontSizeBeforeShootError;
+    private FontStyle statusFontStyleBeforeShootError;
+    private Color statusColorBeforeShootError;
+    private bool statusRaycastBeforeShootError;
+    private Outline shootErrorOutline;
+    private bool shootErrorOutlineAdded;
+    private bool shootErrorOutlineEnabledBefore;
+    private Color shootErrorOutlineColorBefore;
+    private Vector2 shootErrorOutlineDistanceBefore;
 
     public Canvas RuntimeCanvas => ResolveCanvas();
 
@@ -162,11 +176,20 @@ public class HUDPresenter : MonoBehaviour
         UpdateStageDebugText();
         RefreshDebugPanelState();
 
-        if (statusTimer > 0f)
+        if (shootErrorVisible)
+        {
+            shootErrorRemaining = Mathf.Max(0f, shootErrorRemaining - Time.deltaTime);
+            if (shootErrorRemaining <= 0f)
+            {
+                ClearShootError();
+            }
+        }
+
+        if (!shootErrorVisible && statusTimer > 0f)
         {
             statusTimer -= Time.deltaTime;
         }
-        else if (bossController != null && playerCombatController != null)
+        else if (!shootErrorVisible && bossController != null && playerCombatController != null)
         {
             statusMessage = bossController.IsAlive && playerCombatController.IsAlive
                 ? "Battle active"
@@ -236,8 +259,114 @@ public class HUDPresenter : MonoBehaviour
 
     public void SetStatusMessage(string message)
     {
+        ClearShootError(restorePreviousStatus: false);
         statusMessage = message;
         statusTimer = 3f;
+    }
+
+    public void ShowShootError(string reason)
+    {
+        EnsureUiReferences();
+        if (statusText == null)
+        {
+            return;
+        }
+
+        if (!shootErrorVisible)
+        {
+            statusMessageBeforeShootError = statusMessage;
+            statusTimerBeforeShootError = statusTimer;
+            statusFontSizeBeforeShootError = statusText.fontSize;
+            statusFontStyleBeforeShootError = statusText.fontStyle;
+            statusColorBeforeShootError = statusText.color;
+            statusRaycastBeforeShootError = statusText.raycastTarget;
+            shootErrorOutline = statusText.GetComponent<Outline>();
+            if (shootErrorOutline == null)
+            {
+                shootErrorOutline = statusText.gameObject.AddComponent<Outline>();
+                shootErrorOutlineAdded = true;
+            }
+            else
+            {
+                shootErrorOutlineAdded = false;
+            }
+
+            shootErrorOutlineEnabledBefore = shootErrorOutline.enabled;
+            shootErrorOutlineColorBefore = shootErrorOutline.effectColor;
+            shootErrorOutlineDistanceBefore = shootErrorOutline.effectDistance;
+        }
+
+        shootErrorVisible = true;
+        shootErrorRemaining = ShootErrorDisplayDuration;
+        statusMessage = "SHOOT ERROR";
+        statusTimer = 0f;
+        ApplyShootErrorStyle();
+    }
+
+    public void ClearShootError()
+    {
+        ClearShootError(restorePreviousStatus: true);
+    }
+
+    public bool IsShootErrorVisible => shootErrorVisible;
+    public string DebugStatusText => statusText != null ? statusText.text : string.Empty;
+    public int DebugStatusFontSize => statusText != null ? statusText.fontSize : 0;
+
+    private void ClearShootError(bool restorePreviousStatus)
+    {
+        if (!shootErrorVisible)
+        {
+            return;
+        }
+
+        shootErrorVisible = false;
+        shootErrorRemaining = 0f;
+        if (statusText != null)
+        {
+            statusText.fontSize = statusFontSizeBeforeShootError;
+            statusText.fontStyle = statusFontStyleBeforeShootError;
+            statusText.color = statusColorBeforeShootError;
+            statusText.raycastTarget = statusRaycastBeforeShootError;
+        }
+
+        if (shootErrorOutline != null)
+        {
+            shootErrorOutline.enabled = shootErrorOutlineAdded
+                ? false
+                : shootErrorOutlineEnabledBefore;
+            shootErrorOutline.effectColor = shootErrorOutlineColorBefore;
+            shootErrorOutline.effectDistance = shootErrorOutlineDistanceBefore;
+        }
+
+        if (restorePreviousStatus)
+        {
+            statusMessage = statusMessageBeforeShootError;
+            statusTimer = statusTimerBeforeShootError;
+        }
+
+        shootErrorOutline = null;
+        shootErrorOutlineAdded = false;
+    }
+
+    private void ApplyShootErrorStyle()
+    {
+        if (statusText == null)
+        {
+            return;
+        }
+
+        statusText.text = "SHOOT ERROR";
+        statusText.fontSize = 32;
+        statusText.fontStyle = FontStyle.Bold;
+        statusText.color = new Color32(255, 48, 48, 255);
+        statusText.raycastTarget = false;
+        if (shootErrorOutline != null)
+        {
+            shootErrorOutline.enabled = true;
+            shootErrorOutline.effectColor = Color.black;
+            shootErrorOutline.effectDistance = new Vector2(2f, -2f);
+            shootErrorOutline.useGraphicAlpha = true;
+        }
     }
 
     public void SetDebugPanelVisible(bool visible)
@@ -486,6 +615,7 @@ public class HUDPresenter : MonoBehaviour
 
     private void ClearUiReferences()
     {
+        ClearShootError();
         uiBuilt = false;
         hudRoot = null;
         bossFillImage = null;
@@ -514,6 +644,11 @@ public class HUDPresenter : MonoBehaviour
         missionFailedOverlay = null;
         retryButton = null;
         quitButton = null;
+    }
+
+    private void OnDisable()
+    {
+        ClearShootError();
     }
 
     private void UpdateMissileButtonState()

@@ -60,10 +60,23 @@ public sealed class PlayerLockOnController : MonoBehaviour
 {
     private static readonly float[] DefaultStageChargeTimes =
         { 0.35f, 0.75f, 1.25f, 1.80f, 2.50f };
+    private static readonly int[] DefaultMissileCountsBySuccessfulLocks =
+        { 5, 10, 15, 20, 30 };
+    private static readonly float[] DefaultStageTotalDamageRatios =
+        { 0.30f, 0.40f, 0.50f, 0.60f, 1f };
 
     [SerializeField] private float[] stageChargeTimes =
         { 0.35f, 0.75f, 1.25f, 1.80f, 2.50f };
     [SerializeField, Range(0.1f, 3f)] private float targetGraceTime = 1.25f;
+    [Header("Missile Salvo")]
+    [SerializeField] private int[] missileCountsBySuccessfulLocks =
+        { 5, 10, 15, 20, 30 };
+    [SerializeField] private float[] stageTotalDamageRatios =
+        { 0.30f, 0.40f, 0.50f, 0.60f, 1f };
+    [SerializeField, Min(0.01f)] private float fullSalvoGatlingDamageMultiplier = 10f;
+    [SerializeField, Min(1)] private int missilesPerVolley = 4;
+    [SerializeField, Min(0.01f)] private float salvoLaunchDuration = 0.6f;
+    [SerializeField, Min(0f)] private float lockReuseWaitDuration = 5f;
 
     private readonly List<BossLockOnTarget> lockedTargets = new();
     private readonly List<BossLockOnTarget> candidateBuffer = new();
@@ -73,6 +86,8 @@ public sealed class PlayerLockOnController : MonoBehaviour
     private BattleController battleController;
     private PlayerCombatController playerCombatController;
     private BossLockOnTargetProvider targetProvider;
+    private PlayerMissileSalvoLauncher salvoLauncher;
+    private HUDPresenter hudPresenter;
     private LockOnCombatState state = LockOnCombatState.Ready;
     private LockOnInputSource activeInputSource;
     private float chargeElapsed;
@@ -83,6 +98,9 @@ public sealed class PlayerLockOnController : MonoBehaviour
     private bool lastAvailability;
     private bool configured;
     private bool refreshingLockAssignments;
+    private int currentLockOnSalvoId;
+    private int currentLockOnMissilesFired;
+    private bool ownsSalvoInvincibility;
 
     public LockOnCombatState State => state;
     public LockOnInputSource ActiveInputSource => activeInputSource;
@@ -101,6 +119,19 @@ public sealed class PlayerLockOnController : MonoBehaviour
     public bool HasValidTargets => targetProvider != null && targetProvider.HasValidTargets;
     public bool IsLockInputAvailable =>
         state == LockOnCombatState.Ready && CanStartLock();
+    public float LockReuseWaitDuration => lockReuseWaitDuration;
+    public float SalvoLaunchDuration => salvoLaunchDuration;
+    public int CurrentLockOnSalvoId => currentLockOnSalvoId;
+    public int LastStartedSalvoId { get; private set; }
+    public int LastRequestedMissileCount { get; private set; }
+    public int LastFiredMissileCount { get; private set; }
+    public float LastGatlingDamageSnapshot { get; private set; }
+    public float LastBaseDamageBudget { get; private set; }
+    public float LastBaseDamagePerMissile { get; private set; }
+    public float LastFirstMissileDamageMultiplier { get; private set; }
+    public bool LastFirstMissileWasInvincible { get; private set; }
+    public string LastSalvoFailureStatus { get; private set; } = string.Empty;
+    public string LastSalvoFailureReason { get; private set; } = string.Empty;
 
     public event Action<bool> OnLockAvailabilityChanged;
     public event Action<LockOnInputSource> OnLockStart;
@@ -108,6 +139,8 @@ public sealed class PlayerLockOnController : MonoBehaviour
     public event Action<BossLockOnTarget, int> OnLockTargetAdded;
     public event Action<LockOnCancelReason> OnLockCanceled;
     public event Action<LockOnReleaseIntent> OnLockRelease;
+    public event Action<string, string> OnSalvoPrepareFailed;
+    public event Action OnFullSalvo;
     public event Action<float> OnLockReuseWaitStarted;
     public event Action OnLockReuseWaitEnded;
     public event Action<LockOnCombatState> OnLockStateChanged;
@@ -115,19 +148,32 @@ public sealed class PlayerLockOnController : MonoBehaviour
     public void Configure(
         BattleController battle,
         PlayerCombatController playerCombat,
-        BossLockOnTargetProvider provider)
+        BossLockOnTargetProvider provider,
+        PlayerMissileSalvoLauncher launcher = null,
+        HUDPresenter hud = null)
     {
         UnsubscribeProvider();
+        UnsubscribeSalvoLauncher();
+        EndOwnedSalvoInvincibility();
+        currentLockOnSalvoId = 0;
         battleController = battle;
         playerCombatController = playerCombat;
         targetProvider = provider;
+        hudPresenter = hud;
+        salvoLauncher = launcher != null
+            ? launcher
+            : GetComponent<PlayerMissileSalvoLauncher>() ??
+              gameObject.AddComponent<PlayerMissileSalvoLauncher>();
+        salvoLauncher.Configure(battleController, playerCombatController);
         EnsureStageConfiguration();
+        EnsureSalvoConfiguration();
         ResetChargeData();
         LastReleaseIntent = null;
         reuseWaitRemaining = 0f;
         state = LockOnCombatState.Ready;
         configured = true;
         SubscribeProvider();
+        SubscribeSalvoLauncher();
         PublishAvailability(force: true);
     }
 
@@ -244,7 +290,7 @@ public sealed class PlayerLockOnController : MonoBehaviour
             }
         }
 
-        if (snapshotBuffer.Count == 0)
+        if (snapshotBuffer.Count == 0 || snapshotBuffer.Count != SuccessfulLockCount)
         {
             CancelCharging(LockOnCancelReason.TargetsUnavailableOnRelease);
             return false;
@@ -258,18 +304,14 @@ public sealed class PlayerLockOnController : MonoBehaviour
             chargeSessionSeed);
         activeInputSource = LockOnInputSource.None;
         SetState(LockOnCombatState.Release);
-        OnLockRelease?.Invoke(LastReleaseIntent);
-
-        // Stage 4 exposes the immutable release intent. Stage 5 accepts it through
-        // ConfirmReleaseAccepted only after the shared launcher prepares the salvo.
-        if (state == LockOnCombatState.Release)
+        bool accepted = TryStartReleasedSalvo(LastReleaseIntent);
+        if (!accepted && state == LockOnCombatState.Release)
         {
-            ResetChargeData();
-            SetState(LockOnCombatState.Ready);
+            RejectRelease();
         }
 
         PublishAvailability(force: true);
-        return true;
+        return accepted;
     }
 
     public void HandlePointerExit()
@@ -294,6 +336,14 @@ public sealed class PlayerLockOnController : MonoBehaviour
         if (state == LockOnCombatState.Charging)
         {
             AdvanceCharge(Mathf.Max(0f, deltaSeconds));
+        }
+    }
+
+    public void AdvanceReuseWaitForDebug(float deltaSeconds)
+    {
+        if (state == LockOnCombatState.ReuseWait)
+        {
+            TickReuseWait(Mathf.Max(0f, deltaSeconds));
         }
     }
 
@@ -331,6 +381,135 @@ public sealed class PlayerLockOnController : MonoBehaviour
         OnLockCanceled?.Invoke(LockOnCancelReason.ReleaseRejected);
         PublishAvailability(force: true);
         return true;
+    }
+
+    private bool TryStartReleasedSalvo(LockOnReleaseIntent intent)
+    {
+        ResetReleaseDiagnostics();
+        if (intent == null || salvoLauncher == null || playerCombatController == null)
+        {
+            ReportPlayerSalvoFailure("Rejected", "LockOnSalvoDependenciesUnavailable", 0, 0);
+            return false;
+        }
+
+        if (!LockOnSalvoRules.TryCalculate(
+                intent.SuccessfulLockCount,
+                playerCombatController.CurrentGatlingBaseDamage,
+                fullSalvoGatlingDamageMultiplier,
+                missileCountsBySuccessfulLocks,
+                stageTotalDamageRatios,
+                out LockOnSalvoStageCalculation calculation,
+                out string calculationFailure))
+        {
+            ReportPlayerSalvoFailure("Rejected", calculationFailure, 0, 0);
+            return false;
+        }
+
+        LastRequestedMissileCount = calculation.MissileCount;
+        LastGatlingDamageSnapshot = calculation.GatlingBaseDamage;
+        LastBaseDamageBudget = calculation.TotalBaseDamage;
+        LastBaseDamagePerMissile = calculation.BaseDamagePerMissile;
+        SalvoRequest request = new(
+            "LockOn",
+            calculation.MissileCount,
+            calculation.BaseDamagePerMissile,
+            intent.TargetSnapshots,
+            missilesPerVolley,
+            salvoLaunchDuration,
+            intent.RandomSeed,
+            SalvoMissileProfileSnapshot.Capture(playerCombatController),
+            intent.SuccessfulLockCount);
+
+        SalvoStartResult prepareResult = salvoLauncher.TryPrepareSalvo(
+            request,
+            out SalvoHandle handle);
+        if (!prepareResult.IsPrepared || handle == null)
+        {
+            ReportPlayerSalvoFailure(
+                prepareResult.Status.ToString(),
+                prepareResult.Reason,
+                calculation.MissileCount,
+                prepareResult.BlockingSalvoId);
+            return false;
+        }
+
+        currentLockOnSalvoId = handle.SalvoId;
+        currentLockOnMissilesFired = 0;
+        LastStartedSalvoId = handle.SalvoId;
+        if (!playerCombatController.BeginSalvoInvincibility())
+        {
+            salvoLauncher.CancelPreparedSalvo(handle, "SalvoInvincibilityAlreadyActive");
+            currentLockOnSalvoId = 0;
+            ReportPlayerSalvoFailure(
+                "Rejected",
+                "SalvoInvincibilityAlreadyActive",
+                calculation.MissileCount,
+                handle.SalvoId);
+            return false;
+        }
+
+        ownsSalvoInvincibility = true;
+
+        SalvoCommitResult commitResult = salvoLauncher.StartPreparedSalvo(handle);
+        if (!commitResult.IsStarted)
+        {
+            playerCombatController.EndSalvoInvincibility();
+            currentLockOnSalvoId = 0;
+            ReportPlayerSalvoFailure(
+                commitResult.Status.ToString(),
+                commitResult.Reason,
+                calculation.MissileCount,
+                commitResult.SalvoId);
+            return false;
+        }
+
+        if (!ConfirmReleaseAccepted(lockReuseWaitDuration))
+        {
+            Debug.LogError(
+                $"Lock-on salvo {commitResult.SalvoId} started but the release state could not enter reuse wait.",
+                this);
+        }
+
+        OnLockRelease?.Invoke(intent);
+        if (intent.SuccessfulLockCount == MaxLockStage)
+        {
+            OnFullSalvo?.Invoke();
+        }
+
+        return true;
+    }
+
+    private void ResetReleaseDiagnostics()
+    {
+        LastStartedSalvoId = 0;
+        LastRequestedMissileCount = 0;
+        LastFiredMissileCount = 0;
+        LastGatlingDamageSnapshot = 0f;
+        LastBaseDamageBudget = 0f;
+        LastBaseDamagePerMissile = 0f;
+        LastFirstMissileDamageMultiplier = 0f;
+        LastFirstMissileWasInvincible = false;
+        LastSalvoFailureStatus = string.Empty;
+        LastSalvoFailureReason = string.Empty;
+    }
+
+    private void ReportPlayerSalvoFailure(
+        string status,
+        string reason,
+        int requestedMissiles,
+        int salvoId)
+    {
+        LastSalvoFailureStatus = string.IsNullOrWhiteSpace(status) ? "Rejected" : status;
+        LastSalvoFailureReason = string.IsNullOrWhiteSpace(reason) ? "UnknownSalvoFailure" : reason;
+        OnSalvoPrepareFailed?.Invoke(LastSalvoFailureStatus, LastSalvoFailureReason);
+        hudPresenter?.ShowShootError(LastSalvoFailureReason);
+        Debug.LogWarning(
+            $"[LockOnSalvo] SHOOT ERROR status={LastSalvoFailureStatus}, " +
+            $"reason={LastSalvoFailureReason}, requested={requestedMissiles}, " +
+            $"salvoId={salvoId}, available={salvoLauncher?.PoolAvailableMissiles ?? 0}, " +
+            $"reserved={salvoLauncher?.PoolReservedMissiles ?? 0}, " +
+            $"leased={salvoLauncher?.PoolLeasedMissiles ?? 0}.",
+            this);
     }
 
     private void AdvanceCharge(float deltaSeconds)
@@ -548,6 +727,112 @@ public sealed class PlayerLockOnController : MonoBehaviour
         }
     }
 
+    private void HandleSalvoStarted(int salvoId, string source)
+    {
+        if (salvoId == currentLockOnSalvoId)
+        {
+            hudPresenter?.ClearShootError();
+        }
+    }
+
+    private void HandleMissileFired(int salvoId, SalvoTargetSnapshot target)
+    {
+        if (salvoId != currentLockOnSalvoId)
+        {
+            return;
+        }
+
+        currentLockOnMissilesFired++;
+        LastFiredMissileCount = currentLockOnMissilesFired;
+        if (currentLockOnMissilesFired == 1)
+        {
+            LastFirstMissileWasInvincible = playerCombatController != null &&
+                                            playerCombatController.IsSalvoInvincible;
+            LastFirstMissileDamageMultiplier = target != null
+                ? target.DamageMultiplier
+                : 0f;
+        }
+    }
+
+    private void HandleSalvoCompleted(int salvoId)
+    {
+        if (salvoId != currentLockOnSalvoId)
+        {
+            return;
+        }
+
+        EndOwnedSalvoInvincibility();
+        currentLockOnSalvoId = 0;
+    }
+
+    private void HandleSalvoCanceled(int salvoId, string reason)
+    {
+        if (salvoId != currentLockOnSalvoId)
+        {
+            return;
+        }
+
+        bool canceledBeforeFirstMissile = currentLockOnMissilesFired == 0;
+        EndOwnedSalvoInvincibility();
+        currentLockOnSalvoId = 0;
+        if (canceledBeforeFirstMissile && state == LockOnCombatState.ReuseWait)
+        {
+            ReportPlayerSalvoFailure(
+                "Canceled",
+                string.IsNullOrWhiteSpace(reason) ? "SalvoCanceledBeforeFirstMissile" : reason,
+                LastRequestedMissileCount,
+                salvoId);
+        }
+        else if (!canceledBeforeFirstMissile)
+        {
+            Debug.LogWarning(
+                $"[LockOnSalvo] Salvo {salvoId} canceled after " +
+                $"{currentLockOnMissilesFired}/{LastRequestedMissileCount} missiles: {reason}",
+                this);
+        }
+    }
+
+    private void EndOwnedSalvoInvincibility()
+    {
+        if (!ownsSalvoInvincibility)
+        {
+            return;
+        }
+
+        ownsSalvoInvincibility = false;
+        playerCombatController?.EndSalvoInvincibility();
+    }
+
+    private void SubscribeSalvoLauncher()
+    {
+        if (salvoLauncher == null)
+        {
+            return;
+        }
+
+        salvoLauncher.SalvoStarted -= HandleSalvoStarted;
+        salvoLauncher.MissileFired -= HandleMissileFired;
+        salvoLauncher.SalvoCompleted -= HandleSalvoCompleted;
+        salvoLauncher.SalvoCanceled -= HandleSalvoCanceled;
+        salvoLauncher.SalvoStarted += HandleSalvoStarted;
+        salvoLauncher.MissileFired += HandleMissileFired;
+        salvoLauncher.SalvoCompleted += HandleSalvoCompleted;
+        salvoLauncher.SalvoCanceled += HandleSalvoCanceled;
+    }
+
+    private void UnsubscribeSalvoLauncher()
+    {
+        if (salvoLauncher == null)
+        {
+            return;
+        }
+
+        salvoLauncher.SalvoStarted -= HandleSalvoStarted;
+        salvoLauncher.MissileFired -= HandleMissileFired;
+        salvoLauncher.SalvoCompleted -= HandleSalvoCompleted;
+        salvoLauncher.SalvoCanceled -= HandleSalvoCanceled;
+    }
+
     private void UnsubscribeProvider()
     {
         if (targetProvider != null)
@@ -567,6 +852,67 @@ public sealed class PlayerLockOnController : MonoBehaviour
         targetGraceTime = Mathf.Clamp(targetGraceTime, 0.1f, 3f);
     }
 
+    private void EnsureSalvoConfiguration()
+    {
+        if (!HasValidMissileCounts(missileCountsBySuccessfulLocks))
+        {
+            missileCountsBySuccessfulLocks =
+                (int[])DefaultMissileCountsBySuccessfulLocks.Clone();
+        }
+
+        if (!HasValidDamageRatios(stageTotalDamageRatios))
+        {
+            stageTotalDamageRatios = (float[])DefaultStageTotalDamageRatios.Clone();
+        }
+
+        if (float.IsNaN(fullSalvoGatlingDamageMultiplier) ||
+            float.IsInfinity(fullSalvoGatlingDamageMultiplier) ||
+            fullSalvoGatlingDamageMultiplier <= 0f)
+        {
+            fullSalvoGatlingDamageMultiplier = 10f;
+        }
+
+        missilesPerVolley = Mathf.Max(1, missilesPerVolley);
+        salvoLaunchDuration = Mathf.Max(0.01f, salvoLaunchDuration);
+        lockReuseWaitDuration = Mathf.Max(0f, lockReuseWaitDuration);
+    }
+
+    private static bool HasValidMissileCounts(int[] values)
+    {
+        if (values == null || values.Length != DefaultMissileCountsBySuccessfulLocks.Length)
+        {
+            return false;
+        }
+
+        for (int i = 0; i < values.Length; i++)
+        {
+            if (values[i] <= 0 || values[i] > PlayerMissileSalvoLauncher.MaxSalvoMissileCount)
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private static bool HasValidDamageRatios(float[] values)
+    {
+        if (values == null || values.Length != DefaultStageTotalDamageRatios.Length)
+        {
+            return false;
+        }
+
+        for (int i = 0; i < values.Length; i++)
+        {
+            if (values[i] <= 0f || float.IsNaN(values[i]) || float.IsInfinity(values[i]))
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
     private void OnDisable()
     {
         if (state == LockOnCombatState.Charging)
@@ -575,6 +921,9 @@ public sealed class PlayerLockOnController : MonoBehaviour
         }
 
         UnsubscribeProvider();
+        UnsubscribeSalvoLauncher();
+        EndOwnedSalvoInvincibility();
+        currentLockOnSalvoId = 0;
     }
 
     private void OnEnable()
@@ -582,6 +931,7 @@ public sealed class PlayerLockOnController : MonoBehaviour
         if (configured)
         {
             SubscribeProvider();
+            SubscribeSalvoLauncher();
             PublishAvailability(force: true);
         }
     }
@@ -589,10 +939,13 @@ public sealed class PlayerLockOnController : MonoBehaviour
     private void OnDestroy()
     {
         UnsubscribeProvider();
+        UnsubscribeSalvoLauncher();
+        EndOwnedSalvoInvincibility();
     }
 
     private void OnValidate()
     {
         EnsureStageConfiguration();
+        EnsureSalvoConfiguration();
     }
 }

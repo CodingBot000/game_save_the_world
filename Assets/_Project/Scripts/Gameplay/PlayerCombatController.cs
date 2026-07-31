@@ -79,6 +79,8 @@ public class PlayerCombatController : MonoBehaviour
     private AudioSource gunFireLoopSource;
     private float pulseTimer;
     private bool legacyMissileInputEnabled = true;
+    private bool salvoInvincible;
+    private readonly PlayerContinuousDamageTickRegistry continuousDamageTickRegistry = new();
     private Vector3 baseScale;
     private bool launchLeftMissileNext = true;
     private VehiclePlayerStateCatalog vehiclePlayerStateCatalog;
@@ -86,6 +88,8 @@ public class PlayerCombatController : MonoBehaviour
     private string lastHitDebugSummary = "LastHit: none";
 
     public event Action Died;
+    public event Action SalvoInvincibilityStarted;
+    public event Action SalvoInvincibilityEnded;
 
     public bool IsAlive => currentHull > 0f;
     public float CurrentHealth => currentHull;
@@ -109,6 +113,10 @@ public class PlayerCombatController : MonoBehaviour
     public bool MissileReady => MissileSystemAvailable && missileCooldownRemaining <= 0f;
     public bool WeaponFireBlockedByAirPressure => IsAirPressureWeaponLocked();
     public bool LegacyMissileInputEnabled => legacyMissileInputEnabled;
+    public bool IsSalvoInvincible => salvoInvincible;
+    public float CurrentGatlingBaseDamage => projectileDamage;
+    public PlayerContinuousDamageTickRegistry ContinuousDamageTickRegistry =>
+        continuousDamageTickRegistry;
     public bool MissileInputAvailable =>
         MissileSystemAvailable &&
         !WeaponFireBlockedByAirPressure &&
@@ -312,6 +320,7 @@ public class PlayerCombatController : MonoBehaviour
         if (!combatEnabled)
         {
             StopGunFireLoop();
+            EndSalvoInvincibility();
         }
     }
 
@@ -440,6 +449,7 @@ public class PlayerCombatController : MonoBehaviour
         armorBroken = currentArmor <= 0f;
         armorRepairCooldownRemaining = armorRepairDelay;
         invulnerabilityRemaining = 0f;
+        EndSalvoInvincibility();
     }
 
     public void SetDamageHurtboxDebugVisibleForDebug(bool visible)
@@ -451,6 +461,11 @@ public class PlayerCombatController : MonoBehaviour
 
     public bool ApplyDamage(float damage)
     {
+        if (salvoInvincible && damage > 0f)
+        {
+            return false;
+        }
+
         if (GameplayDebugFlags.Undead && damage > 0f)
         {
             return true;
@@ -466,6 +481,11 @@ public class PlayerCombatController : MonoBehaviour
 
     public bool ApplyContinuousDamage(float damage)
     {
+        if (salvoInvincible && damage > 0f)
+        {
+            return false;
+        }
+
         if (GameplayDebugFlags.Undead && damage > 0f)
         {
             return true;
@@ -477,6 +497,31 @@ public class PlayerCombatController : MonoBehaviour
         }
 
         return ApplyDamageInternal(damage, applyInvulnerability: false);
+    }
+
+    public bool BeginSalvoInvincibility()
+    {
+        continuousDamageTickRegistry.ResetAll();
+        if (salvoInvincible)
+        {
+            return false;
+        }
+
+        salvoInvincible = true;
+        SalvoInvincibilityStarted?.Invoke();
+        return true;
+    }
+
+    public bool EndSalvoInvincibility()
+    {
+        if (!salvoInvincible)
+        {
+            return false;
+        }
+
+        salvoInvincible = false;
+        SalvoInvincibilityEnded?.Invoke();
+        return true;
     }
 
     private bool ApplyDamageInternal(float damage, bool applyInvulnerability)
@@ -1535,11 +1580,14 @@ public class PlayerCombatController : MonoBehaviour
     private void OnDisable()
     {
         StopGunFireLoop();
+        EndSalvoInvincibility();
     }
 
     private void OnDestroy()
     {
         StopGunFireLoop();
+        EndSalvoInvincibility();
+        continuousDamageTickRegistry.Clear();
 
         if (muzzleFlashMaterial != null)
         {
