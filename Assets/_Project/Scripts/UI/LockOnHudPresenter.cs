@@ -23,7 +23,6 @@ public sealed class LockOnHudPresenter : MonoBehaviour
     private Button lockButton;
     private Image lockButtonImage;
     private Text lockButtonLabel;
-    private GameObject legacySpecialButton;
     private RectTransform runtimeRoot;
     private Image chargeFill;
     private readonly Text[] lockMarkers = new Text[5];
@@ -35,7 +34,6 @@ public sealed class LockOnHudPresenter : MonoBehaviour
     public int VisibleMarkerCount { get; private set; }
     public string ButtonLabelText => lockButtonLabel != null ? lockButtonLabel.text : string.Empty;
     public bool ButtonInteractable => lockButton != null && lockButton.interactable;
-    public bool LegacySpecialHidden => legacySpecialButton == null || !legacySpecialButton.activeSelf;
     public float ChargeFillAmount => chargeFill != null ? chargeFill.fillAmount : 0f;
     public int ActiveMarkerPulseCount
     {
@@ -60,8 +58,7 @@ public sealed class LockOnHudPresenter : MonoBehaviour
         Canvas canvas,
         Button button,
         Image buttonImage,
-        Text buttonLabel,
-        GameObject specialButton)
+        Text buttonLabel)
     {
         UnsubscribeController();
         lockOnController = controller;
@@ -70,7 +67,6 @@ public sealed class LockOnHudPresenter : MonoBehaviour
         lockButton = button;
         lockButtonImage = buttonImage;
         lockButtonLabel = buttonLabel;
-        legacySpecialButton = specialButton;
 
         if (lockButton != null)
         {
@@ -79,11 +75,6 @@ public sealed class LockOnHudPresenter : MonoBehaviour
                 lockButton.GetComponent<LockOnButtonInputRelay>() ??
                 lockButton.gameObject.AddComponent<LockOnButtonInputRelay>();
             relay.Configure(lockOnController);
-        }
-
-        if (legacySpecialButton != null)
-        {
-            legacySpecialButton.SetActive(false);
         }
 
         EnsureChargeGauge();

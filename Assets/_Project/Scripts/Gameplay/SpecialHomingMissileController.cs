@@ -42,7 +42,6 @@ public class SpecialHomingMissileController : MonoBehaviour
     private float remainingLifetime;
     private float damage;
     private float hitRadius;
-    private float criticalChance;
     private float visualScale = 1f;
     private float smokeScale = 1f;
     private float impactEffectScale = 1f;
@@ -103,8 +102,7 @@ public class SpecialHomingMissileController : MonoBehaviour
         float customImpactEffectScale = 1f,
         bool preserveTemplateMaterials = false,
         Color customTemplateTint = default,
-        Vector3 customTemplateLocalEulerAngles = default,
-        float criticalChanceOverride = 0f)
+        Vector3 customTemplateLocalEulerAngles = default)
     {
         battleController = owner;
         targetAnchor = target;
@@ -135,7 +133,6 @@ public class SpecialHomingMissileController : MonoBehaviour
         remainingLifetime = Mathf.Max(0.5f, lifetime);
         damage = Mathf.Max(0f, damageAmount);
         hitRadius = Mathf.Max(0.1f, projectileHitRadius);
-        criticalChance = Mathf.Clamp01(criticalChanceOverride);
 
         EnsureVisuals(visualTemplate);
         SetVisualsVisible(true);
@@ -237,8 +234,7 @@ public class SpecialHomingMissileController : MonoBehaviour
                 transform.position,
                 hitRadius,
                 damage,
-                projectileCollider: null,
-                criticalChance: criticalChance)
+                projectileCollider: null)
             : battleController.TryHitPlayer(
                 previousPosition,
                 transform.position,
@@ -1341,7 +1337,6 @@ public class CartoonSmokePuff : MonoBehaviour
     {
         "CartoonSmokePuff",
         "SmokeTrail",
-        "PlayerMissileRuntime",
         "PlayerSpecialMissileRuntime",
     };
     private static readonly Queue<CartoonSmokePuff> Pool = new();
@@ -1383,15 +1378,6 @@ public class CartoonSmokePuff : MonoBehaviour
     {
         Pool.Clear();
         cachedCamera = null;
-
-        HomingMissileController[] homingMissiles = Resources.FindObjectsOfTypeAll<HomingMissileController>();
-        for (int i = 0; i < homingMissiles.Length; i++)
-        {
-            if (homingMissiles[i] != null)
-            {
-                HideAndDestroyRuntimeObject(homingMissiles[i].gameObject);
-            }
-        }
 
         SpecialHomingMissileController[] specialMissiles = Resources.FindObjectsOfTypeAll<SpecialHomingMissileController>();
         for (int i = 0; i < specialMissiles.Length; i++)
@@ -1502,8 +1488,7 @@ public class CartoonSmokePuff : MonoBehaviour
         }
 
         GameObject trailObject = trail.gameObject;
-        if (trailObject.GetComponent<HomingMissileController>() != null ||
-            trailObject.GetComponent<SpecialHomingMissileController>() != null)
+        if (trailObject.GetComponent<SpecialHomingMissileController>() != null)
         {
             return true;
         }

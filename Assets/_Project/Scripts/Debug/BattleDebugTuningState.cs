@@ -4,7 +4,6 @@ using UnityEngine;
 
 public enum BattleTuningKey
 {
-    IgnoreMissileCooldown,
     Undead,
     ShowDamageHurtbox,
     ShowMovementBoundsGuide,
@@ -15,8 +14,6 @@ public enum BattleTuningKey
     PlayerInvulnerabilityDuration,
     PlayerHitRadius,
 
-    PlayerMissileCooldown,
-    PlayerMissileDamage,
     PlayerMissileLaunchSpeed,
     PlayerMissileCruiseSpeed,
     PlayerMissileAcceleration,

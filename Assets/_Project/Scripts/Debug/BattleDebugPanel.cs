@@ -212,7 +212,6 @@ public class BattleDebugPanel : MonoBehaviour
     private void PopulateRows()
     {
         AddHeader("Debug Toggles");
-        AddBoolRow("Missile Cooldown", BattleTuningKey.IgnoreMissileCooldown, () => GameplayDebugFlags.IgnoreMissileCooldown);
         AddBoolRow("Undead", BattleTuningKey.Undead, () => GameplayDebugFlags.Undead);
         AddBoolRow("Hurtbox Visual", BattleTuningKey.ShowDamageHurtbox, () => applier != null && applier.PlayerCombat != null && applier.PlayerCombat.DebugShowDamageHurtbox);
         AddBoolRow("Move Bounds", BattleTuningKey.ShowMovementBoundsGuide, () => applier != null && applier.PlayerMovementBounds != null && applier.PlayerMovementBounds.DebugShowRuntimeGuide);
@@ -225,8 +224,6 @@ public class BattleDebugPanel : MonoBehaviour
         AddFloatRow("Hit Radius", BattleTuningKey.PlayerHitRadius, 0.1f, () => applier.PlayerCombat != null ? applier.PlayerCombat.HitRadius : 0f);
 
         AddHeader("Player Missile");
-        AddFloatRow("Cooldown", BattleTuningKey.PlayerMissileCooldown, 0.1f, () => applier.PlayerCombat != null ? applier.PlayerCombat.DebugMissileCooldown : 0f);
-        AddFloatRow("Damage", BattleTuningKey.PlayerMissileDamage, 10f, () => applier.PlayerCombat != null ? applier.PlayerCombat.DebugMissileDamage : 0f);
         AddFloatRow("Launch Speed", BattleTuningKey.PlayerMissileLaunchSpeed, 2f, () => applier.PlayerCombat != null ? applier.PlayerCombat.DebugMissileLaunchSpeed : 0f);
         AddFloatRow("Cruise Speed", BattleTuningKey.PlayerMissileCruiseSpeed, 5f, () => applier.PlayerCombat != null ? applier.PlayerCombat.DebugMissileCruiseSpeed : 0f);
         AddFloatRow("Acceleration", BattleTuningKey.PlayerMissileAcceleration, 10f, () => applier.PlayerCombat != null ? applier.PlayerCombat.DebugMissileAcceleration : 0f);

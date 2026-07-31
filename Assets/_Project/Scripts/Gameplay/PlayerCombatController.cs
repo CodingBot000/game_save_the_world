@@ -7,7 +7,6 @@ using UnityEngine.Rendering;
 public class PlayerCombatController : MonoBehaviour
 {
     private const float MinimumHitInvulnerabilityDuration = 1f;
-    private const float FallbackNormalCriticalChance = 0.05f;
     private static readonly Quaternion PlayerProjectileVisualRotation = Quaternion.Euler(90f, 0f, 0f);
     private const string VehiclePlayerStateCatalogResourcePath = "Vehicles/VehiclePlayerStateCatalog";
     private const string DefaultDamageHurtboxName = "CrashObserver";
@@ -25,8 +24,6 @@ public class PlayerCombatController : MonoBehaviour
     [SerializeField] private Transform muzzle;
     [SerializeField] private AudioClip gunFireLoopClip;
     [SerializeField, Range(0f, 1f)] private float gunFireLoopVolume = 0.8f;
-    [SerializeField] private float missileCooldown = 2.6f;
-    [SerializeField] private float missileDamage = 150f;
     [SerializeField] private float missileLaunchSpeed = 18f;
     [SerializeField] private float missileCruiseSpeed = 72f;
     [SerializeField] private float missileAcceleration = 130f;
@@ -54,7 +51,6 @@ public class PlayerCombatController : MonoBehaviour
 
     private BattleController battleController;
     private BossController bossController;
-    private BattleAimPointTargetingPresenter aimPointTargetingPresenter;
     private PlayerOrbitController playerOrbitController;
     private GameObject projectileTemplate;
     private Renderer[] cachedRenderers;
@@ -72,17 +68,14 @@ public class PlayerCombatController : MonoBehaviour
     private float hullDamageMultiplierWhenBroken = 1f;
     private bool armorBroken;
     private float armorRepairCooldownRemaining;
-    private float missileCooldownRemaining;
     private ParticleSystem muzzleFlash;
     private Material muzzleFlashMaterial;
     private Mesh muzzleFlashParticleMesh;
     private AudioSource gunFireLoopSource;
     private float pulseTimer;
-    private bool legacyMissileInputEnabled = true;
     private bool salvoInvincible;
     private readonly PlayerContinuousDamageTickRegistry continuousDamageTickRegistry = new();
     private Vector3 baseScale;
-    private bool launchLeftMissileNext = true;
     private VehiclePlayerStateCatalog vehiclePlayerStateCatalog;
     private Material damageHurtboxDebugMaterial;
     private string lastHitDebugSummary = "LastHit: none";
@@ -103,26 +96,11 @@ public class PlayerCombatController : MonoBehaviour
     public Vector3 HitPoint => TryGetDamageHurtboxBounds(out Bounds bounds) ? bounds.center : transform.position + Vector3.up * 1.2f;
     public string LastHitDebugSummary => lastHitDebugSummary;
     public bool HasMissileLaunchers => ResolveMissileLaunchers();
-    public bool MissileSystemAvailable =>
-        combatEnabled &&
-        IsAlive &&
-        battleController != null &&
-        bossController != null &&
-        bossController.IsAlive &&
-        HasMissileLaunchers;
-    public bool MissileReady => MissileSystemAvailable && missileCooldownRemaining <= 0f;
     public bool WeaponFireBlockedByAirPressure => IsAirPressureWeaponLocked();
-    public bool LegacyMissileInputEnabled => legacyMissileInputEnabled;
     public bool IsSalvoInvincible => salvoInvincible;
     public float CurrentGatlingBaseDamage => projectileDamage;
     public PlayerContinuousDamageTickRegistry ContinuousDamageTickRegistry =>
         continuousDamageTickRegistry;
-    public bool MissileInputAvailable =>
-        MissileSystemAvailable &&
-        !WeaponFireBlockedByAirPressure &&
-        (GameplayDebugFlags.IgnoreMissileCooldown || missileCooldownRemaining <= 0f);
-    public float MissileCooldownRemaining => Mathf.Max(0f, missileCooldownRemaining);
-    public float MissileCooldownDuration => Mathf.Max(0.01f, missileCooldown);
     public float DebugFireCooldown => fireCooldown;
     public float DebugProjectileSpeed => projectileSpeed;
     public float DebugProjectileDamage => projectileDamage;
@@ -131,8 +109,6 @@ public class PlayerCombatController : MonoBehaviour
     public float DebugArmorRepairDelay => armorRepairDelay;
     public float DebugBrokenRecoverThreshold => brokenRecoverThreshold;
     public float DebugHullDamageMultiplierWhenBroken => hullDamageMultiplierWhenBroken;
-    public float DebugMissileCooldown => missileCooldown;
-    public float DebugMissileDamage => missileDamage;
     public float DebugMissileLaunchSpeed => missileLaunchSpeed;
     public float DebugMissileCruiseSpeed => missileCruiseSpeed;
     public float DebugMissileAcceleration => missileAcceleration;
@@ -173,46 +149,6 @@ public class PlayerCombatController : MonoBehaviour
     }
     public bool DebugShowDamageHurtbox => showDamageHurtboxDebugVisual;
 
-    public string GetMissileUnavailableReason()
-    {
-        if (!combatEnabled)
-        {
-            return "Missile system offline.";
-        }
-
-        if (!IsAlive)
-        {
-            return "Player destroyed.";
-        }
-
-        if (IsAirPressureWeaponLocked())
-        {
-            return "Weapon system disrupted.";
-        }
-
-        if (!ResolveMissileLaunchers())
-        {
-            return "Missile launcher offline.";
-        }
-
-        if (battleController == null || bossController == null)
-        {
-            return "Missile lock unavailable.";
-        }
-
-        if (!bossController.IsAlive)
-        {
-            return "No missile target.";
-        }
-
-        if (missileCooldownRemaining > 0f && !GameplayDebugFlags.IgnoreMissileCooldown)
-        {
-            return $"Missile reloading {MissileCooldownRemaining:0.0}s";
-        }
-
-        return "Missile blocked.";
-    }
-
     private void Awake()
     {
         RestoreRuntimeAudioOutput();
@@ -229,7 +165,6 @@ public class PlayerCombatController : MonoBehaviour
     private void Update()
     {
         shootCooldownRemaining -= Time.deltaTime;
-        missileCooldownRemaining -= Time.deltaTime;
         invulnerabilityRemaining -= Time.deltaTime;
         pulseTimer = Mathf.Max(0f, pulseTimer - Time.deltaTime * 5f);
         transform.localScale = baseScale * (1f + pulseTimer * 0.06f);
@@ -244,40 +179,25 @@ public class PlayerCombatController : MonoBehaviour
         Mouse mouse = Mouse.current;
         Keyboard keyboard = Keyboard.current;
         bool pointerOverUi = EventSystem.current != null && EventSystem.current.IsPointerOverGameObject();
-        bool pointerOverAimPointMarker = pointerOverUi && BattleAimPointTargetMarker.IsPointerOverAnyMarker();
-        bool blockPointerFire = pointerOverUi && !pointerOverAimPointMarker;
-        bool mouseFire = mouse != null && mouse.leftButton.isPressed && !blockPointerFire;
-        bool mouseMissileFire = legacyMissileInputEnabled &&
-                                mouse != null &&
-                                mouse.rightButton.wasPressedThisFrame &&
-                                !blockPointerFire;
+        bool mouseFire = mouse != null && mouse.leftButton.isPressed && !pointerOverUi;
         bool keyboardFire = keyboard != null && keyboard.spaceKey.isPressed;
         bool weaponFireLocked = IsAirPressureWeaponLocked();
         bool gunFireInput = !weaponFireLocked && (mouseFire || keyboardFire);
-        mouseMissileFire = mouseMissileFire && !weaponFireLocked;
         UpdateGunFireLoop(gunFireInput);
         if (gunFireInput)
         {
             TryFire();
         }
 
-        if (mouseMissileFire)
-        {
-            // Keep missile debug cooldown behavior centralized in TryFireMissile / GameplayDebugFlags
-            // so UI and mouse input both follow the same launch rules.
-            TryFireMissile();
-        }
     }
 
     public void Configure(
         BattleController owner,
         BossController boss,
-        GameObject projectileTemplateSource,
-        BattleAimPointTargetingPresenter targetingPresenter = null)
+        GameObject projectileTemplateSource)
     {
         battleController = owner;
         bossController = boss;
-        aimPointTargetingPresenter = targetingPresenter;
         projectileTemplate = projectileTemplateSource;
         ApplySelectedVehicleState(resetRuntimeValues: true);
         invulnerabilityDuration = Mathf.Max(MinimumHitInvulnerabilityDuration, invulnerabilityDuration);
@@ -296,11 +216,6 @@ public class PlayerCombatController : MonoBehaviour
         UpdateDamageHurtboxDebugVisuals();
         EnsureMuzzleFlash();
         EnsureGunFireLoopSource();
-    }
-
-    public void SetAimPointTargetingPresenter(BattleAimPointTargetingPresenter targetingPresenter)
-    {
-        aimPointTargetingPresenter = targetingPresenter;
     }
 
     public void RefreshVisualBindings()
@@ -324,11 +239,6 @@ public class PlayerCombatController : MonoBehaviour
         }
     }
 
-    public void SetLegacyMissileInputEnabled(bool enabled)
-    {
-        legacyMissileInputEnabled = enabled;
-    }
-
     public void ApplyRuntimeStats(PlayerRuntimeStats stats, bool refillDefense)
     {
         SetFireCooldownForDebug(stats.FireCooldown);
@@ -336,9 +246,7 @@ public class PlayerCombatController : MonoBehaviour
         SetProjectileDamageForDebug(stats.ProjectileDamage);
         SetInvulnerabilityDurationForDebug(stats.InvulnerabilityDuration);
         SetHitRadiusForDebug(stats.PlayerHitRadius);
-        SetMissileTuningForDebug(
-            stats.MissileCooldown,
-            stats.MissileDamage,
+        SetMissileFlightTuningForDebug(
             stats.MissileLaunchSpeed,
             stats.MissileCruiseSpeed,
             stats.MissileAcceleration,
@@ -385,9 +293,7 @@ public class PlayerCombatController : MonoBehaviour
         hitRadius = Mathf.Max(0f, value);
     }
 
-    public void SetMissileTuningForDebug(
-        float cooldown,
-        float damage,
+    public void SetMissileFlightTuningForDebug(
         float launchSpeed,
         float cruiseSpeed,
         float acceleration,
@@ -400,8 +306,6 @@ public class PlayerCombatController : MonoBehaviour
         float lifetime,
         float projectileHitRadius)
     {
-        missileCooldown = Mathf.Max(0f, cooldown);
-        missileDamage = Mathf.Max(0f, damage);
         missileLaunchSpeed = Mathf.Max(0f, launchSpeed);
         missileCruiseSpeed = Mathf.Max(0f, cruiseSpeed);
         missileAcceleration = Mathf.Max(0f, acceleration);
@@ -677,9 +581,8 @@ public class PlayerCombatController : MonoBehaviour
 
         shootCooldownRemaining = fireCooldown;
         Vector3 origin = muzzle != null ? muzzle.position : HitPoint;
-        Transform targetTransform = ResolveWeaponTarget(out Vector3 targetPosition, out bool userSelectedTarget);
+        ResolveWeaponTarget(out Vector3 targetPosition);
         Vector3 direction = ResolveSafeDirection(targetPosition - origin);
-        float criticalChance = ResolveCriticalChance(targetTransform, userSelectedTarget);
 
         GameObject projectileInstance = Instantiate(projectileTemplate, origin, Quaternion.LookRotation(direction) * PlayerProjectileVisualRotation);
         projectileInstance.name = "PlayerProjectileRuntime";
@@ -689,72 +592,8 @@ public class PlayerCombatController : MonoBehaviour
         ProjectileController projectile = projectileInstance.GetComponent<ProjectileController>();
         if (projectile != null)
         {
-            projectile.Launch(battleController, ProjectileTeam.Player, direction, projectileSpeed, projectileDamage, criticalChance);
+            projectile.Launch(battleController, ProjectileTeam.Player, direction, projectileSpeed, projectileDamage);
         }
-    }
-
-    public bool TryFireMissile()
-    {
-        if (!MissileSystemAvailable || IsAirPressureWeaponLocked())
-        {
-            return false;
-        }
-
-        if (missileCooldownRemaining > 0f && !GameplayDebugFlags.IgnoreMissileCooldown)
-        {
-            return false;
-        }
-
-        Transform launchTransform = SelectNextMissileLauncher();
-        if (launchTransform == null)
-        {
-            return false;
-        }
-
-        Transform targetTransform = ResolveWeaponTarget(out _, out bool userSelectedTarget);
-        Vector3 launchDirection = GetMissileLaunchDirection();
-        float criticalChance = ResolveCriticalChance(targetTransform, userSelectedTarget);
-        float boostAcceleration = Mathf.Max(
-            missileAcceleration,
-            Mathf.Abs(missileCruiseSpeed - missileLaunchSpeed) / Mathf.Max(0.01f, missileBoostPhaseDuration));
-
-        missileCooldownRemaining = Mathf.Max(0.1f, missileCooldown);
-
-        GameObject missileInstance = new("PlayerMissileRuntime");
-        missileInstance.transform.position = launchTransform.position;
-        missileInstance.transform.rotation = Quaternion.LookRotation(launchDirection.normalized, Vector3.up);
-
-        HomingMissileController missile = missileInstance.AddComponent<HomingMissileController>();
-        missile.Launch(
-            battleController,
-            targetTransform,
-            ProjectileTeam.Player,
-            launchDirection,
-            missileLaunchSpeed,
-            missileCruiseSpeed,
-            boostAcceleration,
-            missileTurnRate,
-            missileLockOnDelay,
-            missileStraightPhaseDuration,
-            missileStraightPhaseDistance,
-            missileTurnPhaseDuration,
-            missileBoostPhaseDuration,
-            missileLifetime,
-            missileDamage,
-            missileHitRadius,
-            missileVisualTemplate,
-            missileSmokeTemplate,
-            missileImpactEffectTemplate,
-            missileVisualTexture,
-            missileSmokeTexture,
-            missileVisualScale,
-            missileSmokeScale,
-            missileImpactEffectScale,
-            missileUseTemplateOriginalMaterials,
-            missileTemplateTint,
-            missileTemplateLocalEulerAngles,
-            criticalChance);
-        return true;
     }
 
     private bool IsAirPressureWeaponLocked()
@@ -767,18 +606,7 @@ public class PlayerCombatController : MonoBehaviour
         return playerOrbitController != null && playerOrbitController.IsAirPressureRotationActive;
     }
 
-    public Transform ResolveCurrentWeaponTarget()
-    {
-        return ResolveWeaponTarget(out _, out _);
-    }
-
-    public float ResolveCurrentWeaponCriticalChance()
-    {
-        Transform target = ResolveWeaponTarget(out _, out bool userSelectedTarget);
-        return ResolveCriticalChance(target, userSelectedTarget);
-    }
-
-    public Vector3 GetMissileLaunchDirectionForSpecial()
+    public Vector3 GetMissileLaunchDirectionForSalvo()
     {
         return GetMissileLaunchDirection();
     }
@@ -1109,40 +937,8 @@ public class PlayerCombatController : MonoBehaviour
         return null;
     }
 
-    private Transform SelectNextMissileLauncher()
+    private Transform ResolveWeaponTarget(out Vector3 targetPosition)
     {
-        ResolveMissileLaunchers();
-
-        if (missileLauncherLeft != null && missileLauncherRight != null)
-        {
-            Transform selected = launchLeftMissileNext ? missileLauncherLeft : missileLauncherRight;
-            launchLeftMissileNext = !launchLeftMissileNext;
-            return selected;
-        }
-
-        if (missileLauncherLeft != null)
-        {
-            return missileLauncherLeft;
-        }
-
-        if (missileLauncherRight != null)
-        {
-            return missileLauncherRight;
-        }
-
-        return null;
-    }
-
-    private Transform ResolveWeaponTarget(out Vector3 targetPosition, out bool userSelectedTarget)
-    {
-        userSelectedTarget = false;
-        if (aimPointTargetingPresenter != null && aimPointTargetingPresenter.TryGetSelectedAimPoint(out Transform selectedAimPoint))
-        {
-            targetPosition = selectedAimPoint.position;
-            userSelectedTarget = true;
-            return selectedAimPoint;
-        }
-
         Transform fallbackAimPoint = bossController != null ? bossController.AimPoint : null;
         if (fallbackAimPoint != null)
         {
@@ -1152,13 +948,6 @@ public class PlayerCombatController : MonoBehaviour
 
         targetPosition = bossController != null ? bossController.transform.position : transform.position + transform.forward;
         return null;
-    }
-
-    private float ResolveCriticalChance(Transform targetTransform, bool userSelectedTarget)
-    {
-        return aimPointTargetingPresenter != null
-            ? aimPointTargetingPresenter.GetCriticalChanceForShot(targetTransform, userSelectedTarget)
-            : FallbackNormalCriticalChance;
     }
 
     private static Vector3 ResolveSafeDirection(Vector3 direction)

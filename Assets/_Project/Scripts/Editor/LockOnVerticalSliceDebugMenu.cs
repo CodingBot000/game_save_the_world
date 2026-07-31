@@ -380,8 +380,6 @@ public static class LockOnVerticalSliceDebugMenu
     private static SalvoMissileProfileSnapshot CaptureSlowTargetLossMissileProfile(
         PlayerCombatController combat)
     {
-        float cooldown = combat.DebugMissileCooldown;
-        float damage = combat.DebugMissileDamage;
         float launchSpeed = combat.DebugMissileLaunchSpeed;
         float cruiseSpeed = combat.DebugMissileCruiseSpeed;
         float acceleration = combat.DebugMissileAcceleration;
@@ -395,9 +393,7 @@ public static class LockOnVerticalSliceDebugMenu
         float hitRadius = combat.DebugMissileHitRadius;
         try
         {
-            combat.SetMissileTuningForDebug(
-                cooldown,
-                damage,
+            combat.SetMissileFlightTuningForDebug(
                 launchSpeed: 1f,
                 cruiseSpeed: 1f,
                 acceleration: 0f,
@@ -413,9 +409,7 @@ public static class LockOnVerticalSliceDebugMenu
         }
         finally
         {
-            combat.SetMissileTuningForDebug(
-                cooldown,
-                damage,
+            combat.SetMissileFlightTuningForDebug(
                 launchSpeed,
                 cruiseSpeed,
                 acceleration,

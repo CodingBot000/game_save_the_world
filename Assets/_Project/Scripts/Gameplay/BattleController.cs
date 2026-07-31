@@ -18,11 +18,9 @@ public class BattleController : MonoBehaviour
     [SerializeField] private BossAttackController bossAttackController;
     [SerializeField] private PlayerOrbitController playerOrbitController;
     [SerializeField] private PlayerCombatController playerCombatController;
-    [SerializeField] private PlayerSpecialAttackController playerSpecialAttackController;
     [SerializeField] private PlayerLockOnController playerLockOnController;
     [SerializeField] private PlayerMovementBounds playerMovementBounds;
     [SerializeField] private HUDPresenter hudPresenter;
-    [SerializeField] private ArenaCameraRig arenaCameraRig;
     [SerializeField] private GameObject playerProjectileTemplate;
     [SerializeField] private GameObject bossProjectileTemplate;
     [SerializeField] private GameObject allyPlaceholder;
@@ -32,8 +30,6 @@ public class BattleController : MonoBehaviour
     [SerializeField] private EnvironmentThemeDebugPanel environmentThemeDebugPanel;
     [SerializeField] private PlayerMoveGuide playerMoveGuide;
     [SerializeField] private BattleDamageNumberPresenter damageNumberPresenter;
-    [SerializeField] private BattleAimPointTargetingPresenter aimPointTargetingPresenter;
-    [SerializeField, Min(1f)] private float criticalDamageMultiplier = 2f;
 
     private bool battleActive = true;
     private bool awaitingDefeatChoice;
@@ -104,8 +100,7 @@ public class BattleController : MonoBehaviour
         Vector3 worldPoint,
         float hitRadius,
         float damage,
-        Collider projectileCollider = null,
-        float criticalChance = 0f)
+        Collider projectileCollider = null)
     {
         if (!battleActive || bossController == null || !bossController.IsAlive)
         {
@@ -117,7 +112,7 @@ public class BattleController : MonoBehaviour
             return false;
         }
 
-        return TryApplyBossHitDamage(worldPoint, damage, criticalChance);
+        return TryApplyBossHitDamage(worldPoint, damage);
     }
 
     public bool TryHitBoss(
@@ -125,8 +120,7 @@ public class BattleController : MonoBehaviour
         Vector3 worldPoint,
         float hitRadius,
         float damage,
-        Collider projectileCollider = null,
-        float criticalChance = 0f)
+        Collider projectileCollider = null)
     {
         if (!battleActive || bossController == null || !bossController.IsAlive)
         {
@@ -138,19 +132,18 @@ public class BattleController : MonoBehaviour
             return false;
         }
 
-        return TryApplyBossHitDamage(worldPoint, damage, criticalChance);
+        return TryApplyBossHitDamage(worldPoint, damage);
     }
 
-    private bool TryApplyBossHitDamage(Vector3 worldPoint, float damage, float criticalChance)
+    private bool TryApplyBossHitDamage(Vector3 worldPoint, float damage)
     {
-        bool critical = damage > 0f && Random.value < Mathf.Clamp01(criticalChance);
-        float appliedDamage = critical ? damage * Mathf.Max(1f, criticalDamageMultiplier) : damage;
+        float appliedDamage = Mathf.Max(0f, damage);
         bool damageApplied = appliedDamage <= 0f || bossController.ApplyDamage(appliedDamage);
         if (damageApplied && appliedDamage > 0f)
         {
             bossLockOnTargetProvider?.MarkNearestTargetRecentlyAttacked(worldPoint);
             EnsureDamageNumberPresenter();
-            damageNumberPresenter?.ShowDamage(worldPoint, appliedDamage, critical);
+            damageNumberPresenter?.ShowDamage(worldPoint, appliedDamage, critical: false);
         }
 
         return damageApplied;
@@ -197,11 +190,9 @@ public class BattleController : MonoBehaviour
         bossAttackController ??= FindSceneComponent<BossAttackController>();
         playerOrbitController ??= FindSceneComponent<PlayerOrbitController>();
         playerCombatController ??= FindSceneComponent<PlayerCombatController>();
-        playerSpecialAttackController ??= FindSceneComponent<PlayerSpecialAttackController>();
         playerLockOnController ??= FindSceneComponent<PlayerLockOnController>();
         playerMovementBounds ??= FindSceneComponent<PlayerMovementBounds>();
         hudPresenter ??= FindSceneComponent<HUDPresenter>();
-        arenaCameraRig ??= FindSceneComponent<ArenaCameraRig>();
         playerProjectileTemplate ??= FindSceneObject("PlayerProjectileTemplate");
         bossProjectileTemplate ??= FindSceneObject("BossProjectileTemplate");
         allyPlaceholder ??= FindSceneObject("AllyPlaceholder");
@@ -211,12 +202,6 @@ public class BattleController : MonoBehaviour
         environmentThemeDebugPanel ??= FindSceneComponent<EnvironmentThemeDebugPanel>();
         playerMoveGuide ??= FindSceneComponent<PlayerMoveGuide>();
         damageNumberPresenter ??= FindSceneComponent<BattleDamageNumberPresenter>();
-        aimPointTargetingPresenter ??= FindSceneComponent<BattleAimPointTargetingPresenter>();
-
-        if (playerSpecialAttackController == null)
-        {
-            playerSpecialAttackController = gameObject.AddComponent<PlayerSpecialAttackController>();
-        }
 
         if (playerLockOnController == null)
         {
@@ -227,14 +212,6 @@ public class BattleController : MonoBehaviour
 
         EnsureDamageNumberPresenter();
 
-        if (aimPointTargetingPresenter == null)
-        {
-            Canvas targetingCanvas = hudPresenter != null ? hudPresenter.RuntimeCanvas : FindSceneComponent<Canvas>();
-            if (targetingCanvas != null)
-            {
-                aimPointTargetingPresenter = targetingCanvas.GetComponent<BattleAimPointTargetingPresenter>();
-            }
-        }
     }
 
     private void ApplyModeConfiguration()
@@ -475,7 +452,7 @@ public class BattleController : MonoBehaviour
     {
         if (playerCombatController != null)
         {
-            playerCombatController.Configure(this, bossController, playerProjectileTemplate, aimPointTargetingPresenter);
+            playerCombatController.Configure(this, bossController, playerProjectileTemplate);
             playerCombatController.Died += HandlePlayerDied;
         }
 
@@ -512,25 +489,6 @@ public class BattleController : MonoBehaviour
             bossLockOnTargetProvider,
             GetComponent<PlayerMissileSalvoLauncher>(),
             hudPresenter);
-        playerCombatController?.SetLegacyMissileInputEnabled(false);
-
-        if (playerSpecialAttackController != null)
-        {
-            playerSpecialAttackController.Configure(
-                this,
-                bossController,
-                bossAttackController,
-                playerCombatController,
-                playerOrbitController,
-                arenaCameraRig,
-                hudPresenter,
-                aimPointTargetingPresenter);
-        }
-
-        if (aimPointTargetingPresenter != null)
-        {
-            aimPointTargetingPresenter.Configure(hudPresenter != null ? hudPresenter.RuntimeCanvas : FindSceneComponent<Canvas>(), bossController);
-        }
 
         if (damageNumberPresenter != null)
         {
@@ -539,7 +497,7 @@ public class BattleController : MonoBehaviour
 
         if (hudPresenter != null && bossController != null && playerCombatController != null && playerOrbitController != null)
         {
-            hudPresenter.Configure(bossController, playerCombatController, playerOrbitController, playerSpecialAttackController);
+            hudPresenter.Configure(bossController, playerCombatController, playerOrbitController);
             hudPresenter.ConfigureLockOnController(playerLockOnController);
             hudPresenter.RetryRequested += HandleRetryRequested;
             hudPresenter.QuitRequested += HandleQuitRequested;

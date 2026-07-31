@@ -31,7 +31,6 @@ public class ProjectileController : MonoBehaviour
     private Collider cachedHitCollider;
     private float effectiveHitRadius;
     private float fallbackHitRadiusMultiplier = 1f;
-    private float criticalChance;
 
     public ProjectileTeam Team => team;
     public float EffectiveHitRadius => effectiveHitRadius;
@@ -47,14 +46,12 @@ public class ProjectileController : MonoBehaviour
         ProjectileTeam projectileTeam,
         Vector3 direction,
         float speedOverride,
-        float damageOverride,
-        float criticalChanceOverride = 0f)
+        float damageOverride)
     {
         battleController = owner;
         team = projectileTeam;
         speed = speedOverride > 0f ? speedOverride : defaultSpeed;
         damage = damageOverride > 0f ? damageOverride : defaultDamage;
-        criticalChance = Mathf.Clamp01(criticalChanceOverride);
         velocity = direction.normalized * speed;
         remainingLifetime = lifetime;
         CacheHitCollider();
@@ -92,7 +89,7 @@ public class ProjectileController : MonoBehaviour
         }
 
         bool hit = team == ProjectileTeam.Player
-            ? battleController.TryHitBoss(previousPosition, transform.position, effectiveHitRadius, damage, cachedHitCollider, criticalChance)
+            ? battleController.TryHitBoss(previousPosition, transform.position, effectiveHitRadius, damage, cachedHitCollider)
             : battleController.TryHitPlayer(previousPosition, transform.position, effectiveHitRadius, damage, cachedHitCollider);
 
         if (hit)

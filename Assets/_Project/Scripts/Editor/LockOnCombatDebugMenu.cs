@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEditor;
 using UnityEngine;
 
@@ -185,23 +186,42 @@ public static class LockOnCombatDebugMenu
     {
         if (!TryGetRuntime(out PlayerLockOnController controller,
                 out PlayerCombatController combat, out PlayerMissileSalvoLauncher launcher,
-                out HUDPresenter hud, out _, out _) ||
+                out HUDPresenter hud, out BossLockOnTargetProvider provider, out _) ||
             !PrepareReadyState(controller, launcher))
         {
             return;
         }
 
-        PlayerSpecialAttackController adapter =
-            Object.FindAnyObjectByType<PlayerSpecialAttackController>();
-        if (adapter == null || hud == null)
+        if (hud == null)
         {
-            Debug.LogError(
-                $"[LockCombatDebug] Busy failure dependencies missing. " +
-                $"AdapterFound={adapter != null}, HudFound={hud != null}.");
+            Debug.LogError("[LockCombatDebug] Busy failure HUD dependency missing.");
             return;
         }
 
-        bool blockerStarted = adapter.TryActivateForDebug(5);
+        List<BossLockOnTarget> selectedTargets = new();
+        provider.BuildTargetSequence(5, unchecked(System.Environment.TickCount ^ Time.frameCount), selectedTargets);
+        List<SalvoTargetSnapshot> targets = new();
+        for (int i = 0; i < selectedTargets.Count; i++)
+        {
+            SalvoTargetSnapshot snapshot = provider.CreateSalvoSnapshot(selectedTargets[i]);
+            if (snapshot != null)
+            {
+                targets.Add(snapshot);
+            }
+        }
+
+        SalvoRequest blockerRequest = new(
+            "BusyShootErrorDebug",
+            5,
+            combat.CurrentGatlingBaseDamage * 2f / 5f,
+            targets,
+            missilesPerVolley: 4,
+            salvoDuration: 0.6f,
+            randomSeed: 0,
+            SalvoMissileProfileSnapshot.Capture(combat));
+        SalvoStartResult prepared = launcher.TryPrepareSalvo(blockerRequest, out SalvoHandle blockerHandle);
+        bool blockerStarted = prepared.IsPrepared &&
+                              launcher.StartPreparedSalvo(blockerHandle).IsStarted;
         bool began = controller.TryBeginCharging(LockOnInputSource.Debug);
         controller.AdvanceChargeForDebug(StageChargeSeconds[0]);
         bool releaseAccepted = controller.TryReleaseCharging(LockOnInputSource.Debug);

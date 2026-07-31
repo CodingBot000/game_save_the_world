@@ -573,8 +573,7 @@ public sealed class PlayerMissileSalvoLauncher : MonoBehaviour
                 profile.ImpactEffectScale,
                 profile.UseTemplateOriginalMaterials,
                 profile.TemplateTint,
-                profile.TemplateLocalEulerAngles,
-                criticalChanceOverride: 0f);
+                profile.TemplateLocalEulerAngles);
             missile.ConfigureStrikePath(strikePath);
         }
         catch (Exception exception)
@@ -603,7 +602,7 @@ public sealed class PlayerMissileSalvoLauncher : MonoBehaviour
         Vector3 targetLocalOffset)
     {
         Vector3 baseDirection = playerCombatController != null
-            ? playerCombatController.GetMissileLaunchDirectionForSpecial()
+            ? playerCombatController.GetMissileLaunchDirectionForSalvo()
             : launcher.forward;
         if (baseDirection.sqrMagnitude < 0.001f)
         {

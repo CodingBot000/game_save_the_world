@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEditor;
 using UnityEngine;
 
@@ -37,9 +38,8 @@ public static class MissileSalvoDebugMenu
         Debug.Log($"[SalvoDebug] Cleanup guard verified. {GetPoolSnapshot(pool)}");
     }
 
-    // Retain the stage-one menu path while implementation notes and smoke scripts migrate.
     [MenuItem("TitanDestroyer/Debug/Fire 30-Missile Salvo", priority = 227)]
-    private static void FireLegacyThirtyMissileSalvo() => Fire(30);
+    private static void FireThirtyMissileSalvo() => Fire(30);
 
     private static void Fire(int missileCount)
     {
@@ -49,22 +49,52 @@ public static class MissileSalvoDebugMenu
             return;
         }
 
-        PlayerSpecialAttackController adapter =
-            Object.FindAnyObjectByType<PlayerSpecialAttackController>();
-        if (adapter == null)
+        PlayerMissileSalvoLauncher launcher =
+            Object.FindAnyObjectByType<PlayerMissileSalvoLauncher>();
+        PlayerCombatController combat = Object.FindAnyObjectByType<PlayerCombatController>();
+        BossLockOnTargetProvider provider = Object.FindAnyObjectByType<BossLockOnTargetProvider>();
+        if (launcher == null || combat == null || provider == null)
         {
-            Debug.LogError("[SalvoDebug] PlayerSpecialAttackController was not found.");
+            Debug.LogError(
+                $"[SalvoDebug] Runtime dependencies missing. Launcher={launcher != null}, " +
+                $"Combat={combat != null}, Provider={provider != null}.");
             return;
         }
 
-        bool started = adapter.TryActivateForDebug(missileCount);
+        List<BossLockOnTarget> selectedTargets = new();
+        provider.BuildTargetSequence(5, unchecked(System.Environment.TickCount ^ Time.frameCount), selectedTargets);
+        List<SalvoTargetSnapshot> targets = new();
+        for (int i = 0; i < selectedTargets.Count; i++)
+        {
+            SalvoTargetSnapshot snapshot = provider.CreateSalvoSnapshot(selectedTargets[i]);
+            if (snapshot != null)
+            {
+                targets.Add(snapshot);
+            }
+        }
+
+        float totalDamage = combat.CurrentGatlingBaseDamage * 10f;
+        SalvoRequest request = new(
+            "MissileSalvoDebug",
+            missileCount,
+            missileCount > 0 ? totalDamage / missileCount : 0f,
+            targets,
+            missilesPerVolley: 4,
+            salvoDuration: 0.6f,
+            randomSeed: 0,
+            SalvoMissileProfileSnapshot.Capture(combat));
+        SalvoStartResult prepared = launcher.TryPrepareSalvo(request, out SalvoHandle handle);
+        SalvoCommitResult committed = default;
+        bool started = prepared.IsPrepared &&
+                       (committed = launcher.StartPreparedSalvo(handle)).IsStarted;
         SpecialMissilePool pool = Object.FindAnyObjectByType<SpecialMissilePool>();
         string poolSnapshot = GetPoolSnapshot(pool);
 
         if (!started)
         {
             Debug.LogWarning(
-                $"[SalvoDebug] {missileCount}-missile salvo rejected: {adapter.LastAttemptReason}. {poolSnapshot}");
+                $"[SalvoDebug] {missileCount}-missile salvo rejected: " +
+                $"{(prepared.IsPrepared ? committed.Reason : prepared.Reason)}. {poolSnapshot}");
             return;
         }
 

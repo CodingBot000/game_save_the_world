@@ -317,8 +317,6 @@ public static class LockOnChargeDebugMenu
         BossLockOnTargetProvider provider,
         LockOnHudPresenter hud)
     {
-        PlayerCombatController combat =
-            Object.FindAnyObjectByType<PlayerCombatController>();
         Debug.Log(
             $"[LockChargeDebug] {reason}: state={controller.State}, " +
             $"source={controller.ActiveInputSource}, charge={controller.ChargeElapsed:0.000}, " +
@@ -326,8 +324,6 @@ public static class LockOnChargeDebugMenu
             $"assigned={controller.AssignedLockCount}, validTargets={provider.ValidTargetCount}, " +
             $"inputAvailable={controller.IsLockInputAvailable}, " +
             $"button={(hud != null ? hud.ButtonLabelText : "<missing>")}, " +
-            $"buttonInteractable={(hud != null && hud.ButtonInteractable)}, " +
-            $"specialHidden={(hud != null && hud.LegacySpecialHidden)}, " +
-            $"legacyMissileInput={(combat != null && combat.LegacyMissileInputEnabled)}.");
+            $"buttonInteractable={(hud != null && hud.ButtonInteractable)}.");
     }
 }

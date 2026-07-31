@@ -95,7 +95,6 @@ public class BattleDebugTuningApplier : MonoBehaviour
         ResolveTargets();
         switch (key)
         {
-            case BattleTuningKey.IgnoreMissileCooldown:
             case BattleTuningKey.Undead:
             case BattleTuningKey.ShowDamageHurtbox:
             case BattleTuningKey.ShowMovementBoundsGuide:
@@ -110,8 +109,6 @@ public class BattleDebugTuningApplier : MonoBehaviour
                 ApplyPlayerAttack();
                 break;
 
-            case BattleTuningKey.PlayerMissileCooldown:
-            case BattleTuningKey.PlayerMissileDamage:
             case BattleTuningKey.PlayerMissileLaunchSpeed:
             case BattleTuningKey.PlayerMissileCruiseSpeed:
             case BattleTuningKey.PlayerMissileAcceleration:
@@ -178,11 +175,6 @@ public class BattleDebugTuningApplier : MonoBehaviour
 
     private void ApplyDebugTogglesAndVisuals()
     {
-        if (BattleDebugTuningState.TryGetBool(BattleTuningKey.IgnoreMissileCooldown, out bool ignoreMissileCooldown))
-        {
-            GameplayDebugFlags.IgnoreMissileCooldown = ignoreMissileCooldown;
-        }
-
         if (BattleDebugTuningState.TryGetBool(BattleTuningKey.Undead, out bool undead))
         {
             GameplayDebugFlags.Undead = undead;
@@ -226,9 +218,7 @@ public class BattleDebugTuningApplier : MonoBehaviour
             return;
         }
 
-        PlayerCombat.SetMissileTuningForDebug(
-            ResolveFloat(BattleTuningKey.PlayerMissileCooldown, PlayerCombat.DebugMissileCooldown),
-            ResolveFloat(BattleTuningKey.PlayerMissileDamage, PlayerCombat.DebugMissileDamage),
+        PlayerCombat.SetMissileFlightTuningForDebug(
             ResolveFloat(BattleTuningKey.PlayerMissileLaunchSpeed, PlayerCombat.DebugMissileLaunchSpeed),
             ResolveFloat(BattleTuningKey.PlayerMissileCruiseSpeed, PlayerCombat.DebugMissileCruiseSpeed),
             ResolveFloat(BattleTuningKey.PlayerMissileAcceleration, PlayerCombat.DebugMissileAcceleration),
