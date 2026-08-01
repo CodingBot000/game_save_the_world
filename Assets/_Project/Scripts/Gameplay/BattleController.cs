@@ -426,7 +426,12 @@ public class BattleController : MonoBehaviour
     {
         if (playerOrbitController != null && bossController != null)
         {
-            playerOrbitController.Configure(bossController.OrbitCenter, bossController.AimPoint, playerMovementBounds, playerMoveGuide);
+            playerOrbitController.Configure(
+                bossController.OrbitCenter,
+                bossController.AimPoint,
+                playerMovementBounds,
+                playerMoveGuide,
+                playerLockOnController);
             playerOrbitController.AdoptScenePlacement(playerOrbitController.transform.position);
         }
 

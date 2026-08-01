@@ -7,17 +7,22 @@ using UnityEngine.Serialization;
 public class PlayerOrbitController : MonoBehaviour
 {
     private const string DamageHurtboxName = "CrashObserver";
-    private const float DefaultStrafeSpeed = 8f;
-    private const float DefaultAltitudeSpeed = 8f;
+    private const float PreviousDefaultAxisMovementSpeed = 8f;
+    private const float DefaultStrafeSpeed = 7.2f;
+    private const float DefaultAltitudeSpeed = 7.2f;
     private const float DefaultForwardSpeed = 10f;
+    private const float DefaultLockOnChargingMovementSpeedMultiplier = 0.6f;
     private static readonly Rect DefaultViewportRect = Rect.MinMaxRect(0f, 0f, 1f, 1f);
 
     [FormerlySerializedAs("horizontalScreenSpeed")]
-    [SerializeField] private float strafeSpeed = 8f;
+    [SerializeField] private float strafeSpeed = 7.2f;
     [FormerlySerializedAs("verticalScreenSpeed")]
-    [SerializeField] private float altitudeSpeed = 8f;
+    [SerializeField] private float altitudeSpeed = 7.2f;
     [FormerlySerializedAs("depthSpeed")]
     [SerializeField] private float forwardSpeed = 10f;
+    [Tooltip("Movement multiplier used only while lock-on is actively charging.")]
+    [SerializeField, Range(0.01f, 1f)]
+    private float lockOnChargingMovementSpeedMultiplier = DefaultLockOnChargingMovementSpeedMultiplier;
     [Tooltip("One-time guard for upgrading old viewport-based movement speeds to world-space speeds.")]
     [SerializeField] private bool movementSpeedsMigratedToWorldSpace;
     [Tooltip("Moves the helicopter on a fixed camera-depth plane so it behaves like a 2D screen object.")]
@@ -47,6 +52,7 @@ public class PlayerOrbitController : MonoBehaviour
     private Transform visualTiltRoot;
     private Transform visualPoseRoot;
     private PlayerVisualOverlayRenderer playerVisualOverlayRenderer;
+    private PlayerLockOnController playerLockOnController;
     private bool inputEnabled = true;
     private Quaternion sceneBaseRotation = Quaternion.identity;
     private Quaternion visualTiltBaseLocalRotation = Quaternion.identity;
@@ -82,6 +88,9 @@ public class PlayerOrbitController : MonoBehaviour
     public float DebugStrafeSpeed => strafeSpeed;
     public float DebugAltitudeSpeed => altitudeSpeed;
     public float DebugForwardSpeed => forwardSpeed;
+    public float DebugMovementSpeedMultiplier => ResolveMovementSpeedMultiplier();
+    public float DebugEffectiveStrafeSpeed => strafeSpeed * ResolveMovementSpeedMultiplier();
+    public float DebugEffectiveAltitudeSpeed => altitudeSpeed * ResolveMovementSpeedMultiplier();
     public float DebugMaxVisualTiltAngle => maxVisualTiltAngle;
     public float DebugVisualTiltDuration => visualTiltDuration;
     public bool IsAirPressureRotationActive =>
@@ -152,19 +161,29 @@ public class PlayerOrbitController : MonoBehaviour
         initialViewportPosition.y = Mathf.Clamp01(initialViewportPosition.y);
         gameplayViewportEdgePaddingPixels.x = Mathf.Max(0f, gameplayViewportEdgePaddingPixels.x);
         gameplayViewportEdgePaddingPixels.y = Mathf.Max(0f, gameplayViewportEdgePaddingPixels.y);
+        lockOnChargingMovementSpeedMultiplier = Mathf.Clamp(
+            lockOnChargingMovementSpeedMultiplier,
+            0.01f,
+            1f);
         if (string.IsNullOrWhiteSpace(playerVisualLayerName))
         {
             playerVisualLayerName = "PlayerVisual";
         }
     }
 
-    public void Configure(Transform center, Transform targetToLookAt, PlayerMovementBounds bounds, PlayerMoveGuide moveGuide = null)
+    public void Configure(
+        Transform center,
+        Transform targetToLookAt,
+        PlayerMovementBounds bounds,
+        PlayerMoveGuide moveGuide = null,
+        PlayerLockOnController lockOnController = null)
     {
         EnsureRuntimeDefaults();
         orbitCenter = center;
         lookTarget = targetToLookAt;
         movementBounds = bounds;
         playerMoveGuide = moveGuide;
+        playerLockOnController = lockOnController;
         ResetMovementViewportInitialization();
         movementViewportInitializationEnabled = true;
         CaptureRootRotation(transform.position);
@@ -473,9 +492,10 @@ public class PlayerOrbitController : MonoBehaviour
         movementInput = Vector2.ClampMagnitude(new Vector2(horizontal, altitude), 1f);
 
         ResolveMovementAxes(out Vector3 right, out Vector3 up, out _);
+        float movementSpeedMultiplier = ResolveMovementSpeedMultiplier();
         Vector3 movementDelta =
-            right * (horizontal * strafeSpeed * Time.deltaTime) +
-            up * (altitude * altitudeSpeed * Time.deltaTime);
+            right * (horizontal * strafeSpeed * movementSpeedMultiplier * Time.deltaTime) +
+            up * (altitude * altitudeSpeed * movementSpeedMultiplier * Time.deltaTime);
 
         if (movementDelta.sqrMagnitude <= 0.000001f)
         {
@@ -1106,6 +1126,7 @@ public class PlayerOrbitController : MonoBehaviour
     private void EnsureRuntimeDefaults()
     {
         MigrateLegacyMovementSpeedsIfNeeded();
+        MigratePreviousDefaultAxisMovementSpeedsIfNeeded();
         centerOriginalVisualOnMovementAnchor = true;
         lockVisualRootToCamera = true;
         enableVisualTilt = true;
@@ -1123,6 +1144,13 @@ public class PlayerOrbitController : MonoBehaviour
         if (forwardSpeed <= 0.01f)
         {
             forwardSpeed = DefaultForwardSpeed;
+        }
+
+        if (lockOnChargingMovementSpeedMultiplier <= 0f ||
+            lockOnChargingMovementSpeedMultiplier > 1f)
+        {
+            lockOnChargingMovementSpeedMultiplier =
+                DefaultLockOnChargingMovementSpeedMultiplier;
         }
 
         if (string.IsNullOrWhiteSpace(playerVisualLayerName))
@@ -1170,6 +1198,28 @@ public class PlayerOrbitController : MonoBehaviour
         }
 
         movementSpeedsMigratedToWorldSpace = true;
+    }
+
+    private void MigratePreviousDefaultAxisMovementSpeedsIfNeeded()
+    {
+        // Existing scenes serialize the former 8-unit defaults. Normalize only
+        // those exact legacy defaults so authored custom speeds remain intact.
+        if (Mathf.Approximately(strafeSpeed, PreviousDefaultAxisMovementSpeed))
+        {
+            strafeSpeed = DefaultStrafeSpeed;
+        }
+
+        if (Mathf.Approximately(altitudeSpeed, PreviousDefaultAxisMovementSpeed))
+        {
+            altitudeSpeed = DefaultAltitudeSpeed;
+        }
+    }
+
+    private float ResolveMovementSpeedMultiplier()
+    {
+        return playerLockOnController != null && playerLockOnController.IsCharging
+            ? lockOnChargingMovementSpeedMultiplier
+            : 1f;
     }
 
     private void UpdateWorldVelocity()

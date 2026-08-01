@@ -316,6 +316,56 @@ public static class LockOnChargeDebugMenu
         }
     }
 
+    [MenuItem(MenuRoot + "Run Lock-On Movement Speed", priority = 288)]
+    private static void RunLockOnMovementSpeed()
+    {
+        if (!TryGetRuntime(out PlayerLockOnController controller,
+                out BossLockOnTargetProvider provider, out _) ||
+            !PrepareReadyState(controller, provider))
+        {
+            return;
+        }
+
+        PlayerOrbitController orbit = Object.FindAnyObjectByType<PlayerOrbitController>();
+        if (orbit == null)
+        {
+            Debug.LogError("[LockChargeDebug] PlayerOrbitController was not found.");
+            return;
+        }
+
+        const float expectedBaseSpeed = 7.2f;
+        const float expectedChargingMultiplier = 0.6f;
+        const float expectedChargingSpeed = 4.32f;
+        float readyMultiplier = orbit.DebugMovementSpeedMultiplier;
+        bool began = controller.TryBeginCharging(LockOnInputSource.MouseRight);
+        float chargingMultiplier = orbit.DebugMovementSpeedMultiplier;
+        float chargingStrafeSpeed = orbit.DebugEffectiveStrafeSpeed;
+        float chargingAltitudeSpeed = orbit.DebugEffectiveAltitudeSpeed;
+
+        controller.HandleGamePaused();
+        float restoredMultiplier = orbit.DebugMovementSpeedMultiplier;
+        bool verified = began &&
+                        Mathf.Approximately(orbit.DebugStrafeSpeed, expectedBaseSpeed) &&
+                        Mathf.Approximately(orbit.DebugAltitudeSpeed, expectedBaseSpeed) &&
+                        Mathf.Approximately(readyMultiplier, 1f) &&
+                        Mathf.Approximately(chargingMultiplier, expectedChargingMultiplier) &&
+                        Mathf.Approximately(chargingStrafeSpeed, expectedChargingSpeed) &&
+                        Mathf.Approximately(chargingAltitudeSpeed, expectedChargingSpeed) &&
+                        Mathf.Approximately(restoredMultiplier, 1f) &&
+                        controller.State == LockOnCombatState.Ready;
+
+        Debug.Log(
+            $"[LockChargeDebug] lock-on movement speed verified={verified}, " +
+            $"baseStrafe={orbit.DebugStrafeSpeed:0.###}, " +
+            $"baseAltitude={orbit.DebugAltitudeSpeed:0.###}, " +
+            $"readyMultiplier={readyMultiplier:0.###}, " +
+            $"chargingMultiplier={chargingMultiplier:0.###}, " +
+            $"chargingStrafe={chargingStrafeSpeed:0.###}, " +
+            $"chargingAltitude={chargingAltitudeSpeed:0.###}, " +
+            $"restoredMultiplier={restoredMultiplier:0.###}, " +
+            $"finalState={controller.State}.");
+    }
+
     private static bool PrepareReadyState(
         PlayerLockOnController controller,
         BossLockOnTargetProvider provider)

@@ -3,9 +3,9 @@ title: Titan Destroyer 게임 시스템 중심 문서
 document_id: TD-GAME-SYSTEM-SSOT
 document_type: game-system-ssot
 status: live
-version: "1.0.3"
+version: "1.0.4"
 last_verified: "2026-08-01"
-implementation_baseline: "git 2f9cafb + 2026-08-01 player-hit lock cancel verified working tree"
+implementation_baseline: "git 6441c47 + 2026-08-01 movement-speed balance verified working tree"
 unity_version: 6000.4.0f1
 authoritative_scope:
   - game_flow
@@ -56,6 +56,7 @@ authoritative_scope:
 | 영역 | 현재 기준 | 상태 |
 | --- | --- | --- |
 | 전투 형태 | 화면 기준 2D 평면에서 헬기를 이동하며 단일 거대 보스를 상대 | 구현됨 |
+| 플레이어 이동 | 좌우·상하 기본 7.2, 락온 충전 중 4.32 | 구현됨 |
 | 플레이어 공격 | 연속 기관총 + 우클릭 충전식 다중 락온 미사일 일제사격 | 구현됨 |
 | 제거된 공격 | 과거 단발 미사일, 필살기 버튼, 조준점 선택형 확률 크리티컬 | 레거시/비활성 |
 | 플레이어 생존 | Hull 100 / Armor 120, 아머 자동 수리, 아머 파손 중 Hull 피해 1.25배 | 구현됨 |
@@ -99,13 +100,27 @@ authoritative_scope:
 
 ## 3. 플레이어 조작과 이동
 
+상태: **구현됨**
+
 | 행동 | PC 입력 | 모바일/HUD | 비고 |
 | --- | --- | --- | --- |
-| 수평 이동 | `A/D`, 좌/우 방향키 | 현재 별도 입력 없음 | 월드 기준 속도 8 |
-| 수직 이동 | `W/S`, 위/아래 방향키 | 현재 별도 입력 없음 | 월드 기준 속도 8 |
+| 수평 이동 | `A/D`, 좌/우 방향키 | 현재 별도 입력 없음 | 기본 7.2 / 락온 충전 중 4.32 |
+| 수직 이동 | `W/S`, 위/아래 방향키 | 현재 별도 입력 없음 | 기본 7.2 / 락온 충전 중 4.32 |
 | 기관총 | 마우스 왼쪽 버튼 유지 또는 `Space` 유지 | 현재 별도 입력 없음 | 누르는 동안 연사 |
 | 락온 충전 | 마우스 오른쪽 버튼 유지 | `LOCK ON` 버튼 누르기 유지 | 타깃을 단계별 획득 |
 | 락온 발사 | 마우스 오른쪽 버튼 놓기 | `LOCK ON` 버튼 놓기 | 성공한 락 수 기준 발사 |
+
+이동 속도 공식:
+
+```text
+현재 기본 이동 속도 = 이전 기본값 8 × 0.9 = 7.2
+락온 충전 중 이동 속도 = 7.2 × 0.6 = 4.32
+```
+
+- 여기서 `락온 중`은 우클릭 또는 모바일 버튼을 누르고 락을 획득하는 `Charging` 상태만 뜻한다.
+- 입력을 놓아 발사가 승인되거나, 피격·포인터 이탈·일시정지 등으로 충전이 취소되는 즉시 배율은 `1.0`으로 돌아가 기본 속도 7.2를 사용한다.
+- `Release`, 미사일 발사 중, `ReuseWait`에서는 추가 감속하지 않는다.
+- 기존 씬에 직렬화된 이전 기본값 8은 런타임 초기화에서 정확히 7.2로 이전하며, `PlayerRuntimeState` 기본값도 7.2를 사용한다. 디버그 패널에서 명시적으로 지정한 이동값은 런타임 오버라이드로 우선 적용된다.
 
 이동 구현 기준:
 
@@ -117,7 +132,7 @@ authoritative_scope:
 - 헬기 Renderer 크기로 이동 범위를 줄이지 않는다. 확대된 헬기의 이동 기준점은 화면 끝까지 갈 수 있고 이때 로터나 기체 일부가 화면 밖으로 나가는 것은 현재 허용 규칙이다. 추후 여백이 필요하면 공용 픽셀 패딩을 사용한다.
 - 확대된 3D 모델의 화면 투영 사각형 중심을 이동 앵커에 맞춰, 3D AABB의 원근 차이 때문에 외형이 한쪽으로 치우치지 않게 한다.
 - 보이는 헬기 모델만 이동 방향으로 최대 12도, 약 0.18초 동안 기울어진다. 이동 앵커와 피격 판정은 기울지 않는다.
-- `forwardSpeed = 10` 값은 남아 있으나 현재 키 입력은 수평/수직 2축만 만든다. 추적 빔의 플레이어 최대 속도 계산 등 보조 기준으로 사용된다.
+- `forwardSpeed = 10` 값은 남아 있으나 현재 키 입력은 수평/수직 2축만 만든다. 이번 10% 감속 대상은 실제 입력에 쓰이는 두 축이며, 전진값 10과 이를 보조 기준으로 사용하는 추적 빔 속도는 변경하지 않았다.
 - 공기압 회전 연출 중에는 기관총 발사가 잠시 차단된다. 현재 활성 패턴 4종에는 공기압 패턴이 없다.
 
 ## 4. 플레이어 공격 시스템
@@ -177,6 +192,7 @@ ReuseWait 5초 종료 → Ready
 - 한 번에 하나의 일제사격만 준비/실행할 수 있다.
 - 모바일 `LOCK ON` 버튼을 누른 채 포인터가 버튼 밖으로 나가면 현재 충전은 취소된다.
 - `Charging` 중 일반 피해 또는 연속 피해가 Hull/Armor 처리 경로에 실제로 적용되면 현재 충전, 성공 락, 월드 마커, 활성 입력 소스를 즉시 초기화한다.
+- `Charging` 동안 플레이어 이동은 기본 7.2에 `0.6` 배율을 적용해 4.32가 된다. 충전 종료와 동시에 기본 속도로 복구한다.
 - 피격 취소 뒤 같은 우클릭이나 모바일 포인터를 놓는 동작은 발사 요청으로 인정하지 않는다. 미사일, 일제사격 무적, 5초 재사용 대기, `SHOOT ERROR`도 발생하지 않는다.
 - 기존 피격 무적, 일제사격 무적, `Undead` 디버그로 차단되어 생존 수치에 반영되지 않은 피해 시도는 새 피격으로 보지 않으며 충전을 취소하지 않는다.
 - 이 강제 취소 규칙은 `Charging`에만 적용된다. 이미 발사가 승인된 일제사격과 `ReuseWait`는 이후 피격으로 취소하지 않는다.
@@ -513,7 +529,7 @@ Armor가 120 흡수 → Armor 0, 잔여 피해 30
 | 시스템 | 주 소스 | 함께 확인할 소스 |
 | --- | --- | --- |
 | 전투 모드/승패/초기화 | `Assets/_Project/Scripts/Gameplay/BattleController.cs` | `Assets/_Project/Scripts/Core/GameFlowController.cs`, `Assets/Scenes/BattleArena.unity/BattleArena.unity` |
-| 플레이어 이동 | `Assets/_Project/Scripts/Gameplay/PlayerOrbitController.cs` | `Assets/_Project/Scripts/Gameplay/PlayerMovementBounds.cs`, `Assets/_Project/Scripts/Gameplay/PlayerMoveGuide.cs`, `Assets/_Project/Scripts/Gameplay/PlayerVisualOverlayRenderer.cs`, 현재 씬 |
+| 플레이어 이동 | `Assets/_Project/Scripts/Gameplay/PlayerOrbitController.cs` | `Assets/_Project/Scripts/Core/PlayerRuntimeState.cs`, `Assets/_Project/Scripts/Gameplay/BattleController.cs`, `Assets/_Project/Scripts/Gameplay/PlayerLockOnController.cs`, `Assets/_Project/Scripts/Gameplay/PlayerMovementBounds.cs`, `Assets/_Project/Scripts/Gameplay/PlayerMoveGuide.cs`, `Assets/_Project/Scripts/Gameplay/PlayerVisualOverlayRenderer.cs`, 현재 씬 |
 | 기관총 | `Assets/_Project/Scripts/Gameplay/PlayerCombatController.cs` | `Assets/_Project/Scripts/Gameplay/ProjectileController.cs`, 현재 씬/투사체 프리팹 |
 | 락온 상태/피해 공식/피격 취소 | `Assets/_Project/Scripts/Gameplay/PlayerLockOnController.cs` | `Assets/_Project/Scripts/Gameplay/PlayerCombatController.cs`, `Assets/_Project/Scripts/UI/LockOnButtonInputRelay.cs`, `Assets/_Project/Scripts/MissileStrike/LockOnChargeRules.cs`, `Assets/_Project/Scripts/MissileStrike/LockOnSalvoRules.cs` |
 | 락온 타깃 | `Assets/_Project/Scripts/Gameplay/BossLockOnTargetProvider.cs`, `Assets/_Project/Scripts/Gameplay/BossLockOnTarget.cs` | `Assets/_Project/Scripts/Gameplay/BossTestState.cs`, 에디터 디버그 메뉴 |
@@ -573,7 +589,7 @@ Armor가 120 흡수 → Armor 0, 잔여 피해 30
 
 ### 2026-08-01
 
-- Git 기준점: `2f9cafb` 및 현재 미커밋 `BattleArena` 작업 트리
+- Git 기준점: `6441c47` 및 현재 미커밋 `BattleArena` 작업 트리
 - Unity 버전: `6000.4.0f1`
 - 확인 범위: 플레이어 전투/이동/방어 코드, 락온 규칙과 테스트 코드, 보스 공통 공격/패턴 코드, `BattleArena` 직렬화 값, 차량 상태 카탈로그, 런타임 상태, 락온 개발 사양서
 - 검증 방식: 정적 코드/에셋 교차검증, Unity MCP Play Mode 자동 입력, 전체 컴파일, Editor 로그, EditMode 테스트
@@ -581,6 +597,8 @@ Armor가 120 흡수 → Armor 0, 잔여 피해 30
 - 자동 이동 결과는 좌 `(0.000,0.490)`, 우 `(1.000,0.487)`, 상 `(0.988,1.000)`, 하 `(0.987,0.000)`으로 전체 viewport 네 변 도달 검증을 통과했다. 확대 외형 일부가 끝 위치에서 화면 밖으로 나가는 것은 현재 의도된 규칙이다.
 - 우클릭으로 5개 락을 획득한 뒤 실제 1 피해를 적용한 Play Mode 전용 진단에서 `PlayerDamaged` 취소, `Ready` 복귀, 성공 락/마커 0개, 동일 우클릭 릴리즈 거부, 신규 일제사격 ID·무적 없음이 모두 확인됐다.
 - 위 취소 진단 직후 다시 풀차지한 회귀 진단에서 5개 락, 30발 발사 요청, 첫 미사일 이전 무적 시작, `ReuseWait` 진입이 정상 동작했다.
+- 이동 속도 Play Mode 진단에서 기본 좌우·상하 7.2, `Charging` 배율 0.6, 유효 속도 4.32, 충전 취소 후 배율 1.0 복구를 확인했다.
+- 실제 키 입력을 사용한 전체 viewport 이동 회귀에서 좌 `(0.000,0.480)`, 우 `(1.000,0.477)`, 상 `(0.993,1.000)`, 하 `(0.991,0.000)` 도달을 모두 통과했다.
 - 수정 스크립트 진단 오류 0개, Unity 전체 컴파일 오류 0개, 신규 실행 예외 없음, EditMode 테스트 59/59 통과.
 - 미검증 범위: 실제 19.5:9 모바일 기기 빌드의 터치 이동·Safe Area는 이번 작업에서 실행하지 않았다. 이동 계산 자체는 HUD Safe Area가 아니라 실제 Base 카메라 픽셀 크기와 정규화 viewport를 사용한다.
 - 사용자 작업인 `BattleArena`의 Viper 스케일 2와 기타 미커밋 씬·에셋 값은 수정하거나 커밋 대상으로 포함하지 않았다.
@@ -589,6 +607,7 @@ Armor가 120 흡수 → Armor 0, 잔여 피해 30
 
 | 날짜 | 버전 | 변경 내용 | 검증 |
 | --- | --- | --- | --- |
+| 2026-08-01 | 1.0.4 | 실제 좌우·상하 이동 기본값을 8에서 7.2로 10% 감속하고 락온 `Charging` 중 0.6 배율을 적용해 4.32로 감속 | Play Mode 상태별 7.2/4.32/복구 진단, 실제 키 입력 viewport 네 변 도달, 스크립트 진단, 전체 컴파일, EditMode 59/59 |
 | 2026-08-01 | 1.0.3 | 락온 충전 중 실제 플레이어 피해가 적용되면 충전·락·마커·입력을 즉시 취소하고 같은 입력 릴리즈의 발사를 차단 | 우클릭 5락 후 실제 피해 Play Mode 진단, 취소 후 풀차지 30발 회귀, 스크립트 진단, 전체 컴파일, EditMode 59/59 |
 | 2026-08-01 | 1.0.2 | 승리 시 `R` 재시작과 패배 시 Retry/Quit 흐름을 구분하고 구현 기준점을 최신 커밋으로 갱신 | YAML/Markdown 구조, 소스 경로 27개, 피해 공식 정적 검증 |
 | 2026-08-01 | 1.0.1 | 실제 Base 카메라 화면비 기반 최초 1회 전체 viewport 이동, 런타임 이동 박스 동기화, Renderer 크기 기반 범위 축소 제거, 확대 외형 화면 중심 보정 규칙 반영 | 1920×1080 Play Mode 네 변 자동 이동, 외형 중심, 컴파일, EditMode 59/59 |

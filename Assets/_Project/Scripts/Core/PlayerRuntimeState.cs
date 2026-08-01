@@ -183,8 +183,8 @@ public static class PlayerRuntimeState
             MissileLifetime = 6f,
             MissileHitRadius = 1.8f,
 
-            StrafeSpeed = 8f,
-            AltitudeSpeed = 8f,
+            StrafeSpeed = 7.2f,
+            AltitudeSpeed = 7.2f,
             ForwardSpeed = 10f,
         };
     }
