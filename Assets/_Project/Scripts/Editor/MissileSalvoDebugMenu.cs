@@ -5,6 +5,7 @@ using UnityEngine;
 public static class MissileSalvoDebugMenu
 {
     private const string MenuRoot = "TitanDestroyer/Debug/Missile Salvo/";
+    private const float DebugFullSalvoTotalDamage = 100f;
 
     [MenuItem(MenuRoot + "Fire 5", priority = 220)]
     private static void FireFive() => Fire(5);
@@ -73,11 +74,10 @@ public static class MissileSalvoDebugMenu
             }
         }
 
-        float totalDamage = combat.CurrentGatlingBaseDamage * 10f;
         SalvoRequest request = new(
             "MissileSalvoDebug",
             missileCount,
-            missileCount > 0 ? totalDamage / missileCount : 0f,
+            missileCount > 0 ? DebugFullSalvoTotalDamage / missileCount : 0f,
             targets,
             missilesPerVolley: 4,
             salvoDuration: 0.6f,

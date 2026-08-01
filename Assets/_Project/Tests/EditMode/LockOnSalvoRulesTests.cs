@@ -3,14 +3,14 @@ using NUnit.Framework;
 public class LockOnSalvoRulesTests
 {
     private static readonly int[] MissileCounts = { 5, 10, 15, 20, 30 };
-    private static readonly float[] DamageRatios = { 0.30f, 0.40f, 0.50f, 0.60f, 1f };
+    private static readonly float[] TotalDamages = { 9f, 20f, 35f, 60f, 100f };
 
     [TestCase(1, 5, 9f, 1.8f)]
-    [TestCase(2, 10, 12f, 1.2f)]
-    [TestCase(3, 15, 15f, 1f)]
-    [TestCase(4, 20, 18f, 0.9f)]
-    [TestCase(5, 30, 30f, 1f)]
-    public void TryCalculate_UsesGatlingBudgetAndConfiguredStageRatios(
+    [TestCase(2, 10, 20f, 2f)]
+    [TestCase(3, 15, 35f, 2.333333f)]
+    [TestCase(4, 20, 60f, 3f)]
+    [TestCase(5, 30, 100f, 3.333333f)]
+    public void TryCalculate_UsesConfiguredStageTotalDamage(
         int successfulLocks,
         int expectedMissiles,
         float expectedTotalDamage,
@@ -18,10 +18,8 @@ public class LockOnSalvoRulesTests
     {
         bool calculated = LockOnSalvoRules.TryCalculate(
             successfulLocks,
-            gatlingBaseDamage: 3f,
-            fullSalvoGatlingDamageMultiplier: 10f,
             MissileCounts,
-            DamageRatios,
+            TotalDamages,
             out LockOnSalvoStageCalculation result,
             out string reason);
 
@@ -41,10 +39,8 @@ public class LockOnSalvoRulesTests
         Assert.That(
             LockOnSalvoRules.TryCalculate(
                 lockCount,
-                3f,
-                10f,
                 MissileCounts,
-                DamageRatios,
+                TotalDamages,
                 out _,
                 out string reason),
             Is.False);
@@ -54,35 +50,30 @@ public class LockOnSalvoRulesTests
     [TestCase(0f)]
     [TestCase(-1f)]
     [TestCase(float.NaN)]
-    public void TryCalculate_RejectsInvalidGatlingDamage(float gatlingDamage)
+    public void TryCalculate_RejectsInvalidStageTotalDamage(float totalDamage)
     {
         Assert.That(
             LockOnSalvoRules.TryCalculate(
                 5,
-                gatlingDamage,
-                10f,
-                MissileCounts,
-                DamageRatios,
+                new[] { 30 },
+                new[] { totalDamage },
                 out _,
                 out string reason),
             Is.False);
-        Assert.That(reason, Is.EqualTo("InvalidGatlingBaseDamage"));
+        Assert.That(reason, Is.EqualTo("StageTotalDamageInvalid"));
     }
 
     [Test]
     public void ValidateConfiguration_RejectsMismatchedArraysAndNonPositiveValues()
     {
         Assert.That(
-            LockOnSalvoRules.ValidateConfiguration(MissileCounts, new[] { 1f }, 10f),
+            LockOnSalvoRules.ValidateConfiguration(MissileCounts, new[] { 1f }),
             Is.EqualTo("LockOnSalvoStageConfigurationInvalid"));
         Assert.That(
-            LockOnSalvoRules.ValidateConfiguration(new[] { 5, 0 }, new[] { 0.3f, 0.4f }, 10f),
+            LockOnSalvoRules.ValidateConfiguration(new[] { 5, 0 }, new[] { 9f, 20f }),
             Is.EqualTo("MissileCountByStageInvalid"));
         Assert.That(
-            LockOnSalvoRules.ValidateConfiguration(new[] { 5 }, new[] { 0f }, 10f),
-            Is.EqualTo("StageDamageRatioInvalid"));
-        Assert.That(
-            LockOnSalvoRules.ValidateConfiguration(new[] { 5 }, new[] { 0.3f }, 0f),
-            Is.EqualTo("FullSalvoDamageMultiplierInvalid"));
+            LockOnSalvoRules.ValidateConfiguration(new[] { 5 }, new[] { 0f }),
+            Is.EqualTo("StageTotalDamageInvalid"));
     }
 }

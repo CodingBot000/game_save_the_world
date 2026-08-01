@@ -6,23 +6,17 @@ public readonly struct LockOnSalvoStageCalculation
     public LockOnSalvoStageCalculation(
         int successfulLockCount,
         int missileCount,
-        float gatlingBaseDamage,
-        float stageDamageRatio,
         float totalBaseDamage,
         float baseDamagePerMissile)
     {
         SuccessfulLockCount = successfulLockCount;
         MissileCount = missileCount;
-        GatlingBaseDamage = gatlingBaseDamage;
-        StageDamageRatio = stageDamageRatio;
         TotalBaseDamage = totalBaseDamage;
         BaseDamagePerMissile = baseDamagePerMissile;
     }
 
     public int SuccessfulLockCount { get; }
     public int MissileCount { get; }
-    public float GatlingBaseDamage { get; }
-    public float StageDamageRatio { get; }
     public float TotalBaseDamage { get; }
     public float BaseDamagePerMissile { get; }
 }
@@ -31,18 +25,13 @@ public static class LockOnSalvoRules
 {
     public static bool TryCalculate(
         int successfulLockCount,
-        float gatlingBaseDamage,
-        float fullSalvoGatlingDamageMultiplier,
         IReadOnlyList<int> missileCounts,
-        IReadOnlyList<float> stageDamageRatios,
+        IReadOnlyList<float> totalDamages,
         out LockOnSalvoStageCalculation calculation,
         out string failureReason)
     {
         calculation = default;
-        failureReason = ValidateConfiguration(
-            missileCounts,
-            stageDamageRatios,
-            fullSalvoGatlingDamageMultiplier);
+        failureReason = ValidateConfiguration(missileCounts, totalDamages);
         if (!string.IsNullOrEmpty(failureReason))
         {
             return false;
@@ -54,18 +43,9 @@ public static class LockOnSalvoRules
             return false;
         }
 
-        if (!IsPositiveFinite(gatlingBaseDamage))
-        {
-            failureReason = "InvalidGatlingBaseDamage";
-            return false;
-        }
-
         int stageIndex = successfulLockCount - 1;
         int missileCount = missileCounts[stageIndex];
-        float stageDamageRatio = stageDamageRatios[stageIndex];
-        float totalBaseDamage = gatlingBaseDamage *
-                                fullSalvoGatlingDamageMultiplier *
-                                stageDamageRatio;
+        float totalBaseDamage = totalDamages[stageIndex];
         float baseDamagePerMissile = totalBaseDamage / missileCount;
         if (!IsPositiveFinite(totalBaseDamage) ||
             !IsPositiveFinite(baseDamagePerMissile))
@@ -77,8 +57,6 @@ public static class LockOnSalvoRules
         calculation = new LockOnSalvoStageCalculation(
             successfulLockCount,
             missileCount,
-            gatlingBaseDamage,
-            stageDamageRatio,
             totalBaseDamage,
             baseDamagePerMissile);
         failureReason = string.Empty;
@@ -87,18 +65,12 @@ public static class LockOnSalvoRules
 
     public static string ValidateConfiguration(
         IReadOnlyList<int> missileCounts,
-        IReadOnlyList<float> stageDamageRatios,
-        float fullSalvoGatlingDamageMultiplier)
+        IReadOnlyList<float> totalDamages)
     {
-        if (missileCounts == null || stageDamageRatios == null ||
-            missileCounts.Count == 0 || missileCounts.Count != stageDamageRatios.Count)
+        if (missileCounts == null || totalDamages == null ||
+            missileCounts.Count == 0 || missileCounts.Count != totalDamages.Count)
         {
             return "LockOnSalvoStageConfigurationInvalid";
-        }
-
-        if (!IsPositiveFinite(fullSalvoGatlingDamageMultiplier))
-        {
-            return "FullSalvoDamageMultiplierInvalid";
         }
 
         for (int i = 0; i < missileCounts.Count; i++)
@@ -108,9 +80,9 @@ public static class LockOnSalvoRules
                 return "MissileCountByStageInvalid";
             }
 
-            if (!IsPositiveFinite(stageDamageRatios[i]))
+            if (!IsPositiveFinite(totalDamages[i]))
             {
-                return "StageDamageRatioInvalid";
+                return "StageTotalDamageInvalid";
             }
         }
 

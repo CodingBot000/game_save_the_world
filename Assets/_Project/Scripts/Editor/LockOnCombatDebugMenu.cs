@@ -6,7 +6,7 @@ public static class LockOnCombatDebugMenu
 {
     private const string MenuRoot = "TitanDestroyer/Debug/Lock-On Combat/";
     private static readonly int[] ExpectedMissileCounts = { 5, 10, 15, 20, 30 };
-    private static readonly float[] ExpectedDamageBudgetsAtG25 = { 75f, 100f, 125f, 150f, 250f };
+    private static readonly float[] ExpectedTotalDamages = { 9f, 20f, 35f, 60f, 100f };
     private static EditorApplication.CallbackFunction pendingTimelineCheck;
     private static EditorApplication.CallbackFunction pendingResidualBeamCheck;
 
@@ -52,7 +52,7 @@ public static class LockOnCombatDebugMenu
     [MenuItem(MenuRoot + "Verify Damage Table", priority = 296)]
     private static void VerifyDamageTable()
     {
-        if (!TryGetRuntime(out _, out PlayerCombatController combat, out _,
+        if (!TryGetRuntime(out _, out _, out _,
                 out _, out _, out _))
         {
             return;
@@ -64,13 +64,15 @@ public static class LockOnCombatDebugMenu
         {
             bool calculated = LockOnSalvoRules.TryCalculate(
                 stage,
-                combat.CurrentGatlingBaseDamage,
-                10f,
                 ExpectedMissileCounts,
-                new[] { 0.30f, 0.40f, 0.50f, 0.60f, 1f },
+                ExpectedTotalDamages,
                 out LockOnSalvoStageCalculation result,
                 out string reason);
-            verified &= calculated && result.MissileCount == ExpectedMissileCounts[stage - 1];
+            verified &= calculated &&
+                        result.MissileCount == ExpectedMissileCounts[stage - 1] &&
+                        Mathf.Approximately(
+                            result.TotalBaseDamage,
+                            ExpectedTotalDamages[stage - 1]);
             rows += calculated
                 ? $" S{stage}:{result.MissileCount}x{result.BaseDamagePerMissile:0.###}={result.TotalBaseDamage:0.###}"
                 : $" S{stage}:ERROR({reason})";
@@ -78,7 +80,7 @@ public static class LockOnCombatDebugMenu
 
         Debug.Log(
             $"[LockCombatDebug] damage table verified={verified}, " +
-            $"G={combat.CurrentGatlingBaseDamage:0.###},{rows}.");
+            $"fixedTotals=9/20/35/60/100,{rows}.");
     }
 
     [MenuItem(MenuRoot + "Run Weak Point x2", priority = 297)]
@@ -213,7 +215,7 @@ public static class LockOnCombatDebugMenu
         SalvoRequest blockerRequest = new(
             "BusyShootErrorDebug",
             5,
-            combat.CurrentGatlingBaseDamage * 2f / 5f,
+            ExpectedTotalDamages[0] / ExpectedMissileCounts[0],
             targets,
             missilesPerVolley: 4,
             salvoDuration: 0.6f,
@@ -401,8 +403,7 @@ public static class LockOnCombatDebugMenu
             controller.GetCumulativeChargeTimeForStage(successfulLocks) + 0.01f);
         bool released = controller.TryReleaseCharging(LockOnInputSource.Debug);
         int expectedCount = ExpectedMissileCounts[successfulLocks - 1];
-        float expectedBudget = combat.CurrentGatlingBaseDamage / 25f *
-                               ExpectedDamageBudgetsAtG25[successfulLocks - 1];
+        float expectedBudget = ExpectedTotalDamages[successfulLocks - 1];
         bool verified = began && released &&
                         controller.LastRequestedMissileCount == expectedCount &&
                         Mathf.Approximately(controller.LastBaseDamageBudget, expectedBudget) &&

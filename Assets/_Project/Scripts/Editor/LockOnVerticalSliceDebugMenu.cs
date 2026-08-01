@@ -12,7 +12,7 @@ public static class LockOnVerticalSliceDebugMenu
     private const double RealReuseInterval = 5.05;
     private const double FullRunTimeout = 35.0;
     private static readonly int[] ExpectedMissiles = { 5, 10, 15, 20, 30 };
-    private static readonly float[] ExpectedRatios = { 0.30f, 0.40f, 0.50f, 0.60f, 1f };
+    private static readonly float[] ExpectedTotalDamages = { 9f, 20f, 35f, 60f, 100f };
 
     private static EditorApplication.CallbackFunction pendingFullRun;
     private static EditorApplication.CallbackFunction pendingOutcomeCheck;
@@ -55,7 +55,6 @@ public static class LockOnVerticalSliceDebugMenu
             StartedAt = EditorApplication.timeSinceStartup,
             InitialPlayerPosition = orbit.transform.position,
             InitialBossHealth = boss.CurrentHealth,
-            GatlingDamage = combat.CurrentGatlingBaseDamage,
             NextStage = 1,
             PoolInvariantHeld = launcher.HasValidPoolCounts,
             BattleStayedActive = true,
@@ -469,7 +468,7 @@ public static class LockOnVerticalSliceDebugMenu
         run.LockOn.AdvanceChargeForDebug(
             run.LockOn.GetCumulativeChargeTimeForStage(run.NextStage) + 0.01f);
         bool released = run.LockOn.TryReleaseCharging(LockOnInputSource.Debug);
-        float expectedBudget = run.GatlingDamage * 10f * ExpectedRatios[stageIndex];
+        float expectedBudget = ExpectedTotalDamages[stageIndex];
         bool immediateValid = began && released &&
                               run.LockOn.LastRequestedMissileCount == ExpectedMissiles[stageIndex] &&
                               Mathf.Approximately(run.LockOn.LastBaseDamageBudget, expectedBudget) &&
@@ -716,7 +715,6 @@ public static class LockOnVerticalSliceDebugMenu
         public double NextReleaseAllowedAt;
         public Vector3 InitialPlayerPosition;
         public float InitialBossHealth;
-        public float GatlingDamage;
         public int NextStage;
         public int CompletedStages;
         public int BossAttackCount;

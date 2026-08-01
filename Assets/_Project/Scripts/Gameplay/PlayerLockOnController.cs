@@ -67,8 +67,8 @@ public sealed class PlayerLockOnController : MonoBehaviour
         { 1.00f, 2.50f, 4.50f, 7.00f, 10.00f };
     private static readonly int[] DefaultMissileCountsBySuccessfulLocks =
         { 5, 10, 15, 20, 30 };
-    private static readonly float[] DefaultStageTotalDamageRatios =
-        { 0.30f, 0.40f, 0.50f, 0.60f, 1f };
+    private static readonly float[] DefaultTotalDamagesBySuccessfulLocks =
+        { 9f, 20f, 35f, 60f, 100f };
 
     [SerializeField, Tooltip(
         "Cumulative thresholds derived from per-stage durations 1 / 1.5 / 2 / 2.5 / 3 seconds.")]
@@ -78,9 +78,9 @@ public sealed class PlayerLockOnController : MonoBehaviour
     [Header("Missile Salvo")]
     [SerializeField] private int[] missileCountsBySuccessfulLocks =
         { 5, 10, 15, 20, 30 };
-    [SerializeField] private float[] stageTotalDamageRatios =
-        { 0.30f, 0.40f, 0.50f, 0.60f, 1f };
-    [SerializeField, Min(0.01f)] private float fullSalvoGatlingDamageMultiplier = 10f;
+    [SerializeField, Tooltip("Fixed total base damage for 1 through 5 successful locks.")]
+    private float[] totalDamagesBySuccessfulLocks =
+        { 9f, 20f, 35f, 60f, 100f };
     [SerializeField, Min(1)] private int missilesPerVolley = 4;
     [SerializeField, Min(0.01f)] private float salvoLaunchDuration = 0.6f;
     [SerializeField, Min(0f)] private float lockReuseWaitDuration = 5f;
@@ -139,7 +139,6 @@ public sealed class PlayerLockOnController : MonoBehaviour
     public int LastStartedSalvoId { get; private set; }
     public int LastRequestedMissileCount { get; private set; }
     public int LastFiredMissileCount { get; private set; }
-    public float LastGatlingDamageSnapshot { get; private set; }
     public float LastBaseDamageBudget { get; private set; }
     public float LastBaseDamagePerMissile { get; private set; }
     public float LastFirstMissileDamageMultiplier { get; private set; }
@@ -423,10 +422,8 @@ public sealed class PlayerLockOnController : MonoBehaviour
 
         if (!LockOnSalvoRules.TryCalculate(
                 intent.SuccessfulLockCount,
-                playerCombatController.CurrentGatlingBaseDamage,
-                fullSalvoGatlingDamageMultiplier,
                 missileCountsBySuccessfulLocks,
-                stageTotalDamageRatios,
+                totalDamagesBySuccessfulLocks,
                 out LockOnSalvoStageCalculation calculation,
                 out string calculationFailure))
         {
@@ -435,7 +432,6 @@ public sealed class PlayerLockOnController : MonoBehaviour
         }
 
         LastRequestedMissileCount = calculation.MissileCount;
-        LastGatlingDamageSnapshot = calculation.GatlingBaseDamage;
         LastBaseDamageBudget = calculation.TotalBaseDamage;
         LastBaseDamagePerMissile = calculation.BaseDamagePerMissile;
         SalvoRequest request = new(
@@ -513,7 +509,6 @@ public sealed class PlayerLockOnController : MonoBehaviour
         LastStartedSalvoId = 0;
         LastRequestedMissileCount = 0;
         LastFiredMissileCount = 0;
-        LastGatlingDamageSnapshot = 0f;
         LastBaseDamageBudget = 0f;
         LastBaseDamagePerMissile = 0f;
         LastFirstMissileDamageMultiplier = 0f;
@@ -980,16 +975,10 @@ public sealed class PlayerLockOnController : MonoBehaviour
                 (int[])DefaultMissileCountsBySuccessfulLocks.Clone();
         }
 
-        if (!HasValidDamageRatios(stageTotalDamageRatios))
+        if (!HasValidStageTotalDamages(totalDamagesBySuccessfulLocks))
         {
-            stageTotalDamageRatios = (float[])DefaultStageTotalDamageRatios.Clone();
-        }
-
-        if (float.IsNaN(fullSalvoGatlingDamageMultiplier) ||
-            float.IsInfinity(fullSalvoGatlingDamageMultiplier) ||
-            fullSalvoGatlingDamageMultiplier <= 0f)
-        {
-            fullSalvoGatlingDamageMultiplier = 10f;
+            totalDamagesBySuccessfulLocks =
+                (float[])DefaultTotalDamagesBySuccessfulLocks.Clone();
         }
 
         missilesPerVolley = Mathf.Max(1, missilesPerVolley);
@@ -1015,9 +1004,9 @@ public sealed class PlayerLockOnController : MonoBehaviour
         return true;
     }
 
-    private static bool HasValidDamageRatios(float[] values)
+    private static bool HasValidStageTotalDamages(float[] values)
     {
-        if (values == null || values.Length != DefaultStageTotalDamageRatios.Length)
+        if (values == null || values.Length != DefaultTotalDamagesBySuccessfulLocks.Length)
         {
             return false;
         }
