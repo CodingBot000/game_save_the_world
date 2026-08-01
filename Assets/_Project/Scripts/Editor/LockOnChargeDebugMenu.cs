@@ -247,6 +247,75 @@ public static class LockOnChargeDebugMenu
             $"assignedAfterClose={assignedAfterClose}, finalState={controller.State}.");
     }
 
+    [MenuItem(MenuRoot + "Run Player-Damage Cancel", priority = 287)]
+    private static void RunPlayerDamageCancel()
+    {
+        if (!TryGetRuntime(out PlayerLockOnController controller,
+                out BossLockOnTargetProvider provider, out LockOnHudPresenter hud) ||
+            !PrepareReadyState(controller, provider))
+        {
+            return;
+        }
+
+        PlayerCombatController combat = Object.FindAnyObjectByType<PlayerCombatController>();
+        if (combat == null)
+        {
+            Debug.LogError("[LockChargeDebug] PlayerCombatController was not found.");
+            return;
+        }
+
+        bool previousUndead = GameplayDebugFlags.Undead;
+        LockOnCancelReason cancelReason = default;
+        bool cancelObserved = false;
+        void HandleCanceled(LockOnCancelReason reason)
+        {
+            cancelReason = reason;
+            cancelObserved = true;
+        }
+
+        controller.OnLockCanceled += HandleCanceled;
+        try
+        {
+            GameplayDebugFlags.Undead = false;
+            combat.RefillForDebug();
+            int salvoIdBefore = controller.LastStartedSalvoId;
+            bool began = controller.TryBeginCharging(LockOnInputSource.MouseRight);
+            controller.AdvanceChargeForDebug(2.6f);
+            int locksBeforeDamage = controller.SuccessfulLockCount;
+            bool damageApplied = combat.ApplyDamage(1f);
+            hud?.RefreshForDebug();
+
+            bool releaseAfterDamage =
+                controller.TryReleaseCharging(LockOnInputSource.MouseRight);
+            bool verified = began && locksBeforeDamage == 5 && damageApplied &&
+                            cancelObserved && cancelReason == LockOnCancelReason.PlayerDamaged &&
+                            controller.State == LockOnCombatState.Ready &&
+                            controller.SuccessfulLockCount == 0 &&
+                            controller.LastReleaseIntent == null &&
+                            controller.LastStartedSalvoId == salvoIdBefore &&
+                            controller.CurrentLockOnSalvoId == 0 &&
+                            !combat.IsSalvoInvincible &&
+                            !releaseAfterDamage &&
+                            (hud == null || hud.VisibleMarkerCount == 0);
+            Debug.Log(
+                $"[LockChargeDebug] player-damage cancel verified={verified}, " +
+                $"began={began}, locksBeforeDamage={locksBeforeDamage}, " +
+                $"damageApplied={damageApplied}, cancelObserved={cancelObserved}, " +
+                $"cancelReason={cancelReason}, finalState={controller.State}, " +
+                $"releaseAfterDamage={releaseAfterDamage}, " +
+                $"salvoIdBefore={salvoIdBefore}, salvoIdAfter={controller.LastStartedSalvoId}, " +
+                $"activeSalvoId={controller.CurrentLockOnSalvoId}, " +
+                $"salvoInvincible={combat.IsSalvoInvincible}, " +
+                $"visibleMarkers={(hud != null ? hud.VisibleMarkerCount : -1)}.");
+        }
+        finally
+        {
+            controller.OnLockCanceled -= HandleCanceled;
+            GameplayDebugFlags.Undead = previousUndead;
+            combat.RefillForDebug();
+        }
+    }
+
     private static bool PrepareReadyState(
         PlayerLockOnController controller,
         BossLockOnTargetProvider provider)

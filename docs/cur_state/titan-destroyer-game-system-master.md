@@ -3,9 +3,9 @@ title: Titan Destroyer 게임 시스템 중심 문서
 document_id: TD-GAME-SYSTEM-SSOT
 document_type: game-system-ssot
 status: live
-version: "1.0.1"
+version: "1.0.3"
 last_verified: "2026-08-01"
-implementation_baseline: "git 22c0d70 + 2026-08-01 stage 11 verified working tree"
+implementation_baseline: "git 2f9cafb + 2026-08-01 player-hit lock cancel verified working tree"
 unity_version: 6000.4.0f1
 authoritative_scope:
   - game_flow
@@ -69,6 +69,8 @@ authoritative_scope:
 1. **기관총:** 조준 판단 없이 보스의 고정 `AimPoint`를 향해 지속 사격한다.
 2. **락온 미사일:** 입력을 누르는 동안 최대 5개 부위를 순차 락온하고, 놓으면 성공한 락 수에 따라 5~30발을 발사한다.
 
+락온 충전 중 플레이어에게 실제 피해가 적용되면 충전과 획득한 락은 즉시 취소되며, 해당 입력을 놓아도 미사일은 발사되지 않는다.
+
 ## 2. 게임 흐름과 전투 종료
 
 ### 2.1 기본 흐름
@@ -87,7 +89,7 @@ authoritative_scope:
 | Single | 2,000 | 현재 기본 플레이 경로 |
 | MultiPlaceholder | 2,800 | 동료 플레이스홀더가 활성화되지만 완성된 멀티플레이는 아님 |
 
-첫 보스 공격은 전투 씬 시작 후 **4초 지연** 뒤 시작한다. `R` 재시작 입력은 결과 상태에서 사용한다.
+첫 보스 공격은 전투 씬 시작 후 **4초 지연** 뒤 시작한다. 승리 후에는 `R`로 같은 씬을 재시작한다. 패배 중에는 `R` 입력을 받지 않고 결과 오버레이의 Retry/Quit를 사용한다.
 
 ### 2.3 스테이지와 난이도
 
@@ -162,6 +164,7 @@ Ready
   └─ 우클릭/LOCK ON 누름 → Charging
        ├─ 입력 놓음 + 락 성공 → Release/Salvo → ReuseWait
        ├─ 입력 놓음 + 성공 락 0개 → 취소 → Ready
+       ├─ 플레이어에게 실제 피해 적용 → 강제 취소 → Ready
        └─ 유효 타깃이 모두 사라진 상태가 1.25초 지속 → 취소 → Ready
 
 ReuseWait 5초 종료 → Ready
@@ -173,6 +176,10 @@ ReuseWait 5초 종료 → Ready
 - 정상 발사가 승인되는 순간 5초 재사용 대기시간이 시작된다. 미사일 비행이나 명중 완료 시점과 무관하다.
 - 한 번에 하나의 일제사격만 준비/실행할 수 있다.
 - 모바일 `LOCK ON` 버튼을 누른 채 포인터가 버튼 밖으로 나가면 현재 충전은 취소된다.
+- `Charging` 중 일반 피해 또는 연속 피해가 Hull/Armor 처리 경로에 실제로 적용되면 현재 충전, 성공 락, 월드 마커, 활성 입력 소스를 즉시 초기화한다.
+- 피격 취소 뒤 같은 우클릭이나 모바일 포인터를 놓는 동작은 발사 요청으로 인정하지 않는다. 미사일, 일제사격 무적, 5초 재사용 대기, `SHOOT ERROR`도 발생하지 않는다.
+- 기존 피격 무적, 일제사격 무적, `Undead` 디버그로 차단되어 생존 수치에 반영되지 않은 피해 시도는 새 피격으로 보지 않으며 충전을 취소하지 않는다.
+- 이 강제 취소 규칙은 `Charging`에만 적용된다. 이미 발사가 승인된 일제사격과 `ReuseWait`는 이후 피격으로 취소하지 않는다.
 
 ### 충전 및 피해 표
 
@@ -263,6 +270,7 @@ ReuseWait 5초 종료 → Ready
 - HUD 버튼: `LOCK ON`, `HOLD`, `RELEASE n/5`, 남은 재사용 시간, `NO TARGET`
 - 월드 락온 마커: 최대 5개, 획득 단계별 색상
 - 발사 후 마커: 일제사격이 끝날 때까지 유지되고 완료 약 1초 뒤 제거
+- 충전 중 피격 취소: 획득한 월드 마커를 즉시 모두 제거
 - 충전 게이지와 발사 오류 표시(`SHOOT ERROR`)
 
 ### 4.3 현재 사용하지 않는 플레이어 공격 규칙
@@ -306,10 +314,12 @@ ReuseWait 5초 종료 → Ready
  └─ 유효 피해
       ├─ Armor가 정상 상태 → Armor부터 차감
       │    └─ 이번 피해로 Armor가 깨지면 남은 피해 × 1.25를 Hull에 적용
-      └─ Armor가 파손 상태 → 피해 × 1.25를 Hull에 적용
+      ├─ Armor가 파손 상태 → 피해 × 1.25를 Hull에 적용
+      └─ 락온 Charging 중이면 충전·락·마커 강제 취소
 ```
 
 - 모든 유효 피격은 Armor 수리 대기시간을 다시 2.5초로 설정한다.
+- `PlayerCombatController`는 위 유효 피해 처리가 끝난 직후 `DamageApplied` 이벤트를 보낸다. `PlayerLockOnController`는 이 이벤트를 받아 현재 상태가 `Charging`일 때만 `PlayerDamaged` 사유로 취소한다.
 - 수리는 Armor만 회복하고 Hull은 회복하지 않는다.
 - Armor가 수리 중이더라도 36 미만이면 여전히 파손 상태이므로 Hull 피해 1.25배 규칙이 유지된다.
 - Armor가 36 이상이 되는 순간 파손 상태가 해제되고 이후 피해는 다시 Armor가 먼저 받는다.
@@ -505,7 +515,7 @@ Armor가 120 흡수 → Armor 0, 잔여 피해 30
 | 전투 모드/승패/초기화 | `Assets/_Project/Scripts/Gameplay/BattleController.cs` | `Assets/_Project/Scripts/Core/GameFlowController.cs`, `Assets/Scenes/BattleArena.unity/BattleArena.unity` |
 | 플레이어 이동 | `Assets/_Project/Scripts/Gameplay/PlayerOrbitController.cs` | `Assets/_Project/Scripts/Gameplay/PlayerMovementBounds.cs`, `Assets/_Project/Scripts/Gameplay/PlayerMoveGuide.cs`, `Assets/_Project/Scripts/Gameplay/PlayerVisualOverlayRenderer.cs`, 현재 씬 |
 | 기관총 | `Assets/_Project/Scripts/Gameplay/PlayerCombatController.cs` | `Assets/_Project/Scripts/Gameplay/ProjectileController.cs`, 현재 씬/투사체 프리팹 |
-| 락온 상태/피해 공식 | `Assets/_Project/Scripts/Gameplay/PlayerLockOnController.cs` | `Assets/_Project/Scripts/MissileStrike/LockOnChargeRules.cs`, `Assets/_Project/Scripts/MissileStrike/LockOnSalvoRules.cs` |
+| 락온 상태/피해 공식/피격 취소 | `Assets/_Project/Scripts/Gameplay/PlayerLockOnController.cs` | `Assets/_Project/Scripts/Gameplay/PlayerCombatController.cs`, `Assets/_Project/Scripts/UI/LockOnButtonInputRelay.cs`, `Assets/_Project/Scripts/MissileStrike/LockOnChargeRules.cs`, `Assets/_Project/Scripts/MissileStrike/LockOnSalvoRules.cs` |
 | 락온 타깃 | `Assets/_Project/Scripts/Gameplay/BossLockOnTargetProvider.cs`, `Assets/_Project/Scripts/Gameplay/BossLockOnTarget.cs` | `Assets/_Project/Scripts/Gameplay/BossTestState.cs`, 에디터 디버그 메뉴 |
 | 미사일 발사/분배 | `Assets/_Project/Scripts/Gameplay/PlayerMissileSalvoLauncher.cs` | `Assets/_Project/Scripts/MissileStrike/MissileStrikeDistribution.cs`, `Assets/_Project/Scripts/Gameplay/SpecialMissilePool.cs` |
 | 미사일 비행/명중 | `Assets/_Project/Scripts/Gameplay/SpecialHomingMissileController.cs` | 미사일 프리팹/풀 설정 |
@@ -563,12 +573,14 @@ Armor가 120 흡수 → Armor 0, 잔여 피해 30
 
 ### 2026-08-01
 
-- Git 기준점: `22c0d70` 및 단계 11 실제 화면비 기반 이동 범위 작업 트리
+- Git 기준점: `2f9cafb` 및 현재 미커밋 `BattleArena` 작업 트리
 - Unity 버전: `6000.4.0f1`
 - 확인 범위: 플레이어 전투/이동/방어 코드, 락온 규칙과 테스트 코드, 보스 공통 공격/패턴 코드, `BattleArena` 직렬화 값, 차량 상태 카탈로그, 런타임 상태, 락온 개발 사양서
 - 검증 방식: 정적 코드/에셋 교차검증, Unity MCP Play Mode 자동 입력, 전체 컴파일, Editor 로그, EditMode 테스트
 - Viper 스케일 2와 1920×1080 Game View에서 초기화가 정확히 1회 발생하고 저장값 `aspect=1.778`, 이동 Rect `(0,0)~(1,1)`, 플레이어/외형 중심 `(0.280,0.500)` 일치를 확인했다.
 - 자동 이동 결과는 좌 `(0.000,0.490)`, 우 `(1.000,0.487)`, 상 `(0.988,1.000)`, 하 `(0.987,0.000)`으로 전체 viewport 네 변 도달 검증을 통과했다. 확대 외형 일부가 끝 위치에서 화면 밖으로 나가는 것은 현재 의도된 규칙이다.
+- 우클릭으로 5개 락을 획득한 뒤 실제 1 피해를 적용한 Play Mode 전용 진단에서 `PlayerDamaged` 취소, `Ready` 복귀, 성공 락/마커 0개, 동일 우클릭 릴리즈 거부, 신규 일제사격 ID·무적 없음이 모두 확인됐다.
+- 위 취소 진단 직후 다시 풀차지한 회귀 진단에서 5개 락, 30발 발사 요청, 첫 미사일 이전 무적 시작, `ReuseWait` 진입이 정상 동작했다.
 - 수정 스크립트 진단 오류 0개, Unity 전체 컴파일 오류 0개, 신규 실행 예외 없음, EditMode 테스트 59/59 통과.
 - 미검증 범위: 실제 19.5:9 모바일 기기 빌드의 터치 이동·Safe Area는 이번 작업에서 실행하지 않았다. 이동 계산 자체는 HUD Safe Area가 아니라 실제 Base 카메라 픽셀 크기와 정규화 viewport를 사용한다.
 - 사용자 작업인 `BattleArena`의 Viper 스케일 2와 기타 미커밋 씬·에셋 값은 수정하거나 커밋 대상으로 포함하지 않았다.
@@ -577,5 +589,7 @@ Armor가 120 흡수 → Armor 0, 잔여 피해 30
 
 | 날짜 | 버전 | 변경 내용 | 검증 |
 | --- | --- | --- | --- |
+| 2026-08-01 | 1.0.3 | 락온 충전 중 실제 플레이어 피해가 적용되면 충전·락·마커·입력을 즉시 취소하고 같은 입력 릴리즈의 발사를 차단 | 우클릭 5락 후 실제 피해 Play Mode 진단, 취소 후 풀차지 30발 회귀, 스크립트 진단, 전체 컴파일, EditMode 59/59 |
+| 2026-08-01 | 1.0.2 | 승리 시 `R` 재시작과 패배 시 Retry/Quit 흐름을 구분하고 구현 기준점을 최신 커밋으로 갱신 | YAML/Markdown 구조, 소스 경로 27개, 피해 공식 정적 검증 |
 | 2026-08-01 | 1.0.1 | 실제 Base 카메라 화면비 기반 최초 1회 전체 viewport 이동, 런타임 이동 박스 동기화, Renderer 크기 기반 범위 축소 제거, 확대 외형 화면 중심 보정 규칙 반영 | 1920×1080 Play Mode 네 변 자동 이동, 외형 중심, 컴파일, EditMode 59/59 |
 | 2026-08-01 | 1.0.0 | 최초 SSOT 작성. 기관총, 새 락온 미사일, Hull/Armor, 활성 보스 4패턴, 레거시 제거 상태, 유지 절차 정리 | 코드·씬·에셋 정적 교차검증 |

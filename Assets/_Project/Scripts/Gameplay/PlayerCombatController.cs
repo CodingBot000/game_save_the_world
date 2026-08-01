@@ -81,6 +81,7 @@ public class PlayerCombatController : MonoBehaviour
     private string lastHitDebugSummary = "LastHit: none";
 
     public event Action Died;
+    public event Action DamageApplied;
     public event Action SalvoInvincibilityStarted;
     public event Action SalvoInvincibilityEnded;
 
@@ -463,6 +464,8 @@ public class PlayerCombatController : MonoBehaviour
         ApplyTint(Color.red);
         CancelInvoke(nameof(RestoreBaseColors));
         Invoke(nameof(RestoreBaseColors), 0.12f);
+
+        DamageApplied?.Invoke();
 
         if (currentHull <= 0f)
         {

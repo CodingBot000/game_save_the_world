@@ -28,6 +28,7 @@ public enum LockOnCancelReason
     TargetsUnavailableOnRelease,
     TargetGraceExpired,
     BattleUnavailable,
+    PlayerDamaged,
     ReleaseRejected,
     ComponentDisabled,
 }
@@ -157,6 +158,7 @@ public sealed class PlayerLockOnController : MonoBehaviour
     {
         UnsubscribeProvider();
         UnsubscribeSalvoLauncher();
+        UnsubscribePlayerCombat();
         EndOwnedSalvoInvincibility();
         currentLockOnSalvoId = 0;
         battleController = battle;
@@ -180,6 +182,7 @@ public sealed class PlayerLockOnController : MonoBehaviour
         configured = true;
         SubscribeProvider();
         SubscribeSalvoLauncher();
+        SubscribePlayerCombat();
         PublishAvailability(force: true);
     }
 
@@ -724,6 +727,14 @@ public sealed class PlayerLockOnController : MonoBehaviour
         PublishAvailability(force: false);
     }
 
+    private void HandlePlayerDamageApplied()
+    {
+        if (state == LockOnCombatState.Charging)
+        {
+            CancelCharging(LockOnCancelReason.PlayerDamaged);
+        }
+    }
+
     private void SubscribeProvider()
     {
         if (targetProvider != null)
@@ -849,6 +860,25 @@ public sealed class PlayerLockOnController : MonoBehaviour
         }
     }
 
+    private void SubscribePlayerCombat()
+    {
+        if (playerCombatController == null)
+        {
+            return;
+        }
+
+        playerCombatController.DamageApplied -= HandlePlayerDamageApplied;
+        playerCombatController.DamageApplied += HandlePlayerDamageApplied;
+    }
+
+    private void UnsubscribePlayerCombat()
+    {
+        if (playerCombatController != null)
+        {
+            playerCombatController.DamageApplied -= HandlePlayerDamageApplied;
+        }
+    }
+
     private void EnsureStageConfiguration()
     {
         if (stageChargeTimes == null || stageChargeTimes.Length != DefaultStageChargeTimes.Length ||
@@ -930,6 +960,7 @@ public sealed class PlayerLockOnController : MonoBehaviour
 
         UnsubscribeProvider();
         UnsubscribeSalvoLauncher();
+        UnsubscribePlayerCombat();
         EndOwnedSalvoInvincibility();
         currentLockOnSalvoId = 0;
     }
@@ -940,6 +971,7 @@ public sealed class PlayerLockOnController : MonoBehaviour
         {
             SubscribeProvider();
             SubscribeSalvoLauncher();
+            SubscribePlayerCombat();
             PublishAvailability(force: true);
         }
     }
@@ -948,6 +980,7 @@ public sealed class PlayerLockOnController : MonoBehaviour
     {
         UnsubscribeProvider();
         UnsubscribeSalvoLauncher();
+        UnsubscribePlayerCombat();
         EndOwnedSalvoInvincibility();
     }
 
