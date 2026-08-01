@@ -59,17 +59,21 @@ public sealed class LockOnReleaseIntent
 [DisallowMultipleComponent]
 public sealed class PlayerLockOnController : MonoBehaviour
 {
-    private static readonly float[] PreviousDefaultStageChargeTimes =
+    private static readonly float[] LegacyDefaultStageChargeTimes =
         { 0.35f, 0.75f, 1.25f, 1.80f, 2.50f };
-    private static readonly float[] DefaultStageChargeTimes =
+    private static readonly float[] PreviousDefaultStageChargeTimes =
         { 3.00f, 3.40f, 3.90f, 4.45f, 5.15f };
+    private static readonly float[] DefaultStageChargeTimes =
+        { 1.00f, 2.50f, 4.50f, 7.00f, 10.00f };
     private static readonly int[] DefaultMissileCountsBySuccessfulLocks =
         { 5, 10, 15, 20, 30 };
     private static readonly float[] DefaultStageTotalDamageRatios =
         { 0.30f, 0.40f, 0.50f, 0.60f, 1f };
 
-    [SerializeField] private float[] stageChargeTimes =
-        { 3.00f, 3.40f, 3.90f, 4.45f, 5.15f };
+    [SerializeField, Tooltip(
+        "Cumulative thresholds derived from per-stage durations 1 / 1.5 / 2 / 2.5 / 3 seconds.")]
+    private float[] stageChargeTimes =
+        { 1.00f, 2.50f, 4.50f, 7.00f, 10.00f };
     [SerializeField, Range(0.1f, 3f)] private float targetGraceTime = 1.25f;
     [Header("Missile Salvo")]
     [SerializeField] private int[] missileCountsBySuccessfulLocks =
@@ -105,6 +109,7 @@ public sealed class PlayerLockOnController : MonoBehaviour
     private int currentLockOnSalvoId;
     private int currentLockOnMissilesFired;
     private bool ownsSalvoInvincibility;
+    private BossLockOnTarget currentChargingTarget;
 
     public LockOnCombatState State => state;
     public LockOnInputSource ActiveInputSource => activeInputSource;
@@ -122,6 +127,7 @@ public sealed class PlayerLockOnController : MonoBehaviour
     public float ReuseWaitRemaining => Mathf.Max(0f, reuseWaitRemaining);
     public float TargetGraceTime => targetGraceTime;
     public IReadOnlyList<BossLockOnTarget> LockedTargets => lockedTargets;
+    public BossLockOnTarget CurrentChargingTarget => currentChargingTarget;
     public LockOnReleaseIntent LastReleaseIntent { get; private set; }
     public bool IsCharging => state == LockOnCombatState.Charging;
     public bool HasValidTargets => targetProvider != null && targetProvider.HasValidTargets;
@@ -275,6 +281,7 @@ public sealed class PlayerLockOnController : MonoBehaviour
         activeInputSource = source;
         chargeSessionSeed = unchecked(Environment.TickCount ^ (Time.frameCount * 397));
         SetState(LockOnCombatState.Charging);
+        RefreshLockAssignments();
         OnLockStart?.Invoke(source);
         PublishAvailability(force: true);
         return true;
@@ -598,9 +605,16 @@ public sealed class PlayerLockOnController : MonoBehaviour
                 OnLockTargetAdded?.Invoke(replacement, SuccessfulLockCount);
             }
 
+            if (currentChargingTarget != null &&
+                (!currentChargingTarget.IsSelectable || usedTargets.Contains(currentChargingTarget)))
+            {
+                currentChargingTarget = null;
+            }
+
             while (lockedTargets.Count < chargeStage)
             {
-                BossLockOnTarget target = FindNextUniqueCandidate(lockedTargets.Count + 1);
+                BossLockOnTarget target = TakeCurrentChargingTargetOrFindCandidate(
+                    lockedTargets.Count + 1);
                 if (target == null)
                 {
                     break;
@@ -612,11 +626,45 @@ public sealed class PlayerLockOnController : MonoBehaviour
                 OnLockStageUp?.Invoke(SuccessfulLockCount);
                 OnLockTargetAdded?.Invoke(target, SuccessfulLockCount);
             }
+
+            RefreshCurrentChargingTarget();
         }
         finally
         {
             refreshingLockAssignments = false;
         }
+    }
+
+    private BossLockOnTarget TakeCurrentChargingTargetOrFindCandidate(int slotNumber)
+    {
+        BossLockOnTarget target = currentChargingTarget;
+        currentChargingTarget = null;
+        if (target != null && target.IsSelectable && !usedTargets.Contains(target))
+        {
+            return target;
+        }
+
+        return FindNextUniqueCandidate(slotNumber);
+    }
+
+    private void RefreshCurrentChargingTarget()
+    {
+        if (state != LockOnCombatState.Charging ||
+            chargeStage >= MaxLockStage ||
+            lockedTargets.Count >= MaxLockStage)
+        {
+            currentChargingTarget = null;
+            return;
+        }
+
+        if (currentChargingTarget != null &&
+            currentChargingTarget.IsSelectable &&
+            !usedTargets.Contains(currentChargingTarget))
+        {
+            return;
+        }
+
+        currentChargingTarget = FindNextUniqueCandidate(lockedTargets.Count + 1);
     }
 
     private BossLockOnTarget FindNextUniqueCandidate(int slotNumber)
@@ -701,6 +749,7 @@ public sealed class PlayerLockOnController : MonoBehaviour
         candidateBuffer.Clear();
         snapshotBuffer.Clear();
         usedTargets.Clear();
+        currentChargingTarget = null;
         chargeElapsed = 0f;
         chargeStage = 0;
         noTargetSince = -1f;
@@ -896,6 +945,7 @@ public sealed class PlayerLockOnController : MonoBehaviour
     {
         if (stageChargeTimes == null || stageChargeTimes.Length != DefaultStageChargeTimes.Length ||
             !LockOnChargeRules.AreStrictlyIncreasing(stageChargeTimes) ||
+            MatchesStageChargeTimes(stageChargeTimes, LegacyDefaultStageChargeTimes) ||
             MatchesStageChargeTimes(stageChargeTimes, PreviousDefaultStageChargeTimes))
         {
             stageChargeTimes = (float[])DefaultStageChargeTimes.Clone();

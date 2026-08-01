@@ -3,9 +3,9 @@ title: Titan Destroyer 게임 시스템 중심 문서
 document_id: TD-GAME-SYSTEM-SSOT
 document_type: game-system-ssot
 status: live
-version: "1.0.5"
+version: "1.0.6"
 last_verified: "2026-08-01"
-implementation_baseline: "git 0836a00 + 2026-08-01 first-lock three-second charge verified working tree"
+implementation_baseline: "git 17b954f + 2026-08-01 sequential lock charge and active-marker preview verified working tree"
 unity_version: 6000.4.0f1
 authoritative_scope:
   - game_flow
@@ -68,7 +68,7 @@ authoritative_scope:
 현재 플레이어에게 유효한 공격 선택지는 아래 두 가지뿐이다.
 
 1. **기관총:** 조준 판단 없이 보스의 고정 `AimPoint`를 향해 지속 사격한다.
-2. **락온 미사일:** 입력을 누른 뒤 3초에 첫 락을 획득하고 최대 5개 부위를 순차 락온하며, 놓으면 성공한 락 수에 따라 5~30발을 발사한다.
+2. **락온 미사일:** 입력을 누르면 첫 충전 타깃 마커가 즉시 점멸하고, 단계별 1 / 1.5 / 2 / 2.5 / 3초를 들여 최대 5개 부위를 순차 락온한다. 놓으면 성공한 락 수에 따라 5~30발을 발사한다.
 
 락온 충전 중 플레이어에게 실제 피해가 적용되면 충전과 획득한 락은 즉시 취소되며, 해당 입력을 놓아도 미사일은 발사되지 않는다.
 
@@ -107,7 +107,7 @@ authoritative_scope:
 | 수평 이동 | `A/D`, 좌/우 방향키 | 현재 별도 입력 없음 | 기본 7.2 / 락온 충전 중 4.32 |
 | 수직 이동 | `W/S`, 위/아래 방향키 | 현재 별도 입력 없음 | 기본 7.2 / 락온 충전 중 4.32 |
 | 기관총 | 마우스 왼쪽 버튼 유지 또는 `Space` 유지 | 현재 별도 입력 없음 | 누르는 동안 연사 |
-| 락온 충전 | 마우스 오른쪽 버튼 유지 | `LOCK ON` 버튼 누르기 유지 | 첫 락 3초, 이후 단계별 획득 |
+| 락온 충전 | 마우스 오른쪽 버튼 유지 | `LOCK ON` 버튼 누르기 유지 | 단계별 1/1.5/2/2.5/3초, 풀차지 10초 |
 | 락온 발사 | 마우스 오른쪽 버튼 놓기 | `LOCK ON` 버튼 놓기 | 성공한 락 수 기준 발사 |
 
 이동 속도 공식:
@@ -177,6 +177,7 @@ authoritative_scope:
 ```text
 Ready
   └─ 우클릭/LOCK ON 누름 → Charging
+       ├─ 5개 락 완료 + 입력 유지 → Charging 유지
        ├─ 입력 놓음 + 락 성공 → Release/Salvo → ReuseWait
        ├─ 입력 놓음 + 성공 락 0개 → 취소 → Ready
        ├─ 플레이어에게 실제 피해 적용 → 강제 취소 → Ready
@@ -185,9 +186,11 @@ Ready
 ReuseWait 5초 종료 → Ready
 ```
 
-- 첫 번째 락은 입력을 누른 뒤 3초에 획득하며, 충전은 최대 5단계까지 올라간다.
-- 3초가 되기 전에 입력을 놓으면 성공 락 0개로 취소되고 미사일·일제사격 무적·재사용 대기가 발생하지 않는다.
-- 첫 락 이후 기존 단계 간격 0.4 / 0.5 / 0.55 / 0.7초를 유지한다. 따라서 누적 획득 시점은 3.0 / 3.4 / 3.9 / 4.45 / 5.15초이며 풀차지는 5.15초다.
+- 각 단계가 개별적으로 요구하는 시간은 순서대로 `1 / 1.5 / 2 / 2.5 / 3초`다. 누적 락 획득 시점은 `1 / 2.5 / 4.5 / 7 / 10초`이며 풀차지는 10초다.
+- 1초가 되기 전에 입력을 놓으면 성공 락 0개로 취소되고 미사일·일제사격 무적·재사용 대기가 발생하지 않는다.
+- 입력을 누르는 즉시 첫 충전 타깃을 확정해 마커를 표시한다. 이 마커는 아직 성공 락·발사 타깃 수에 포함하지 않는다.
+- 충전 중인 현재 타깃 마커 하나만 알파 점멸과 스케일 왕복을 반복한다. 단계 완료 시 해당 마커는 즉시 고정되고, 다음 타깃 마커가 나타나 점멸을 이어간다.
+- 5개 락이 모두 완료되면 다섯 마커는 모두 고정된다. 입력을 계속 누르는 동안 `Charging` 상태, 충전 중 이동 속도 4.32, 피격 시 전체 취소 규칙을 그대로 유지하며 자동 발사하지 않는다.
 - 실제 발사 단계는 화면에 도달한 충전 단계가 아니라 **성공적으로 획득한 고유 락 수**로 결정된다.
 - 한 번의 충전에서 같은 타깃을 중복 락하지 않으며 최대 5개 타깃을 잡는다.
 - 정상 발사가 승인되는 순간 5초 재사용 대기시간이 시작된다. 미사일 비행이나 명중 완료 시점과 무관하다.
@@ -211,11 +214,11 @@ ReuseWait 5초 종료 → Ready
 
 | 성공 락 수 | 최소 충전 시간 | 발사 수 | 총 피해 비율 `R` | 총 기본 피해 | 1발 기본 피해 |
 | ---: | ---: | ---: | ---: | ---: | ---: |
-| 1 | 3.00초 | 5 | 30% | 75 | 15 |
-| 2 | 3.40초 | 10 | 40% | 100 | 10 |
-| 3 | 3.90초 | 15 | 50% | 125 | 약 8.333 |
-| 4 | 4.45초 | 20 | 60% | 150 | 7.5 |
-| 5 | 5.15초 | 30 | 100% | 250 | 약 8.333 |
+| 1 | 1.00초 | 5 | 30% | 75 | 15 |
+| 2 | 2.50초 | 10 | 40% | 100 | 10 |
+| 3 | 4.50초 | 15 | 50% | 125 | 약 8.333 |
+| 4 | 7.00초 | 20 | 60% | 150 | 7.5 |
+| 5 | 10.00초 | 30 | 100% | 250 | 약 8.333 |
 
 피해는 발사 승인 시점에 스냅샷으로 고정된다.
 
@@ -286,7 +289,8 @@ ReuseWait 5초 종료 → Ready
 ### 락온 피드백
 
 - HUD 버튼: `LOCK ON`, `HOLD`, `RELEASE n/5`, 남은 재사용 시간, `NO TARGET`
-- 월드 락온 마커: 최대 5개, 획득 단계별 색상
+- 월드 락온 마커: 입력 시작 즉시 현재 충전 타깃 1개를 표시하고, 현재 타깃만 0.28초 반주기의 알파 점멸(`0.32~1.0`)과 최대 42% 스케일업/다운을 반복
+- 단계 완료 마커: 점멸을 즉시 멈추고 고정하며, 다음 단계 타깃 마커가 새로 점멸. 풀차지 중에는 5개 모두 고정
 - 발사 후 마커: 일제사격이 끝날 때까지 유지되고 완료 약 1초 뒤 제거
 - 충전 중 피격 취소: 획득한 월드 마커를 즉시 모두 제거
 - 충전 게이지와 발사 오류 표시(`SHOOT ERROR`)
@@ -518,7 +522,7 @@ Armor가 120 흡수 → Armor 0, 잔여 피해 30
 | 기관총 탄/피해 연출 | 발사체와 보스 피해 숫자 표시, 현재 크리티컬 표기 없음 |
 | Lock-on Button | 준비, 충전, 놓기, 쿨다운, 타깃 없음 상태 표시 |
 | Charge Gauge | 충전 진행과 단계 표시 |
-| World Reticle | 최대 5개 락온 부위와 발사 후 유지 상태 표시 |
+| World Reticle | 현재 충전 타깃은 점멸·스케일 왕복, 완료 타깃은 고정 표시하며 발사 후 유지 상태도 표시 |
 | Telegraph | 보스 빔/대형 공격의 사전 경고 |
 | Result Overlay | 승리 또는 패배와 재시도/이탈 흐름 |
 
@@ -533,7 +537,8 @@ Armor가 120 흡수 → Armor 0, 잔여 피해 30
 | 전투 모드/승패/초기화 | `Assets/_Project/Scripts/Gameplay/BattleController.cs` | `Assets/_Project/Scripts/Core/GameFlowController.cs`, `Assets/Scenes/BattleArena.unity/BattleArena.unity` |
 | 플레이어 이동 | `Assets/_Project/Scripts/Gameplay/PlayerOrbitController.cs` | `Assets/_Project/Scripts/Core/PlayerRuntimeState.cs`, `Assets/_Project/Scripts/Gameplay/BattleController.cs`, `Assets/_Project/Scripts/Gameplay/PlayerLockOnController.cs`, `Assets/_Project/Scripts/Gameplay/PlayerMovementBounds.cs`, `Assets/_Project/Scripts/Gameplay/PlayerMoveGuide.cs`, `Assets/_Project/Scripts/Gameplay/PlayerVisualOverlayRenderer.cs`, 현재 씬 |
 | 기관총 | `Assets/_Project/Scripts/Gameplay/PlayerCombatController.cs` | `Assets/_Project/Scripts/Gameplay/ProjectileController.cs`, 현재 씬/투사체 프리팹 |
-| 락온 상태/피해 공식/피격 취소 | `Assets/_Project/Scripts/Gameplay/PlayerLockOnController.cs` | `Assets/_Project/Scripts/Gameplay/PlayerCombatController.cs`, `Assets/_Project/Scripts/UI/LockOnButtonInputRelay.cs`, `Assets/_Project/Scripts/MissileStrike/LockOnChargeRules.cs`, `Assets/_Project/Scripts/MissileStrike/LockOnSalvoRules.cs` |
+| 락온 상태/충전 시간/피해 공식/피격 취소 | `Assets/_Project/Scripts/Gameplay/PlayerLockOnController.cs` | `Assets/_Project/Scripts/Gameplay/PlayerCombatController.cs`, `Assets/_Project/Scripts/UI/LockOnButtonInputRelay.cs`, `Assets/_Project/Scripts/MissileStrike/LockOnChargeRules.cs`, `Assets/_Project/Scripts/MissileStrike/LockOnSalvoRules.cs` |
+| 락온 HUD/월드 마커 | `Assets/_Project/Scripts/UI/LockOnHudPresenter.cs` | `Assets/_Project/Scripts/Gameplay/PlayerLockOnController.cs`, 락온 마커 Sprite, 현재 씬의 HUD |
 | 락온 타깃 | `Assets/_Project/Scripts/Gameplay/BossLockOnTargetProvider.cs`, `Assets/_Project/Scripts/Gameplay/BossLockOnTarget.cs` | `Assets/_Project/Scripts/Gameplay/BossTestState.cs`, 에디터 디버그 메뉴 |
 | 미사일 발사/분배 | `Assets/_Project/Scripts/Gameplay/PlayerMissileSalvoLauncher.cs` | `Assets/_Project/Scripts/MissileStrike/MissileStrikeDistribution.cs`, `Assets/_Project/Scripts/Gameplay/SpecialMissilePool.cs` |
 | 미사일 비행/명중 | `Assets/_Project/Scripts/Gameplay/SpecialHomingMissileController.cs` | 미사일 프리팹/풀 설정 |
@@ -591,7 +596,7 @@ Armor가 120 흡수 → Armor 0, 잔여 피해 30
 
 ### 2026-08-01
 
-- Git 기준점: `0836a00` 및 현재 미커밋 `BattleArena` 작업 트리
+- Git 기준점: `17b954f` 및 현재 미커밋 `BattleArena` 작업 트리
 - Unity 버전: `6000.4.0f1`
 - 확인 범위: 플레이어 전투/이동/방어 코드, 락온 규칙과 테스트 코드, 보스 공통 공격/패턴 코드, `BattleArena` 직렬화 값, 차량 상태 카탈로그, 런타임 상태, 락온 개발 사양서
 - 검증 방식: 정적 코드/에셋 교차검증, Unity MCP Play Mode 자동 입력, 전체 컴파일, Editor 로그, EditMode 테스트
@@ -601,8 +606,10 @@ Armor가 120 흡수 → Armor 0, 잔여 피해 30
 - 위 취소 진단 직후 다시 풀차지한 회귀 진단에서 5개 락, 30발 발사 요청, 첫 미사일 이전 무적 시작, `ReuseWait` 진입이 정상 동작했다.
 - 이동 속도 Play Mode 진단에서 기본 좌우·상하 7.2, `Charging` 배율 0.6, 유효 속도 4.32, 충전 취소 후 배율 1.0 복구를 확인했다.
 - 실제 키 입력을 사용한 전체 viewport 이동 회귀에서 좌 `(0.000,0.480)`, 우 `(1.000,0.477)`, 상 `(0.993,1.000)`, 하 `(0.991,0.000)` 도달을 모두 통과했다.
-- 첫 락 3초 Play Mode 진단에서 2.99초 시점은 0락이고 릴리즈가 발사 없이 거부됐으며, 3.0초 직후 1락, 3.4초 직후 2락 획득을 확인했다.
-- 새 풀차지 누적 시점 5.15초에서 5개 락, 30발 요청, 첫 미사일 이전 무적, `ReuseWait` 진입이 정상 동작했다.
+- 단계별 개별 충전 시간 `1/1.5/2/2.5/3초`와 누적 획득 시점 `1/2.5/4.5/7/10초`를 Play Mode에서 확인했다. 0.99초 조기 릴리즈는 발사 없이 취소됐다.
+- 충전 시작 즉시 표시/점멸 마커가 각각 1개였고, 각 단계 완료 직후 표시 마커 수는 `[2,3,4,5,5]`, 점멸 마커 수는 `[1,1,1,1,0]`이었다. 완료 마커는 고정되고 다음 마커만 점멸했다.
+- 10초 풀차지 뒤 1초를 더 유지해도 `Charging`, 5개 락, 이동 배율 0.6, 점멸 마커 0개가 유지됐다. 릴리즈 전 피해 적용 시 `PlayerDamaged`로 전부 취소되고 발사되지 않았다.
+- 10초 풀차지 릴리즈에서 30발 요청, 첫 미사일 이전 무적, `ReuseWait` 진입이 정상 동작했다. 발사 중 마커 5개 유지와 발사 완료 1초 뒤 제거도 통과했다.
 - 수정 스크립트 진단 오류 0개, Unity 전체 컴파일 오류 0개, 신규 실행 예외 없음, EditMode 테스트 59/59 통과.
 - 미검증 범위: 실제 19.5:9 모바일 기기 빌드의 터치 이동·Safe Area는 이번 작업에서 실행하지 않았다. 이동 계산 자체는 HUD Safe Area가 아니라 실제 Base 카메라 픽셀 크기와 정규화 viewport를 사용한다.
 - 사용자 작업인 `BattleArena`의 Viper 스케일 2와 기타 미커밋 씬·에셋 값은 수정하거나 커밋 대상으로 포함하지 않았다.
@@ -611,6 +618,7 @@ Armor가 120 흡수 → Armor 0, 잔여 피해 30
 
 | 날짜 | 버전 | 변경 내용 | 검증 |
 | --- | --- | --- | --- |
+| 2026-08-01 | 1.0.6 | 단계별 충전 시간을 1/1.5/2/2.5/3초로 변경하고, 충전 시작 즉시 현재 타깃 마커를 점멸·스케일 왕복으로 표시한 뒤 완료 마커를 고정하도록 변경 | 누적 1/2.5/4.5/7/10초, 시작 마커 1개, 단계별 표시 `[2,3,4,5,5]`·점멸 `[1,1,1,1,0]`, 풀차지 감속/피격 취소, 30발 발사·마커 유지, 컴파일, EditMode 59/59 |
 | 2026-08-01 | 1.0.5 | 첫 락 획득을 3초로 연장하고 기존 후속 단계 간격을 유지해 누적 충전 시점을 3.0/3.4/3.9/4.45/5.15초로 변경 | 2.99초 조기 릴리즈 차단, 3.0초 1락, 3.4초 2락, 5.15초 30발 풀차지 Play Mode 진단, 스크립트 진단, 전체 컴파일, EditMode 59/59 |
 | 2026-08-01 | 1.0.4 | 실제 좌우·상하 이동 기본값을 8에서 7.2로 10% 감속하고 락온 `Charging` 중 0.6 배율을 적용해 4.32로 감속 | Play Mode 상태별 7.2/4.32/복구 진단, 실제 키 입력 viewport 네 변 도달, 스크립트 진단, 전체 컴파일, EditMode 59/59 |
 | 2026-08-01 | 1.0.3 | 락온 충전 중 실제 플레이어 피해가 적용되면 충전·락·마커·입력을 즉시 취소하고 같은 입력 릴리즈의 발사를 차단 | 우클릭 5락 후 실제 피해 Play Mode 진단, 취소 후 풀차지 30발 회귀, 스크립트 진단, 전체 컴파일, EditMode 59/59 |

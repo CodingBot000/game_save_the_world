@@ -7,7 +7,9 @@ public sealed class LockOnHudPresenter : MonoBehaviour
     private const string RuntimeRootName = "LockOnHudRuntime";
     private const string ChargeBackgroundName = "LockChargeBackground";
     private const string ChargeFillName = "LockChargeFill";
-    private const float MarkerPulseDuration = 0.28f;
+    private const float ChargingMarkerPulseHalfCycle = 0.28f;
+    private const float ChargingMarkerMinimumAlpha = 0.32f;
+    private const float ChargingMarkerScaleAmplitude = 0.42f;
     private static readonly Color[] StageColors =
     {
         new(0.35f, 0.90f, 1f, 1f),
@@ -35,7 +37,6 @@ public sealed class LockOnHudPresenter : MonoBehaviour
     private readonly Image[] lockMarkerBaseImages = new Image[5];
     private readonly Image[] lockMarkerInnerImages = new Image[5];
     private readonly Text[] lockMarkerLabels = new Text[5];
-    private readonly float[] markerPulseStartedAt = { -1f, -1f, -1f, -1f, -1f };
     private readonly Transform[] releasedTargetAnchors = new Transform[5];
     private readonly Vector3[] releasedTargetPositions = new Vector3[5];
     private bool ownsRuntimeRoot;
@@ -45,6 +46,9 @@ public sealed class LockOnHudPresenter : MonoBehaviour
     private int releasedMarkerCount;
     private int releasedSalvoId;
     private float releaseMarkersClearAt = -1f;
+    private BossLockOnTarget lastChargingMarkerTarget;
+    private int lastChargingMarkerIndex = -1;
+    private float chargingMarkerPulseStartedAt = -1f;
 
     public int VisibleMarkerCount { get; private set; }
     public int VisibleTargetingImageCount { get; private set; }
@@ -56,23 +60,8 @@ public sealed class LockOnHudPresenter : MonoBehaviour
     public string ButtonLabelText => lockButtonLabel != null ? lockButtonLabel.text : string.Empty;
     public bool ButtonInteractable => lockButton != null && lockButton.interactable;
     public float ChargeFillAmount => chargeFill != null ? chargeFill.fillAmount : 0f;
-    public int ActiveMarkerPulseCount
-    {
-        get
-        {
-            int count = 0;
-            for (int i = 0; i < markerPulseStartedAt.Length; i++)
-            {
-                float elapsed = Time.unscaledTime - markerPulseStartedAt[i];
-                if (markerPulseStartedAt[i] >= 0f && elapsed < MarkerPulseDuration)
-                {
-                    count++;
-                }
-            }
-
-            return count;
-        }
-    }
+    public int ActiveMarkerPulseCount { get; private set; }
+    public int BlinkingMarkerCount => ActiveMarkerPulseCount;
 
     public void Configure(
         PlayerLockOnController controller,
@@ -185,8 +174,10 @@ public sealed class LockOnHudPresenter : MonoBehaviour
     private void RefreshMarkers()
     {
         ExpireReleasedMarkersIfNeeded();
+        RefreshChargingMarkerPulseState();
         VisibleMarkerCount = 0;
         VisibleTargetingImageCount = 0;
+        ActiveMarkerPulseCount = 0;
         for (int i = 0; i < lockMarkerRoots.Length; i++)
         {
             RectTransform markerRoot = lockMarkerRoots[i];
@@ -197,6 +188,7 @@ public sealed class LockOnHudPresenter : MonoBehaviour
 
             bool hasSlot;
             bool selectable = true;
+            bool isChargingMarker = false;
             Vector3 worldPosition = Vector3.zero;
             if (releaseMarkersActive)
             {
@@ -209,12 +201,20 @@ public sealed class LockOnHudPresenter : MonoBehaviour
             }
             else
             {
-                hasSlot = lockOnController != null &&
-                          lockOnController.State == LockOnCombatState.Charging &&
-                          i < lockOnController.LockedTargets.Count;
-                BossLockOnTarget target = hasSlot
+                bool charging = lockOnController != null &&
+                                lockOnController.State == LockOnCombatState.Charging;
+                BossLockOnTarget target = charging && i < lockOnController.LockedTargets.Count
                     ? lockOnController.LockedTargets[i]
                     : null;
+                if (target == null && charging &&
+                    i == lockOnController.LockedTargets.Count &&
+                    lockOnController.CurrentChargingTarget != null)
+                {
+                    target = lockOnController.CurrentChargingTarget;
+                    isChargingMarker = true;
+                }
+
+                hasSlot = target != null;
                 selectable = target != null && target.IsSelectable;
                 if (target != null)
                 {
@@ -232,6 +232,16 @@ public sealed class LockOnHudPresenter : MonoBehaviour
             }
 
             Color stageColor = StageColors[Mathf.Clamp(i, 0, StageColors.Length - 1)];
+            float pulse = isChargingMarker ? ResolveChargingMarkerPulse() : 0f;
+            if (isChargingMarker)
+            {
+                stageColor.a *= Mathf.Lerp(
+                    ChargingMarkerMinimumAlpha,
+                    1f,
+                    pulse);
+                ActiveMarkerPulseCount++;
+            }
+
             markerRoot.anchoredPosition = canvasPosition;
             if (lockMarkerBaseImages[i] != null)
             {
@@ -255,8 +265,8 @@ public sealed class LockOnHudPresenter : MonoBehaviour
             }
 
             float baseScale = 1f + i * 0.08f;
-            float pulse = ResolveMarkerPulse(i);
-            float scale = baseScale * (1f + pulse * 0.42f);
+            float scale = baseScale *
+                          (1f + pulse * ChargingMarkerScaleAmplitude);
             markerRoot.localScale = new Vector3(scale, scale, 1f);
             VisibleMarkerCount++;
         }
@@ -271,36 +281,44 @@ public sealed class LockOnHudPresenter : MonoBehaviour
         }
     }
 
-    private float ResolveMarkerPulse(int markerIndex)
+    private void RefreshChargingMarkerPulseState()
     {
-        float startedAt = markerPulseStartedAt[markerIndex];
-        if (startedAt < 0f)
+        BossLockOnTarget chargingTarget = !releaseMarkersActive &&
+                                          lockOnController != null &&
+                                          lockOnController.State == LockOnCombatState.Charging
+            ? lockOnController.CurrentChargingTarget
+            : null;
+        int chargingIndex = chargingTarget != null
+            ? lockOnController.LockedTargets.Count
+            : -1;
+        if (chargingTarget == lastChargingMarkerTarget &&
+            chargingIndex == lastChargingMarkerIndex)
         {
-            return 0f;
+            return;
         }
 
-        float progress = (Time.unscaledTime - startedAt) / MarkerPulseDuration;
-        if (progress >= 1f)
-        {
-            markerPulseStartedAt[markerIndex] = -1f;
-            return 0f;
-        }
-
-        return Mathf.Sin(Mathf.PI * Mathf.Clamp01(progress));
+        lastChargingMarkerTarget = chargingTarget;
+        lastChargingMarkerIndex = chargingIndex;
+        chargingMarkerPulseStartedAt = chargingTarget != null
+            ? Time.unscaledTime
+            : -1f;
     }
 
-    private void HandleLockStageUp(int successfulLockCount)
+    private float ResolveChargingMarkerPulse()
     {
-        int markerIndex = successfulLockCount - 1;
-        if (markerIndex >= 0 && markerIndex < markerPulseStartedAt.Length)
+        if (chargingMarkerPulseStartedAt < 0f || ChargingMarkerPulseHalfCycle <= 0f)
         {
-            markerPulseStartedAt[markerIndex] = Time.unscaledTime;
+            return 0f;
         }
+
+        float elapsed = Mathf.Max(0f, Time.unscaledTime - chargingMarkerPulseStartedAt);
+        return Mathf.PingPong(elapsed / ChargingMarkerPulseHalfCycle, 1f);
     }
 
     private void HandleLockStarted(LockOnInputSource inputSource)
     {
         ClearReleasedMarkers();
+        ResetChargingMarkerPulseState();
     }
 
     private void HandleLockCanceled(LockOnCancelReason reason)
@@ -369,8 +387,6 @@ public sealed class LockOnHudPresenter : MonoBehaviour
             return;
         }
 
-        lockOnController.OnLockStageUp -= HandleLockStageUp;
-        lockOnController.OnLockStageUp += HandleLockStageUp;
         lockOnController.OnLockStart -= HandleLockStarted;
         lockOnController.OnLockStart += HandleLockStarted;
         lockOnController.OnLockCanceled -= HandleLockCanceled;
@@ -385,7 +401,6 @@ public sealed class LockOnHudPresenter : MonoBehaviour
     {
         if (lockOnController != null)
         {
-            lockOnController.OnLockStageUp -= HandleLockStageUp;
             lockOnController.OnLockStart -= HandleLockStarted;
             lockOnController.OnLockCanceled -= HandleLockCanceled;
             lockOnController.OnLockRelease -= HandleLockReleased;
@@ -601,6 +616,7 @@ public sealed class LockOnHudPresenter : MonoBehaviour
     {
         VisibleMarkerCount = 0;
         VisibleTargetingImageCount = 0;
+        ActiveMarkerPulseCount = 0;
         for (int i = 0; i < lockMarkerRoots.Length; i++)
         {
             if (lockMarkerRoots[i] != null)
@@ -608,6 +624,13 @@ public sealed class LockOnHudPresenter : MonoBehaviour
                 lockMarkerRoots[i].gameObject.SetActive(false);
             }
         }
+    }
+
+    private void ResetChargingMarkerPulseState()
+    {
+        lastChargingMarkerTarget = null;
+        lastChargingMarkerIndex = -1;
+        chargingMarkerPulseStartedAt = -1f;
     }
 
     private void OnDisable()

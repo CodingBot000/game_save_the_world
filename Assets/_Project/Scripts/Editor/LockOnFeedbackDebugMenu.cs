@@ -107,7 +107,7 @@ public static class LockOnFeedbackDebugMenu
             ? feedback.FullSalvoFeedbackCount - context.FullSalvoBefore
             : -1;
         bool verified = context.Began && context.Released &&
-                        context.MarkersAtFullCharge == 5 && context.PulsesAtFullCharge == 5 &&
+                        context.MarkersAtFullCharge == 5 && context.PulsesAtFullCharge == 0 &&
                         stageSfxDelta == 5 && releaseSfxDelta == 1 && boostSfxDelta == 1 &&
                         fullSalvoDelta == 1 && feedback != null &&
                         feedback.HasGeneratedFeedbackAudio && feedback.LastFeedbackStage == 5 &&

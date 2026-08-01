@@ -150,8 +150,8 @@ public static class LockOnReticleDebugMenu
         int markersAfterHold = context.Hud.VisibleMarkerCount;
         int imagesAfterHold = context.Hud.VisibleTargetingImageCount;
         bool releaseActiveAfterHold = context.Hud.ReleaseMarkersActive;
-        bool stageCountsMatch = CountsAreOneToFive(context.StageMarkerCounts) &&
-                                CountsAreOneToFive(context.StageImageCounts);
+        bool stageCountsMatch = CountsMatchChargingPreviewSequence(context.StageMarkerCounts) &&
+                                CountsMatchChargingPreviewSequence(context.StageImageCounts);
         bool verified = context.Began && context.Released && stageCountsMatch &&
                         context.AtReleaseMarkers == 5 && context.AtReleaseImages == 5 &&
                         context.ReleaseActiveAtRelease &&
@@ -176,16 +176,17 @@ public static class LockOnReticleDebugMenu
         AbortPending();
     }
 
-    private static bool CountsAreOneToFive(int[] counts)
+    private static bool CountsMatchChargingPreviewSequence(int[] counts)
     {
         if (counts == null || counts.Length != 5)
         {
             return false;
         }
 
+        int[] expected = { 2, 3, 4, 5, 5 };
         for (int i = 0; i < counts.Length; i++)
         {
-            if (counts[i] != i + 1)
+            if (counts[i] != expected[i])
             {
                 return false;
             }

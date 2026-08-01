@@ -2,15 +2,15 @@ using NUnit.Framework;
 
 public class LockOnChargeRulesTests
 {
-    private static readonly float[] Thresholds = { 3.00f, 3.40f, 3.90f, 4.45f, 5.15f };
+    private static readonly float[] Thresholds = { 1.00f, 2.50f, 4.50f, 7.00f, 10.00f };
 
     [TestCase(0f, 0)]
-    [TestCase(2.999f, 0)]
-    [TestCase(3.00f, 1)]
-    [TestCase(3.40f, 2)]
-    [TestCase(3.90f, 3)]
-    [TestCase(4.45f, 4)]
-    [TestCase(5.15f, 5)]
+    [TestCase(0.999f, 0)]
+    [TestCase(1.00f, 1)]
+    [TestCase(2.50f, 2)]
+    [TestCase(4.50f, 3)]
+    [TestCase(7.00f, 4)]
+    [TestCase(10.00f, 5)]
     [TestCase(20f, 5)]
     public void GetReachedStage_UsesConfiguredThresholds(float elapsed, int expected)
     {
@@ -21,10 +21,10 @@ public class LockOnChargeRulesTests
     public void GetNextStageProgress_ResetsWithinEachStageBand()
     {
         Assert.That(LockOnChargeRules.GetNextStageProgress(0f, Thresholds), Is.EqualTo(0f));
-        Assert.That(LockOnChargeRules.GetNextStageProgress(1.50f, Thresholds), Is.EqualTo(0.5f).Within(0.001f));
-        Assert.That(LockOnChargeRules.GetNextStageProgress(3.00f, Thresholds), Is.EqualTo(0f).Within(0.001f));
-        Assert.That(LockOnChargeRules.GetNextStageProgress(3.20f, Thresholds), Is.EqualTo(0.5f).Within(0.001f));
-        Assert.That(LockOnChargeRules.GetNextStageProgress(5.15f, Thresholds), Is.EqualTo(1f));
+        Assert.That(LockOnChargeRules.GetNextStageProgress(0.50f, Thresholds), Is.EqualTo(0.5f).Within(0.001f));
+        Assert.That(LockOnChargeRules.GetNextStageProgress(1.00f, Thresholds), Is.EqualTo(0f).Within(0.001f));
+        Assert.That(LockOnChargeRules.GetNextStageProgress(1.75f, Thresholds), Is.EqualTo(0.5f).Within(0.001f));
+        Assert.That(LockOnChargeRules.GetNextStageProgress(10.00f, Thresholds), Is.EqualTo(1f));
     }
 
     [Test]

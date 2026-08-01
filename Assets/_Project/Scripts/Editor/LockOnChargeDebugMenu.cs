@@ -36,13 +36,18 @@ public static class LockOnChargeDebugMenu
         int successfulLocks = controller.SuccessfulLockCount;
         int assignedLocks = controller.AssignedLockCount;
         int visibleMarkers = hud != null ? hud.VisibleMarkerCount : -1;
+        int blinkingMarkers = hud != null ? hud.BlinkingMarkerCount : -1;
+        bool heldAtFullCharge = controller.State == LockOnCombatState.Charging &&
+                                controller.CurrentChargingTarget == null;
         bool released = controller.TryReleaseCharging(LockOnInputSource.Debug);
         hud?.RefreshForDebug();
         LockOnReleaseIntent intent = controller.LastReleaseIntent;
         PlayerCombatController combat =
             Object.FindAnyObjectByType<PlayerCombatController>();
         bool verified = began && chargedStage == 5 && successfulLocks == 5 &&
-                        assignedLocks == 5 && released && intent != null &&
+                        assignedLocks == 5 && heldAtFullCharge &&
+                        (hud == null || (visibleMarkers == 5 && blinkingMarkers == 0)) &&
+                        released && intent != null &&
                         intent.SuccessfulLockCount == 5 &&
                         intent.TargetSnapshots.Count == 5 &&
                         controller.State == LockOnCombatState.ReuseWait &&
@@ -52,7 +57,8 @@ public static class LockOnChargeDebugMenu
         Debug.Log(
             $"[LockChargeDebug] full charge verified={verified}, began={began}, " +
             $"stage={chargedStage}, success={successfulLocks}, assigned={assignedLocks}, " +
-            $"visibleMarkers={visibleMarkers}, released={released}, " +
+            $"visibleMarkers={visibleMarkers}, blinkingMarkers={blinkingMarkers}, " +
+            $"heldAtFullCharge={heldAtFullCharge}, released={released}, " +
             $"intentLocks={(intent != null ? intent.SuccessfulLockCount : -1)}, " +
             $"snapshots={(intent != null ? intent.TargetSnapshots.Count : -1)}, " +
             $"requested={controller.LastRequestedMissileCount}, " +
@@ -366,8 +372,8 @@ public static class LockOnChargeDebugMenu
             $"finalState={controller.State}.");
     }
 
-    [MenuItem(MenuRoot + "Run First Lock Three Seconds", priority = 289)]
-    private static void RunFirstLockThreeSeconds()
+    [MenuItem(MenuRoot + "Run Sequential Charge And Marker Preview", priority = 289)]
+    private static void RunSequentialChargeAndMarkerPreview()
     {
         if (!TryGetRuntime(out PlayerLockOnController controller,
                 out BossLockOnTargetProvider provider, out LockOnHudPresenter hud) ||
@@ -376,8 +382,18 @@ public static class LockOnChargeDebugMenu
             return;
         }
 
+        float[] expectedThresholds = { 1f, 2.5f, 4.5f, 7f, 10f };
+        int[] expectedMarkerCounts = { 2, 3, 4, 5, 5 };
+        int[] expectedBlinkCounts = { 1, 1, 1, 1, 0 };
+        bool thresholdsMatch = controller.MaxLockStage == expectedThresholds.Length;
+        for (int i = 0; i < expectedThresholds.Length && thresholdsMatch; i++)
+        {
+            thresholdsMatch &= Mathf.Approximately(
+                controller.GetCumulativeChargeTimeForStage(i + 1),
+                expectedThresholds[i]);
+        }
+
         float firstThreshold = controller.GetCumulativeChargeTimeForStage(1);
-        float secondThreshold = controller.GetCumulativeChargeTimeForStage(2);
         bool beganEarlyReleaseCheck =
             controller.TryBeginCharging(LockOnInputSource.MouseRight);
         controller.AdvanceChargeForDebug(Mathf.Max(0f, firstThreshold - 0.01f));
@@ -389,42 +405,58 @@ public static class LockOnChargeDebugMenu
                                    controller.State == LockOnCombatState.Ready &&
                                    controller.LastReleaseIntent == null;
 
-        bool beganThresholdCheck =
+        bool beganSequenceCheck =
             controller.TryBeginCharging(LockOnInputSource.MouseRight);
-        controller.AdvanceChargeForDebug(firstThreshold + 0.01f);
         hud?.RefreshForDebug();
-        int stageAfterFirst = controller.ChargeStage;
-        int locksAfterFirst = controller.SuccessfulLockCount;
+        bool markerVisibleAtStart = controller.CurrentChargingTarget != null &&
+                                    (hud == null || hud.VisibleMarkerCount == 1);
+        bool markerBlinkingAtStart = hud == null || hud.BlinkingMarkerCount == 1;
+        int[] stageMarkerCounts = new int[expectedThresholds.Length];
+        int[] stageBlinkCounts = new int[expectedThresholds.Length];
+        bool stagesMatch = true;
+        for (int i = 0; i < expectedThresholds.Length; i++)
+        {
+            float targetElapsed = expectedThresholds[i] + 0.01f;
+            controller.AdvanceChargeForDebug(
+                Mathf.Max(0f, targetElapsed - controller.ChargeElapsed));
+            hud?.RefreshForDebug();
+            stageMarkerCounts[i] = hud != null ? hud.VisibleMarkerCount : expectedMarkerCounts[i];
+            stageBlinkCounts[i] = hud != null ? hud.BlinkingMarkerCount : expectedBlinkCounts[i];
+            stagesMatch &= controller.ChargeStage == i + 1 &&
+                           controller.SuccessfulLockCount == i + 1 &&
+                           stageMarkerCounts[i] == expectedMarkerCounts[i] &&
+                           stageBlinkCounts[i] == expectedBlinkCounts[i];
+        }
 
-        float beforeSecondElapsed = Mathf.Max(0f, secondThreshold - 0.01f);
-        controller.AdvanceChargeForDebug(
-            Mathf.Max(0f, beforeSecondElapsed - controller.ChargeElapsed));
-        int stageBeforeSecond = controller.ChargeStage;
-        controller.AdvanceChargeForDebug(0.02f);
-        int stageAfterSecond = controller.ChargeStage;
-        int locksAfterSecond = controller.SuccessfulLockCount;
+        PlayerOrbitController orbit = Object.FindAnyObjectByType<PlayerOrbitController>();
+        controller.AdvanceChargeForDebug(1f);
+        hud?.RefreshForDebug();
+        bool fullChargeHeld = controller.State == LockOnCombatState.Charging &&
+                              controller.ChargeStage == 5 &&
+                              controller.SuccessfulLockCount == 5 &&
+                              controller.CurrentChargingTarget == null &&
+                              (hud == null || hud.BlinkingMarkerCount == 0) &&
+                              (orbit == null || Mathf.Approximately(
+                                  orbit.DebugMovementSpeedMultiplier,
+                                  0.6f));
 
         controller.HandleGamePaused();
-        bool verified = beganEarlyReleaseCheck && beganThresholdCheck &&
-                        Mathf.Approximately(firstThreshold, 3f) &&
-                        Mathf.Approximately(secondThreshold, 3.4f) &&
+        bool verified = thresholdsMatch && beganEarlyReleaseCheck && beganSequenceCheck &&
                         stageBeforeFirst == 0 && locksBeforeFirst == 0 &&
-                        earlyReleaseBlocked &&
-                        stageAfterFirst == 1 && locksAfterFirst == 1 &&
-                        stageBeforeSecond == 1 &&
-                        stageAfterSecond == 2 && locksAfterSecond == 2 &&
+                        earlyReleaseBlocked && markerVisibleAtStart &&
+                        markerBlinkingAtStart && stagesMatch && fullChargeHeld &&
                         controller.State == LockOnCombatState.Ready;
         Debug.Log(
-            $"[LockChargeDebug] first lock three seconds verified={verified}, " +
+            $"[LockChargeDebug] sequential charge and marker preview verified={verified}, " +
+            $"thresholdsMatch={thresholdsMatch}, " +
             $"beganEarly={beganEarlyReleaseCheck}, " +
             $"earlyReleaseAccepted={earlyReleaseAccepted}, " +
-            $"beganThreshold={beganThresholdCheck}, " +
-            $"firstThreshold={firstThreshold:0.###}, " +
-            $"secondThreshold={secondThreshold:0.###}, " +
+            $"beganSequence={beganSequenceCheck}, " +
             $"beforeFirst={stageBeforeFirst}/{locksBeforeFirst}, " +
-            $"afterFirst={stageAfterFirst}/{locksAfterFirst}, " +
-            $"beforeSecond={stageBeforeSecond}, " +
-            $"afterSecond={stageAfterSecond}/{locksAfterSecond}, " +
+            $"markerAtStart={markerVisibleAtStart}/{markerBlinkingAtStart}, " +
+            $"stageMarkers=[{string.Join(",", stageMarkerCounts)}], " +
+            $"stageBlinks=[{string.Join(",", stageBlinkCounts)}], " +
+            $"stagesMatch={stagesMatch}, fullChargeHeld={fullChargeHeld}, " +
             $"finalState={controller.State}.");
     }
 
