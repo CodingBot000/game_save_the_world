@@ -15,7 +15,7 @@ public class PlayerCombatController : MonoBehaviour
     [SerializeField, Min(0.01f)] private float automaticFireCooldownDuration = 2f;
     [SerializeField] private float fireCooldown = 0.15f;
     [SerializeField] private float projectileSpeed = 60f;
-    [SerializeField] private float projectileDamage = 25f;
+    [SerializeField] private float projectileDamage = 3f;
     [SerializeField] private float invulnerabilityDuration = MinimumHitInvulnerabilityDuration;
     [SerializeField] private float hitRadius = 1.4f;
     [SerializeField] private Collider[] damageHurtboxes = Array.Empty<Collider>();

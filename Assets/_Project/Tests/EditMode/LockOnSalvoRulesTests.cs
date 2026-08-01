@@ -5,11 +5,11 @@ public class LockOnSalvoRulesTests
     private static readonly int[] MissileCounts = { 5, 10, 15, 20, 30 };
     private static readonly float[] DamageRatios = { 0.30f, 0.40f, 0.50f, 0.60f, 1f };
 
-    [TestCase(1, 5, 75f, 15f)]
-    [TestCase(2, 10, 100f, 10f)]
-    [TestCase(3, 15, 125f, 8.333333f)]
-    [TestCase(4, 20, 150f, 7.5f)]
-    [TestCase(5, 30, 250f, 8.333333f)]
+    [TestCase(1, 5, 9f, 1.8f)]
+    [TestCase(2, 10, 12f, 1.2f)]
+    [TestCase(3, 15, 15f, 1f)]
+    [TestCase(4, 20, 18f, 0.9f)]
+    [TestCase(5, 30, 30f, 1f)]
     public void TryCalculate_UsesGatlingBudgetAndConfiguredStageRatios(
         int successfulLocks,
         int expectedMissiles,
@@ -18,7 +18,7 @@ public class LockOnSalvoRulesTests
     {
         bool calculated = LockOnSalvoRules.TryCalculate(
             successfulLocks,
-            gatlingBaseDamage: 25f,
+            gatlingBaseDamage: 3f,
             fullSalvoGatlingDamageMultiplier: 10f,
             MissileCounts,
             DamageRatios,
@@ -41,7 +41,7 @@ public class LockOnSalvoRulesTests
         Assert.That(
             LockOnSalvoRules.TryCalculate(
                 lockCount,
-                25f,
+                3f,
                 10f,
                 MissileCounts,
                 DamageRatios,

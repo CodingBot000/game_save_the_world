@@ -165,7 +165,7 @@ public static class PlayerRuntimeState
 
             FireCooldown = 0.15f,
             ProjectileSpeed = 60f,
-            ProjectileDamage = 25f,
+            ProjectileDamage = 3f,
             InvulnerabilityDuration = 1f,
             PlayerHitRadius = 1.4f,
 

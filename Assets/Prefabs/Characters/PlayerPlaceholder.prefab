@@ -166,7 +166,7 @@ MonoBehaviour:
   maxHealth: 100
   fireCooldown: 0.15
   projectileSpeed: 60
-  projectileDamage: 25
+  projectileDamage: 3
   invulnerabilityDuration: 0.5
   hitRadius: 1.4
   muzzle: {fileID: 0}
