@@ -37,7 +37,47 @@ public class PlayerMovementBounds : MonoBehaviour
     };
 
     public Vector3 DebugHalfExtents => halfExtents;
+    public Vector3 DebugLocalCenter => localCenter;
     public bool DebugShowRuntimeGuide => showRuntimeGuide;
+
+    public bool FitToCameraViewport(Camera targetCamera, Rect viewportRect, float cameraDepth)
+    {
+        if (targetCamera == null || targetCamera.pixelWidth <= 0 ||
+            targetCamera.pixelHeight <= 0 || cameraDepth <= targetCamera.nearClipPlane)
+        {
+            return false;
+        }
+
+        Vector3 bottomLeft = targetCamera.ViewportToWorldPoint(
+            new Vector3(viewportRect.xMin, viewportRect.yMin, cameraDepth));
+        Vector3 topLeft = targetCamera.ViewportToWorldPoint(
+            new Vector3(viewportRect.xMin, viewportRect.yMax, cameraDepth));
+        Vector3 topRight = targetCamera.ViewportToWorldPoint(
+            new Vector3(viewportRect.xMax, viewportRect.yMax, cameraDepth));
+        Vector3 bottomRight = targetCamera.ViewportToWorldPoint(
+            new Vector3(viewportRect.xMax, viewportRect.yMin, cameraDepth));
+        Vector3 center = (bottomLeft + topLeft + topRight + bottomRight) * 0.25f;
+
+        transform.SetPositionAndRotation(center, targetCamera.transform.rotation);
+        localCenter = Vector3.zero;
+
+        Vector3[] worldCorners = { bottomLeft, topLeft, topRight, bottomRight };
+        float halfWidth = 0f;
+        float halfHeight = 0f;
+        for (int i = 0; i < worldCorners.Length; i++)
+        {
+            Vector3 localCorner = transform.InverseTransformPoint(worldCorners[i]);
+            halfWidth = Mathf.Max(halfWidth, Mathf.Abs(localCorner.x));
+            halfHeight = Mathf.Max(halfHeight, Mathf.Abs(localCorner.y));
+        }
+
+        halfExtents = new Vector3(
+            Mathf.Max(0.01f, halfWidth),
+            Mathf.Max(0.01f, halfHeight),
+            Mathf.Max(0.01f, Mathf.Abs(halfExtents.z)));
+        UpdateRuntimeGuide();
+        return true;
+    }
 
     public Vector3 ClampWorldPosition(Vector3 worldPosition)
     {

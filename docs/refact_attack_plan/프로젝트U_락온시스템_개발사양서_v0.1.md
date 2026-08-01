@@ -82,7 +82,9 @@ Lock-on Charge / Missile Salvo / Salvo Invincibility System
 - 선택된 원본 헬기 프리팹의 내부 로컬 위치가 이동 기준점에서 벗어나 있더라도 복제본을 만들지 않는다. 실행 시 원본 헬기의 Renderer Bounds 화면 중심을 플레이어 이동 기준점에 맞추고, 외형 교체·비활성화·종료 시 원래 로컬 위치를 복구한다. 총구와 좌우 미사일 발사 앵커는 이동 기준점에 계속 연결해 시각 모델과 월드 투사체 시작점이 같은 화면 영역에 있도록 한다.
 - 신규 락온 미사일은 헬기에서 분리되어 발사되는 즉시 기존 월드 레이어를 사용한다. PlayerVisual 카메라로 미사일을 항상 전면에 그리지 않는다.
 - 기존 카메라 평면 이동은 유지한다. 좌우·상하 입력은 카메라 Right/Up 축으로 원본 플레이어를 이동시키고 전후 깊이는 고정한다.
-- 화면 경계 제한은 기존 RawImage 크기가 아니라 원본 헬기 Renderer Bounds의 화면 투영값을 사용한다. 로터와 기체 끝에 설정 가능한 여백을 더해 전체 모델이 화면 밖으로 잘리지 않게 한다.
+- 플레이어 이동 기준점의 화면 경계는 최종 전투 구성이 완료된 최초 1회에 Base 전투 카메라의 실제 `pixelWidth`, `pixelHeight`, `aspect`를 읽어 확정한다. 기본 이동 범위는 정규화된 전체 게임플레이 Viewport `(0, 0)~(1, 1)`이며, 기기 해상도와 가로세로 비율에 따라 `ViewportToWorldPoint`가 같은 고정 깊이의 월드 폭·높이를 자동으로 다르게 계산한다.
+- 같은 최초 초기화에서 전체 Viewport의 네 모서리를 월드 좌표로 변환해 기존 `PlayerMovementBounds` 박스와 런타임 가이드도 실제 게임플레이 화면 크기에 맞춘다. 매 프레임 다시 계산하지 않으며, 외형 또는 카메라 구성을 명시적으로 새로 고친 경우에만 재초기화한다.
+- 원본 헬기 Renderer Bounds로 이동 범위를 다시 축소하지 않는다. 헬기 크기를 크게 조정하면 기준점이 화면 끝에 도달할 때 로터나 기체 일부가 화면 밖으로 나갈 수 있으며, 이번 전체 화면 이동 요구에서는 이를 허용한다. 추후 가장자리 안전 여백이 필요하면 Renderer 크기 연동 대신 공용 픽셀 여백 변수만 조정한다.
 - `EnsureRuntimeDefaults()`에서 `useScreenSpaceVisual = true`를 강제하는 기존 처리는 제거 대상이다. 원본 3D 경로 검증이 끝난 뒤 복제 화면용 메서드와 런타임 오브젝트 생성 코드를 삭제한다.
 
 > **전환 안전 원칙**
@@ -544,7 +546,9 @@ void CancelPreparedSalvo(SalvoHandle handle, string reason)
 | playerVisualLayerName | PlayerVisual Overlay 카메라 전용 레이어. 기본값 `PlayerVisual` |
 | baseBattleCamera | 월드·괴수·투사체를 렌더링하는 URP Base 카메라 |
 | playerVisualOverlayCamera | 원본 헬기와 헬기 부착 VFX만 렌더링하는 URP Overlay 카메라 |
-| visualBoundsPadding | 원본 Renderer Bounds를 화면 경계 안에 유지하기 위한 로터·기체 여백 |
+| fitMovementToFullGameplayViewport | 최종 전투 구성 뒤 실제 Base 카메라의 전체 Viewport를 이동 기준점 범위로 최초 1회 확정할지 여부. 기본값 `true` |
+| gameplayViewportEdgePaddingPixels | 기기 해상도에서 전체 Viewport 네 변에 선택적으로 적용하는 공용 픽셀 여백. 기본값 `(0, 0)` |
+| initializedGameplayPixelSize / initializedGameplayAspect | 최초 1회 확정에 사용한 실제 Game View 픽셀 크기와 화면비 진단값 |
 | hitVfxAnchor | 피격 점멸·충격 파티클의 기본 위치 |
 | damageVfxAnchors | 장갑 파괴 후 연기·스파크를 배치할 복수 앵커 |
 
@@ -1035,7 +1039,8 @@ OnBossBodyDebugFlashDisabled():
 | 무적 종료 후 지속 피해 소급 | 무적 중 차단한 잔류 빔의 틱 누적값이 남아 종료 직후 피해가 한꺼번에 적용 | 무적 시작 시 기존 누적값을 모두 `0`으로 초기화하고, 무적 중 매 프레임 `0`을 유지하며, 종료 후 전체 틱 간격을 새로 누적. |
 | 원본·복제 헬기 이중 표시 | 렌더 전환 중 원본 3D와 기존 RawImage 복제본이 동시에 보임 | Overlay 카메라 검증 후 `_ScreenVisual`, RenderTexture, RawImage 경로를 한 번에 비활성화하고 최종적으로 제거. |
 | Base·Overlay 카메라 불일치 | 두 카메라의 위치·FOV·Viewport가 달라 원본 헬기와 총구·월드 투사체 위치가 어긋남 | 두 카메라를 같은 렌더 리그에 두고 Projection·렌즈·Viewport 값을 동기화. |
-| 헬기 화면 가장자리 잘림 | RawImage 기반 여백을 제거한 뒤 로터나 기체 끝이 화면 밖으로 나감 | 원본 Renderer Bounds를 Base 카메라 화면 좌표로 투영하고 `visualBoundsPadding`을 적용. |
+| 기기 화면비별 이동 범위 축소 | 고정 월드 박스나 헬기 Renderer 크기를 사용하면 긴 모바일 화면에서도 이동 가능 영역이 중앙의 작은 박스로 남음 | 최종 구성 최초 1회에 실제 Base 카메라 픽셀 크기·화면비와 전체 Viewport를 저장하고, 고정 깊이의 네 모서리를 월드 좌표로 변환해 이동 범위와 디버그 박스를 함께 맞춤. |
+| 확대 헬기 화면 가장자리 잘림 | 전체 Viewport를 이동 기준점 범위로 쓰면 큰 헬기의 로터·기체 일부가 가장자리 밖으로 나갈 수 있음 | 이번 요구에서는 전체 화면 이동을 우선해 허용한다. 필요 시 공용 픽셀 여백만 조정하고 Renderer Bounds 기반 자동 축소는 다시 사용하지 않음. |
 | 시각 레이어가 게임플레이에 영향 | PlayerVisual 레이어를 피격 Collider나 월드 미사일까지 적용해 충돌·깊이 표현이 바뀜 | 시각 루트와 헬기 부착 VFX만 PlayerVisual에 두고 Collider·피해 판정·발사된 투사체는 기존 레이어 유지. |
 | 보스 상태 확인 불가 | 페이즈·약점 전환은 되었지만 락온 재배정이 맞는지 알기 어려움 | 화면 상단에 저장된 현재 페이즈를 표시하고, 약점 개방 중에는 괴수 전신을 점멸. |
 | 임시 점멸 효과 잔류 | 약점 닫힘 또는 테스트 기능 제거 후에도 색상 변경이 남음 | 원본 Material 에셋을 수정하지 않고 `MaterialPropertyBlock`만 사용하며, 닫힘·`OnDisable`에서 원래 상태 복구. |
@@ -1076,7 +1081,7 @@ OnBossBodyDebugFlashDisabled():
 - `PlayerVisual` 레이어와 URP Overlay 카메라를 Base 전투 카메라 스택에 구성
 - 원본 헬기 Renderer와 헬기 부착 VFX만 PlayerVisual 경로로 표시하고 게임플레이 Collider 레이어는 유지
 - 기존 `_ScreenVisual` 복제본, RenderTexture, RawImage 출력 경로 비활성화·제거
-- 원본 Renderer Bounds 기반 화면 경계 여백 적용
+- 최종 전투 구성 최초 1회에 실제 Base 카메라 `pixelWidth`·`pixelHeight`·`aspect`를 저장하고 전체 Viewport `(0,0)~(1,1)`를 고정 깊이 월드 이동 범위와 `PlayerMovementBounds`에 동기화
 - 현재 AimPoint 구현과 별개인 신규 락온 타겟 컴포넌트를 괴수 본·소켓 또는 전용 추적 앵커에 5개 이상 등록
 - 차지 시간 기준 통과와 타겟 아이콘 생성 성공을 분리하고, 실제 성공 아이콘 수 1·2·3·4·5개에 좌우 합계 미사일 5·10·15·20·30발을 정확히 대응
 - 성공 타겟 목록을 주기마다 무작위 셔플해 필요한 미사일 수까지 반복하는 타겟 배정 구현
@@ -1150,7 +1155,7 @@ OnBossBodyDebugFlashDisabled():
 | 플레이어 가림 방지 | 원본 헬기가 PlayerVisual Overlay 카메라로 렌더링되어 괴수·환경 뒤에 가려지지 않는다. |
 | 카메라 정합성 | Base와 Overlay 카메라의 Projection·렌즈·Viewport가 일치해 총구, 헬기 부착 VFX, 월드 투사체가 시각적으로 어긋나지 않는다. |
 | 헬기 VFX 확장성 | 원본 헬기에 적용한 피격 색상, 발광, ParticleSystem, TrailRenderer가 별도 복제·동기화 없이 화면에 표시된다. |
-| 화면 경계 안정성 | 헬기의 로터와 기체 끝이 설정된 여백 안에서 화면 밖으로 잘리지 않는다. |
+| 기기 화면비별 전체 이동 | 최종 전투 구성 뒤 실제 Game View 크기를 최초 1회 읽고, 16:9·19.5:9 등 서로 다른 화면비에서도 플레이어 이동 기준점이 정규화 Viewport 좌·우·상·하 `0~1` 전체에 도달한다. 헬기 Renderer 크기로 범위를 축소하지 않는다. |
 | 투사체 깊이 유지 | 신규 락온 미사일은 월드 레이어와 Base 카메라를 사용해 괴수·환경과 정상적인 깊이 관계를 유지한다. |
 | 보스 페이즈 검증 | 테스트 상태에 저장된 현재 페이즈가 화면 상단 중앙에 `PHASE {번호}`로 표시되고, 변경 즉시 UI와 락온 후보가 갱신된다. |
 | 페이즈·약점 중 차지 유지 | CHARGING 중 페이즈 또는 약점 상태를 바꿔도 차지 시간과 성공 아이콘 수가 줄거나 초기화되지 않고, 무효 타겟만 유효 타겟으로 교체된다. 후보가 없으면 정해진 유예 뒤 발사 없이 취소된다. |
@@ -1186,6 +1191,7 @@ OnBossBodyDebugFlashDisabled():
 | 8. UI·VFX·SFX 마감 | 단계 피드백, 미사일 연출, 화면 흔들림, 약점 점멸, 헬기 피격·발광·손상 확장 경로와 사운드를 원본 3D 기준으로 연결한다. | 원본 헬기 VFX 표시, 미사일 월드 깊이 유지, UI 가독성, 단계별 피드백과 저사양 최대 30발 성능 확인. | `feat: add lock-on combat feedback` |
 | 9. 교체 대상 코드 삭제·전체 회귀 검수 | 비활성 상태로 남겨둔 단발 미사일·기존 Special 입력/HUD/시네마틱·방송·수동 AimPoint·랜덤 크리티컬과 검증이 끝난 복제 렌더링 코드를 삭제한다. 기관총 입력·총알 발사·연사·데미지 경로는 삭제하지 않는다. | 프로젝트 전체 참조 검색, Unity 재컴파일, EditMode/PlayMode 테스트, 전체 보스전 실행. 기관총과 신규 락온이 모두 정상이며 누락 스크립트·Missing 참조·신규 Error 없음. | `chore: remove legacy missile and special paths` |
 | 10. 기존 락온 이미지·릴리즈 유지 보강 | 텍스트 마커에 기존 타게팅 Base/Inner 이미지를 합성하고, 릴리즈 타겟 스냅샷과 발사 완료 이벤트를 이용해 발사 종료 후 1초까지 아이콘을 유지한다. | 단계별 이미지 수 `[1,2,3,4,5]`, 릴리즈·발사 중·완료 시점·완료 0.5초 후 5개 유지, 완료 1초 후 동시 제거, 전체 컴파일과 EditMode 테스트 확인. | `feat: persist lock-on reticles through salvo` |
+| 11. 실제 화면비 기반 이동 범위 확장 | 최종 전투 구성 최초 1회에 Base 카메라의 실제 Game View 크기·화면비를 읽고 이동 기준점을 전체 Viewport에 맞춘다. 기존 고정 가이드·박스는 같은 월드 네 모서리에 동기화하고 Renderer Bounds 기반 범위 축소를 제거한다. 확대된 원본 3D는 실제 화면 투영 외형 중심을 이동 기준점에 맞춘다. | 초기화 로그 1회, 실제 픽셀·화면비 저장, 이동 Rect `(0,0)~(1,1)`, 좌·우·상·하 기준점 도달, 확대 외형 중심 일치, 전체 컴파일과 EditMode 테스트 확인. | `fix: fit player movement to gameplay viewport` |
 
 #### 12.4.1 단계 종료 및 커밋 원칙
 
@@ -1212,6 +1218,7 @@ OnBossBodyDebugFlashDisabled():
 | 8. UI·VFX·SFX 마감 | 완료 | 기존 `LockOnHudPresenter`의 모바일 `PointerDown/Up/Exit`, 타겟 0개·5초 대기 버튼 비활성, 다음 단계 게이지, 단계별 색·크기 마커, `RELEASE n/5`, 남은 재사용 시간과 `SHOOT ERROR`를 유지하고 새 락온 성공 마커마다 0.28초 확대 펄스를 추가했다. `LockOnCombatFeedback`은 단계 상승마다 서로 다른 높이의 짧은 톤을 재생하고 5단계에는 별도 화음 완성음을 사용한다. 유효 릴리즈에는 발사 충격음과 상승 부스트음을 두 AudioSource로 같은 프레임에 동시 재생한다. 전용 최종 오디오 에셋이 없는 현재 프로토타입에서는 `AudioClip.Create`로 생성한 교체 가능한 런타임 음을 사용하며 외부 에셋·씬 참조를 추가하지 않았다. 1~5단계 화면 충격은 `[0.07,0.09,0.11,0.14,0.20]`초와 Projection 진폭 `[0.0015,0.0022,0.0032,0.0048,0.0090]`으로 차등 적용한다. 카메라 Transform·플레이어 이동 평면·피격 위치를 움직이지 않고 Base 카메라 Projection만 흔들며 7단계 Overlay가 같은 프레임에 복사하고 종료 시 원래 행렬을 복구한다. 미사일은 기존 최대 4발 묶음·총 0.6초·기본/발광 Trail·유도·월드 깊이를 그대로 사용하고 별도 포드 애니메이션·대형 미사일·줌·슬로우는 추가하지 않았다. 전용 진단에서 마커/펄스 5개, 단계음 5회, 릴리즈/부스트 동시음 각 1회, 5단계 훅 1회, 오디오 재생, 화면 충격 최대 진폭과 종료 후 Projection 복구가 `verified=True`였다. 피드백 적용 후 실제 5.05초 간격 1→5 전투도 발수·데미지·기관총·보스 공격·풀 최대 30·오류 없음이 유지됐고, 런타임 카운터는 단계음 누적 15회·릴리즈/부스트 각 5회·5단계 훅 1회였다. 최종 컴파일·게임 예외 검사와 EditMode 테스트 59/59를 통과했다. 헬기 피격·발광·손상은 사양대로 원본 3D 확장 훅이며 이번 필수 무적 피드백에는 추가하지 않았다. | `feat: add lock-on combat feedback` |
 | 9. 교체 대상 코드 삭제·전체 회귀 검수 | 완료 | 기존 우클릭 단발 `TryFireMissile`·`HomingMissileController`, 단발 전용 쿨다운·데미지와 `IgnoreMissileCooldown` 디버그 조정값, `PlayerSpecialAttackController` 테스트 어댑터, Special 버튼·시네마틱 연결, `BattleEventBroadcastTrigger`, 수동 `BattleAimPointTargetingPresenter`·Builder, 5초 AimPoint 무작위 전환과 투사체 `criticalChance`·보스 랜덤 크리티컬 판정을 삭제했다. 기존 `AimPoint` Transform 하나는 기관총 조준과 보스 발사 기준점으로 유지하고 신규 락온은 계속 별도 타겟을 사용한다. HUD의 기존 `MissileButton`을 씬과 코드 모두 `LockOnButton`으로 확정하고 `SpecialButton`은 숨김이 아니라 씬에서 삭제했다. 좌클릭/`Space` 기관총의 입력·연사·투사체·데미지는 유지했으며 신규 살보가 읽는 기존 미사일 속도·유도·VFX 프로필과 `SpecialHomingMissileController`·고정 풀의 꼬리를 무는 비행/Trail은 보존했다. `PlayerOrbitController`에서는 복제 모델·별도 RenderTexture·RawImage·화면 복제 카메라의 필드, 생성, 갱신, 경계 계산, 정리 메서드 약 750행을 삭제하고 원본 3D + `PlayerVisualOverlayRenderer`만 남겼다. 씬 재저장 후 삭제 타입·구 버튼·구 크리티컬 직렬화 필드와 Missing Script가 없고 런타임 검색에서도 Special/Missile/AimPoint UI/방송/화면 복제 객체가 모두 0개였다. Unity 전체 컴파일 오류 0개, EditMode 59/59 통과. 실제 시간 1→5단계 회귀는 기관총·이동·보스 공격을 유지하면서 `[5,10,15,20,30]`발 전부 완료, `maxLeased=30`, 풀 불변식, `SHOOT ERROR=false`, 보스 피해 `550.001`로 `verified=True`였다. 별도 새 Play 세션의 승리·패배, Busy `SHOOT ERROR`, 타겟 소실 후 5초 최대 발사 보장, 원본 헬기 좌·우·상·하 화면 경계, 5단계 마커/SFX/Projection 피드백도 모두 `verified=True`를 확인했다. | `chore: remove legacy missile and special paths` |
 | 10. 기존 락온 이미지·릴리즈 유지 보강 | 완료 | `BattleCanvas`의 `LockOnHudPresenter`에 기존 `targeting_normal_base.png`와 `targeting_normal_inner.png` Sprite를 직렬화 연결하고, 각 성공 마커를 Base/Inner/번호 레이어로 합성했다. 차지 중에는 실제 락온 타겟을 따라 1개씩 추가하고, 유효 릴리즈에서는 `LockOnReleaseIntent.TargetSnapshots`의 Transform과 월드 위치를 별도로 보관해 컨트롤러가 차지 목록을 초기화해도 표시를 유지한다. `PlayerLockOnController.OnLockOnSalvoFinished(salvoId, canceled)`를 추가해 정상 완료와 큐 취소 모두 마지막 발사 시점부터 비스케일 1초 유지 타이머를 시작하며 한 살보의 아이콘을 동시에 제거한다. 전용 Play 진단에서 단계별 마커·이미지 `[1,2,3,4,5]`, 릴리즈 직후 5개, 발사 중 최소 5개, 발사 완료 시점 5개, 완료 0.5초 뒤 5개, 완료 1.12초 뒤 0개로 `verified=True`를 확인했다. 수정 스크립트 진단 오류 0개, Unity 전체 컴파일과 EditMode 테스트 59/59를 통과했다. | `feat: persist lock-on reticles through salvo` |
+| 11. 실제 화면비 기반 이동 범위 확장 | 완료 | `PlayerOrbitController`가 최종 `Configure` 뒤 실제 Base 카메라의 `pixelWidth`·`pixelHeight`·`aspect`를 최초 1회만 저장하고, 기본 이동 Rect를 전체 Viewport `(0,0)~(1,1)`로 확정하도록 변경했다. 매 프레임 헬기 Renderer Bounds로 범위를 줄이던 경로를 제거하고 선택적인 공용 픽셀 여백만 남겼다. `PlayerMovementBounds.FitToCameraViewport`는 같은 고정 깊이의 Viewport 네 모서리로 작성용 박스와 런타임 가이드를 동기화한다. 확대된 3D 모델은 월드 AABB 중심이 아니라 실제 화면 투영 사각형 중심을 두 번 보정해 이동 기준점에 맞춘다. Viper 스케일 2 상태의 1920×1080 Game View에서 초기화 로그가 정확히 1회 발생했고 `aspect=1.778`, 이동 Rect `(0,0)~(1,1)`, 플레이어/외형 중심 `(0.280,0.500)` 일치를 확인했다. 자동 입력 검증은 좌 `(0.000,0.490)`, 우 `(1.000,0.487)`, 상 `(0.988,1.000)`, 하 `(0.987,0.000)`로 네 변 모두 `verified=True`였다. 전체 화면을 우선하므로 끝 위치에서 확대 외형 일부가 잘리는 것은 사양대로 허용한다. 수정 스크립트 진단 오류 0개, Unity 전체 컴파일·실행 예외 검사와 EditMode 테스트 59/59를 통과했다. | `fix: fit player movement to gameplay viewport` |
 
 #### 12.5.1 구현 중 발견 이슈
 
@@ -1249,6 +1256,8 @@ OnBossBodyDebugFlashDisabled():
 | DEV-030 | 9 | 외부 서비스 경고 | 최종 Play Mode 회귀 중 Unity AI Toolkit 계정 서비스가 `Account API did not become accessible within 30 seconds` 경고를 한 차례 기록했다. 로컬 컴파일, MCP 실행, 59개 EditMode 테스트와 모든 전투 진단은 정상이며 이번 기능은 Unity 계정 API를 사용하지 않는다. DEV-022와 같은 외부 계정 연결 경고로 분리했다. |
 | DEV-031 | 9 | 해결 | 단발 발사 함수와 HUD 삭제 후 참조 검색에서 단발 전용 `missileCooldown`·`missileDamage`, `IgnoreMissileCooldown`, 전투 디버그 패널의 Cooldown/Damage 행이 실제 신규 살보에는 쓰이지 않는 채 남아 있었다. 해당 필드·플래그·조정 키를 제거하고 공용 설정 함수를 `SetMissileFlightTuningForDebug`로 명확히 변경했다. 차량 상태에서 신규 살보에 필요한 발사 속도·순항 속도·가속·회전·지연·수명·HitRadius만 계속 적용하며, 단계별 데미지는 `PlayerLockOnController.fullSalvoGatlingDamageMultiplier`와 개틀링 스냅샷만 사용한다. 변경 후 전체 컴파일, EditMode 59/59와 느린 타겟 소실 30발→5초 뒤 30발 보장 검증을 다시 통과했다. |
 | DEV-032 | 10 | 해결 | 기존 HUD는 동적 `Text`의 `◇번호`만 만들었고 `CHARGING` 상태에서만 표시했기 때문에 릴리즈와 동시에 락온 목록이 초기화되어 아이콘도 즉시 사라졌다. 기존 타게팅 PNG 두 장을 uGUI Sprite 레이어로 연결하고 릴리즈 타겟 스냅샷의 표시 수명을 발사 상태와 분리했다. 미사일은 발사 후 각자 비행·명중 시간이 달라 개별 명중을 종료 기준으로 쓰지 않고, 기존 약 0.6초 생성 큐의 `SalvoCompleted/Canceled`를 해당 살보의 표시 종료 기준으로 사용한 뒤 비스케일 1초를 더 유지한다. 타겟 Transform이 살아 있으면 이동을 계속 추적하고 소실되면 릴리즈 당시 월드 위치를 사용한다. |
+| DEV-033 | 11 | 해결 | 기존 경계는 `PlayerMoveGuide`의 고정 Viewport와 원본 Renderer Bounds 여백을 함께 사용해 헬기를 스케일 2로 키웠을 때 실제 이동 Rect가 `(0.219,0.316)~(0.781,0.750)`까지 축소됐다. 최종 전투 구성 시점의 실제 카메라 픽셀·화면비를 기준으로 전체 Viewport를 한 번 확정하고 Renderer Bounds 의존을 제거해 `(0,0)~(1,1)`과 네 변 도달을 확인했다. 작성용 `PlayerMovementBounds` 박스도 같은 카메라 평면 네 모서리로 맞춰 작은 고정 Gizmo가 실제 범위처럼 보이던 혼동을 제거했다. |
+| DEV-034 | 11 | 해결 | 최초 구현 검증에서 `Awake`·외형 바인딩·최종 `Configure`가 각각 초기화를 시도해 동일 로그가 3회 발생했고, 스케일 2 모델은 3D AABB 중심을 맞춰도 원근 투영 사각형 중심이 플레이어 기준점에서 어긋났다. 최종 구성 전에는 초기화를 허용하지 않는 가드를 추가해 기기당 로그와 계산을 1회로 제한했다. 외형 정렬은 실제 투영 사각형 중심 기준의 2회 수렴 보정으로 바꿔 시작 위치에서 플레이어와 외형 중심이 모두 `(0.280,0.500)`으로 일치했다. |
 
 ## 부록 A. 개발자 전달 핵심 요약
 
@@ -1279,8 +1288,9 @@ OnBossBodyDebugFlashDisabled():
 > 23) 준비에 성공한 유효 릴리즈부터 모든 단계 공통 5초 동안 신규 락온만 막고, 별도 후딜레이·쿨다운은 두지 않으며 이동·전투·이미 발사된 미사일은 계속 진행
 > 24) 한 요청 최대 발수 `maxSalvoMissileCount = 30`과 풀 하드코딩 용량 `missilePoolCapacity = 40`을 분리하고, 정확히 40개 Prewarm·41번째 런타임 생성·부분 발사 금지
 > 25) 5초 후 유효 플레이어 릴리즈는 발사를 보장하며, 그럼에도 `Busy`·`Rejected`·풀 부족·첫 발 전 시작 오류가 발생하면 상단 중앙에 `SHOOT ERROR`를 3초 표시하고 상세 사유를 로그로 기록
-> 26) 12.4의 10단계 구현 순서를 따르고 각 단계가 컴파일·최소 실행 검증을 통과할 때마다 관련 파일만 별도 중간 커밋
+> 26) 12.4의 11단계 구현 순서를 따르고 각 단계가 컴파일·최소 실행 검증을 통과할 때마다 관련 파일만 별도 중간 커밋
 > 27) 실제 락온 성공마다 기존 타게팅 Base/Inner 합성 아이콘을 하나씩 타겟 위치에 표시하고, 릴리즈 후 마지막 미사일 생성·발사가 끝날 때까지 유지한 뒤 1초 후 해당 살보 아이콘을 모두 동시에 제거
+> 28) 최종 전투 구성 최초 1회에 실제 Base 카메라 픽셀 크기·화면비를 저장하고 이동 기준점을 전체 Viewport `(0,0)~(1,1)`에 맞춘다. 헬기 Renderer 크기로 범위를 줄이지 않으며 확대 외형의 가장자리 일부 잘림은 허용
 
 이 시스템이 성공하려면 “락온을 오래 모을수록 강하지만, 위험할 때는 낮은 단계라도 떼서 살아야 한다”는 판단이 반복적으로 발생해야 한다. 개발 초기에는 데미지보다 입력 반응성, 무적 타이밍, UI 피드백, 5단계 연출 차이를 먼저 검증한다.
 

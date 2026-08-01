@@ -10,7 +10,7 @@ public class PlayerOrbitController : MonoBehaviour
     private const float DefaultStrafeSpeed = 8f;
     private const float DefaultAltitudeSpeed = 8f;
     private const float DefaultForwardSpeed = 10f;
-    private static readonly Rect DefaultViewportRect = Rect.MinMaxRect(0.08f, 0.1f, 0.92f, 0.9f);
+    private static readonly Rect DefaultViewportRect = Rect.MinMaxRect(0f, 0f, 1f, 1f);
 
     [FormerlySerializedAs("horizontalScreenSpeed")]
     [SerializeField] private float strafeSpeed = 8f;
@@ -32,7 +32,9 @@ public class PlayerOrbitController : MonoBehaviour
     [SerializeField] private bool lockVisualRootToCamera = true;
     [SerializeField] private bool centerOriginalVisualOnMovementAnchor = true;
     [SerializeField] private string playerVisualLayerName = "PlayerVisual";
-    [SerializeField] private Vector2 originalVisualBoundsPaddingPixels = new(16f, 16f);
+    [Tooltip("Initializes the movement anchor to the actual gameplay camera viewport once per visual setup.")]
+    [SerializeField] private bool fitMovementToFullGameplayViewport = true;
+    [SerializeField] private Vector2 gameplayViewportEdgePaddingPixels = Vector2.zero;
     [Tooltip("Tilts only the visible helicopter model toward movement input; the movement anchor stays locked to the 2D plane.")]
     [SerializeField] private bool enableVisualTilt = true;
     [SerializeField] private float maxVisualTiltAngle = 12f;
@@ -64,6 +66,10 @@ public class PlayerOrbitController : MonoBehaviour
     private bool hasLockedVisualPose;
     private bool hasPreviousWorldPosition;
     private bool cinematicVisualOverrideActive;
+    private bool movementViewportInitializationEnabled;
+    private bool movementViewportInitializedForDisplay;
+    private Vector2Int initializedGameplayPixelSize;
+    private float initializedGameplayAspect;
     private Quaternion cinematicVisualDisplayRotation = Quaternion.identity;
     private Quaternion cinematicReturnDisplayRotation = Quaternion.identity;
     private Coroutine airPressureImpulseRoutine;
@@ -88,6 +94,9 @@ public class PlayerOrbitController : MonoBehaviour
         playerVisualOverlayRenderer.IsConfigured;
     public PlayerVisualOverlayRenderer OriginalVisualOverlayRenderer => playerVisualOverlayRenderer;
     public Rect DebugMovementViewportRect => GetEffectiveMovementViewportRect();
+    public bool IsMovementViewportInitializedForDisplay => movementViewportInitializedForDisplay;
+    public Vector2Int InitializedGameplayPixelSize => initializedGameplayPixelSize;
+    public float InitializedGameplayAspect => initializedGameplayAspect;
     public Vector3 OutwardDirection
     {
         get
@@ -141,8 +150,8 @@ public class PlayerOrbitController : MonoBehaviour
     {
         initialViewportPosition.x = Mathf.Clamp01(initialViewportPosition.x);
         initialViewportPosition.y = Mathf.Clamp01(initialViewportPosition.y);
-        originalVisualBoundsPaddingPixels.x = Mathf.Max(0f, originalVisualBoundsPaddingPixels.x);
-        originalVisualBoundsPaddingPixels.y = Mathf.Max(0f, originalVisualBoundsPaddingPixels.y);
+        gameplayViewportEdgePaddingPixels.x = Mathf.Max(0f, gameplayViewportEdgePaddingPixels.x);
+        gameplayViewportEdgePaddingPixels.y = Mathf.Max(0f, gameplayViewportEdgePaddingPixels.y);
         if (string.IsNullOrWhiteSpace(playerVisualLayerName))
         {
             playerVisualLayerName = "PlayerVisual";
@@ -156,6 +165,8 @@ public class PlayerOrbitController : MonoBehaviour
         lookTarget = targetToLookAt;
         movementBounds = bounds;
         playerMoveGuide = moveGuide;
+        ResetMovementViewportInitialization();
+        movementViewportInitializationEnabled = true;
         CaptureRootRotation(transform.position);
         CaptureMovementPlane(transform.position);
         CacheVisualTiltRoot();
@@ -165,8 +176,25 @@ public class PlayerOrbitController : MonoBehaviour
 
     public void RefreshVisualBindings()
     {
+        if (movementViewportInitializationEnabled)
+        {
+            ResetMovementViewportInitialization();
+        }
+
         CacheVisualTiltRoot();
         ResetVisualTiltImmediate();
+    }
+
+    public bool ReinitializeMovementViewportForCurrentDisplay()
+    {
+        ResetMovementViewportInitialization();
+        bool initialized = TryResolveCameraPlane() && movementViewportInitializedForDisplay;
+        if (initialized)
+        {
+            RepositionImmediate();
+        }
+
+        return initialized;
     }
 
     public void SetInputEnabled(bool enabled)
@@ -774,7 +802,7 @@ public class PlayerOrbitController : MonoBehaviour
 
     private void CaptureCameraPlane(Vector3 viewportPoint)
     {
-        movementViewportRect = GetEffectiveMovementViewportRect();
+        TryInitializeMovementViewportForCurrentDisplay();
         if (playerMoveGuide != null)
         {
             cameraPlaneDepth = Mathf.Max(movementCamera.nearClipPlane + 0.01f, playerMoveGuide.PreviewDepth);
@@ -789,6 +817,7 @@ public class PlayerOrbitController : MonoBehaviour
             Mathf.Clamp(viewportPoint.x, movementViewportRect.xMin, movementViewportRect.xMax),
             Mathf.Clamp(viewportPoint.y, movementViewportRect.yMin, movementViewportRect.yMax));
         hasCameraPlane = true;
+        SyncAuthoredMovementBoundsToGameplayViewport();
     }
 
     private bool TryResolveCameraPlane()
@@ -813,47 +842,100 @@ public class PlayerOrbitController : MonoBehaviour
             return false;
         }
 
-        movementViewportRect = GetEffectiveMovementViewportRect();
+        TryInitializeMovementViewportForCurrentDisplay();
         return true;
     }
 
     private Rect GetEffectiveMovementViewportRect()
     {
-        Rect configuredRect = playerMoveGuide != null ? playerMoveGuide.ViewportRect : DefaultViewportRect;
-        if (Screen.width > 0 &&
-            Screen.height > 0 &&
-            playerVisualOverlayRenderer != null &&
-            playerVisualOverlayRenderer.TryGetVisualViewportExtents(
-                out float overlayLeftExtent,
-                out float overlayRightExtent,
-                out float overlayBottomExtent,
-                out float overlayTopExtent))
+        TryInitializeMovementViewportForCurrentDisplay();
+        return movementViewportRect;
+    }
+
+    private bool TryInitializeMovementViewportForCurrentDisplay()
+    {
+        if (!movementViewportInitializationEnabled)
         {
-            float overlayHorizontalPadding = Mathf.Max(0f, originalVisualBoundsPaddingPixels.x) / Screen.width;
-            float overlayVerticalPadding = Mathf.Max(0f, originalVisualBoundsPaddingPixels.y) / Screen.height;
-            float overlayMinX = Mathf.Max(configuredRect.xMin, overlayLeftExtent + overlayHorizontalPadding);
-            float overlayMaxX = Mathf.Min(configuredRect.xMax, 1f - overlayRightExtent - overlayHorizontalPadding);
-            float overlayMinY = Mathf.Max(configuredRect.yMin, overlayBottomExtent + overlayVerticalPadding);
-            float overlayMaxY = Mathf.Min(configuredRect.yMax, 1f - overlayTopExtent - overlayVerticalPadding);
-
-            if (overlayMinX > overlayMaxX)
-            {
-                float centerX = Mathf.Clamp01((configuredRect.xMin + configuredRect.xMax) * 0.5f);
-                overlayMinX = centerX;
-                overlayMaxX = centerX;
-            }
-
-            if (overlayMinY > overlayMaxY)
-            {
-                float centerY = Mathf.Clamp01((configuredRect.yMin + configuredRect.yMax) * 0.5f);
-                overlayMinY = centerY;
-                overlayMaxY = centerY;
-            }
-
-            return Rect.MinMaxRect(overlayMinX, overlayMinY, overlayMaxX, overlayMaxY);
+            return false;
         }
 
-        return configuredRect;
+        if (movementViewportInitializedForDisplay)
+        {
+            return true;
+        }
+
+        if (movementCamera == null || movementCamera.pixelWidth <= 0 ||
+            movementCamera.pixelHeight <= 0)
+        {
+            return false;
+        }
+
+        Rect baseViewport = fitMovementToFullGameplayViewport
+            ? DefaultViewportRect
+            : playerMoveGuide != null
+                ? playerMoveGuide.ViewportRect
+                : DefaultViewportRect;
+        float horizontalPadding =
+            Mathf.Max(0f, gameplayViewportEdgePaddingPixels.x) / movementCamera.pixelWidth;
+        float verticalPadding =
+            Mathf.Max(0f, gameplayViewportEdgePaddingPixels.y) / movementCamera.pixelHeight;
+        float minX = Mathf.Clamp01(baseViewport.xMin + horizontalPadding);
+        float maxX = Mathf.Clamp01(baseViewport.xMax - horizontalPadding);
+        float minY = Mathf.Clamp01(baseViewport.yMin + verticalPadding);
+        float maxY = Mathf.Clamp01(baseViewport.yMax - verticalPadding);
+        if (minX > maxX)
+        {
+            minX = maxX = 0.5f;
+        }
+
+        if (minY > maxY)
+        {
+            minY = maxY = 0.5f;
+        }
+
+        movementViewportRect = Rect.MinMaxRect(minX, minY, maxX, maxY);
+        initializedGameplayPixelSize = new Vector2Int(
+            movementCamera.pixelWidth,
+            movementCamera.pixelHeight);
+        initializedGameplayAspect = movementCamera.aspect;
+        movementViewportInitializedForDisplay = true;
+        playerMoveGuide?.SetViewportRect(movementViewportRect);
+        SyncAuthoredMovementBoundsToGameplayViewport();
+
+        Debug.Log(
+            $"[PlayerMovementViewport] Initialized once. pixels=" +
+            $"{initializedGameplayPixelSize.x}x{initializedGameplayPixelSize.y}, " +
+            $"aspect={initializedGameplayAspect:0.000}, rect=" +
+            $"({movementViewportRect.xMin:0.000},{movementViewportRect.yMin:0.000})-" +
+            $"({movementViewportRect.xMax:0.000},{movementViewportRect.yMax:0.000}).",
+            this);
+        return true;
+    }
+
+    private void SyncAuthoredMovementBoundsToGameplayViewport()
+    {
+        if (!movementViewportInitializedForDisplay || !hasCameraPlane ||
+            movementBounds == null || movementCamera == null)
+        {
+            return;
+        }
+
+        movementBounds.FitToCameraViewport(
+            movementCamera,
+            movementViewportRect,
+            cameraPlaneDepth);
+    }
+
+    private void ResetMovementViewportInitialization()
+    {
+        movementViewportInitializedForDisplay = false;
+        initializedGameplayPixelSize = Vector2Int.zero;
+        initializedGameplayAspect = 0f;
+        movementViewportRect = fitMovementToFullGameplayViewport
+            ? DefaultViewportRect
+            : playerMoveGuide != null
+                ? playerMoveGuide.ViewportRect
+                : DefaultViewportRect;
     }
 
 
@@ -1048,8 +1130,8 @@ public class PlayerOrbitController : MonoBehaviour
             playerVisualLayerName = "PlayerVisual";
         }
 
-        originalVisualBoundsPaddingPixels.x = Mathf.Max(0f, originalVisualBoundsPaddingPixels.x);
-        originalVisualBoundsPaddingPixels.y = Mathf.Max(0f, originalVisualBoundsPaddingPixels.y);
+        gameplayViewportEdgePaddingPixels.x = Mathf.Max(0f, gameplayViewportEdgePaddingPixels.x);
+        gameplayViewportEdgePaddingPixels.y = Mathf.Max(0f, gameplayViewportEdgePaddingPixels.y);
 
         if (maxVisualTiltAngle <= 0.001f || maxVisualTiltAngle > 18f)
         {

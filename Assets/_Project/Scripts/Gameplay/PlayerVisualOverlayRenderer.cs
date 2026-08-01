@@ -299,24 +299,42 @@ public sealed class PlayerVisualOverlayRenderer : MonoBehaviour
     private void AlignVisualCenterToOwner()
     {
         LastAlignmentWorldOffset = Vector3.zero;
-        if (!centerVisualOnOwner || baseCamera == null || visualRoot == null ||
-            !TryGetRendererBounds(visualRoot, out Bounds bounds))
+        if (!centerVisualOnOwner || baseCamera == null || visualRoot == null)
         {
             return;
         }
 
-        Vector3 centerViewport = baseCamera.WorldToViewportPoint(bounds.center);
         Vector3 ownerViewport = baseCamera.WorldToViewportPoint(transform.position);
-        if (centerViewport.z <= 0f || ownerViewport.z <= 0f)
+        if (ownerViewport.z <= 0f)
         {
             return;
         }
 
-        Vector3 desiredCenter = baseCamera.ViewportToWorldPoint(
-            new Vector3(ownerViewport.x, ownerViewport.y, centerViewport.z));
-        Vector3 offset = desiredCenter - bounds.center;
-        visualRoot.position += offset;
-        LastAlignmentWorldOffset = offset;
+        // A rotated or enlarged 3D model can have a projected screen-rectangle center
+        // that differs from Renderer.bounds.center because its corners have different
+        // camera depths. Align the actual projected rectangle so visual scaling keeps
+        // the helicopter centered on the gameplay movement anchor.
+        for (int pass = 0; pass < 2; pass++)
+        {
+            if (!TryGetVisualViewportRect(out Rect visualViewportRect))
+            {
+                return;
+            }
+
+            Vector2 viewportDelta =
+                new Vector2(ownerViewport.x, ownerViewport.y) - visualViewportRect.center;
+            if (viewportDelta.sqrMagnitude <= 0.00000001f)
+            {
+                break;
+            }
+
+            Vector3 currentCenterAtOwnerDepth = baseCamera.ViewportToWorldPoint(
+                new Vector3(visualViewportRect.center.x, visualViewportRect.center.y, ownerViewport.z));
+            Vector3 desiredCenterAtOwnerDepth = baseCamera.ViewportToWorldPoint(ownerViewport);
+            Vector3 offset = desiredCenterAtOwnerDepth - currentCenterAtOwnerDepth;
+            visualRoot.position += offset;
+            LastAlignmentWorldOffset += offset;
+        }
     }
 
     private void RestoreVisualRootPosition()

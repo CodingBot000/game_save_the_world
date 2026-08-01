@@ -7,7 +7,7 @@ using UnityEngine.InputSystem.LowLevel;
 public static class PlayerVisualOverlayDebugMenu
 {
     private const string MenuRoot = "TitanDestroyer/Debug/Player Visual Overlay/";
-    private const double EdgePhaseSeconds = 2.75;
+    private const double EdgePhaseSeconds = 3.75;
     public const string ScreenshotPath = "/tmp/TitanDestroyer_PlayerVisualOverlay.png";
     private static readonly Key[] EdgeKeys = { Key.A, Key.D, Key.W, Key.S };
     private static readonly string[] EdgeLabels = { "left", "right", "top", "bottom" };
@@ -56,6 +56,12 @@ public static class PlayerVisualOverlayDebugMenu
                                       Vector2.Distance(
                                           new Vector2(playerViewport.x, playerViewport.y),
                                           visualRect.center) <= 0.01f;
+        Rect movementRect = orbit.DebugMovementViewportRect;
+        bool movementCoversFullGameplayViewport =
+            Mathf.Abs(movementRect.xMin) <= 0.001f &&
+            Mathf.Abs(movementRect.yMin) <= 0.001f &&
+            Mathf.Abs(movementRect.xMax - 1f) <= 0.001f &&
+            Mathf.Abs(movementRect.yMax - 1f) <= 0.001f;
         bool verified = orbit.IsUsingOriginalVisualOverlay && overlay != null && overlay.IsConfigured &&
                         overlay.BaseCameraExcludesVisualLayer && overlay.OverlayClearsDepth &&
                         overlay.BaseRendererSupportsCameraStacking &&
@@ -63,7 +69,9 @@ public static class PlayerVisualOverlayDebugMenu
                         overlay.IsInBaseCameraStack && cameraPoseMatches &&
                         overlay.VisualRendererCount > 0 &&
                         overlay.RendererColliderLayerConflictCount == 0 &&
-                        legacyObjectCount == 0 && visualInsideViewport && visualCenteredOnPlayer;
+                        legacyObjectCount == 0 && visualInsideViewport && visualCenteredOnPlayer &&
+                        orbit.IsMovementViewportInitializedForDisplay &&
+                        movementCoversFullGameplayViewport;
 
         StringBuilder summary = new();
         summary.Append("[PlayerVisualOverlayDebug] verified=").Append(verified)
@@ -82,7 +90,11 @@ public static class PlayerVisualOverlayDebugMenu
             .Append(", playerViewport=").Append(FormatVector(playerViewport))
             .Append(", visualCenterViewport=").Append(FormatVector(visualCenterViewport))
             .Append(", visualRect=").Append(hasVisualRect ? FormatRect(visualRect) : "unavailable")
-            .Append(", movementRect=").Append(FormatRect(orbit.DebugMovementViewportRect))
+            .Append(", movementInitialized=").Append(orbit.IsMovementViewportInitializedForDisplay)
+            .Append(", gamePixels=").Append(orbit.InitializedGameplayPixelSize)
+            .Append(", gameAspect=").Append(orbit.InitializedGameplayAspect.ToString("F3"))
+            .Append(", fullGameplayViewport=").Append(movementCoversFullGameplayViewport)
+            .Append(", movementRect=").Append(FormatRect(movementRect))
             .Append(", leftLauncherViewport=").Append(FormatVector(leftLauncherViewport))
             .Append(", rightLauncherViewport=").Append(FormatVector(rightLauncherViewport));
         Debug.Log(summary.ToString(), orbit);
@@ -224,9 +236,16 @@ public static class PlayerVisualOverlayDebugMenu
                     .Append(FormatVector(edgeRun.EdgeViewports[i]));
             }
 
+            Rect movementRect = edgeRun.Orbit.DebugMovementViewportRect;
+            bool fullGameplayViewport =
+                Mathf.Abs(movementRect.xMin) <= 0.001f &&
+                Mathf.Abs(movementRect.yMin) <= 0.001f &&
+                Mathf.Abs(movementRect.xMax - 1f) <= 0.001f &&
+                Mathf.Abs(movementRect.yMax - 1f) <= 0.001f;
             Debug.Log(
-                $"[PlayerVisualOverlayDebug] edgeRun verified={reachedAllEdges && edgeRun.StayedInsideScreen}, " +
-                $"stayedInsideScreen={edgeRun.StayedInsideScreen}, {details}");
+                $"[PlayerVisualOverlayDebug] edgeRun verified={reachedAllEdges && fullGameplayViewport}, " +
+                $"fullGameplayViewport={fullGameplayViewport}, " +
+                $"visualStayedInsideScreen={edgeRun.StayedInsideScreen}, {details}");
         }
 
         edgeRun = null;
