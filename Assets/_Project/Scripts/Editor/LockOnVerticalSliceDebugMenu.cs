@@ -72,7 +72,7 @@ public static class LockOnVerticalSliceDebugMenu
         activeRun.KeyboardAvailable = keyboard != null;
         if (keyboard != null)
         {
-            InputSystem.QueueStateEvent(keyboard, new KeyboardState(Key.A, Key.Space));
+            InputSystem.QueueStateEvent(keyboard, new KeyboardState(Key.A));
             activeRun.InputPressed = true;
         }
 
@@ -80,7 +80,8 @@ public static class LockOnVerticalSliceDebugMenu
         EditorApplication.update += pendingFullRun;
         Debug.Log(
             "[LockVerticalDebug] Started real-cadence 1-5 integration run. " +
-            "A+Space is injected for 0.55 seconds; lock reuse is not fast-forwarded.");
+            "Only A movement is injected for 0.55 seconds; Gatling remains automatic " +
+            "and lock reuse is not fast-forwarded.");
     }
 
     [MenuItem(MenuRoot + "Abort Active Run", priority = 311)]

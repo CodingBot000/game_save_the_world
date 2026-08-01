@@ -1,7 +1,5 @@
 using System;
 using UnityEngine;
-using UnityEngine.EventSystems;
-using UnityEngine.InputSystem;
 using UnityEngine.Rendering;
 
 public class PlayerCombatController : MonoBehaviour
@@ -12,6 +10,9 @@ public class PlayerCombatController : MonoBehaviour
     private const string DefaultDamageHurtboxName = "CrashObserver";
     private const string DamageHurtboxDebugProxyName = "__DamageHurtboxDebugProxy";
 
+    [Header("Automatic Gatling")]
+    [SerializeField, Min(0.01f)] private float automaticFireBurstDuration = 2f;
+    [SerializeField, Min(0.01f)] private float automaticFireCooldownDuration = 2f;
     [SerializeField] private float fireCooldown = 0.15f;
     [SerializeField] private float projectileSpeed = 60f;
     [SerializeField] private float projectileDamage = 25f;
@@ -74,6 +75,7 @@ public class PlayerCombatController : MonoBehaviour
     private AudioSource gunFireLoopSource;
     private float pulseTimer;
     private bool salvoInvincible;
+    private float automaticFireCycleElapsed;
     private readonly PlayerContinuousDamageTickRegistry continuousDamageTickRegistry = new();
     private Vector3 baseScale;
     private VehiclePlayerStateCatalog vehiclePlayerStateCatalog;
@@ -100,8 +102,18 @@ public class PlayerCombatController : MonoBehaviour
     public bool WeaponFireBlockedByAirPressure => IsAirPressureWeaponLocked();
     public bool IsSalvoInvincible => salvoInvincible;
     public float CurrentGatlingBaseDamage => projectileDamage;
+    public bool IsAutomaticGatlingFireWindow =>
+        automaticFireCycleElapsed < automaticFireBurstDuration;
+    public bool IsAutomaticGatlingFiring =>
+        CanRunAutomaticGatling() &&
+        IsAutomaticGatlingFireWindow &&
+        !IsAirPressureWeaponLocked();
     public PlayerContinuousDamageTickRegistry ContinuousDamageTickRegistry =>
         continuousDamageTickRegistry;
+    public float DebugAutomaticFireBurstDuration => automaticFireBurstDuration;
+    public float DebugAutomaticFireCooldownDuration => automaticFireCooldownDuration;
+    public float DebugAutomaticFireCycleElapsed => automaticFireCycleElapsed;
+    public int DebugGatlingShotsFired { get; private set; }
     public float DebugFireCooldown => fireCooldown;
     public float DebugProjectileSpeed => projectileSpeed;
     public float DebugProjectileDamage => projectileDamage;
@@ -152,6 +164,8 @@ public class PlayerCombatController : MonoBehaviour
 
     private void Awake()
     {
+        EnsureAutomaticGatlingConfiguration();
+        ResetAutomaticGatlingCycle();
         RestoreRuntimeAudioOutput();
         ApplySelectedVehicleState(resetRuntimeValues: true);
         invulnerabilityDuration = Mathf.Max(MinimumHitInvulnerabilityDuration, invulnerabilityDuration);
@@ -171,21 +185,17 @@ public class PlayerCombatController : MonoBehaviour
         transform.localScale = baseScale * (1f + pulseTimer * 0.06f);
         UpdateArmorRepair();
 
-        if (!combatEnabled || !IsAlive || battleController == null || bossController == null || !bossController.IsAlive)
+        if (!CanRunAutomaticGatling() || Time.timeScale <= 0f)
         {
             StopGunFireLoop();
             return;
         }
 
-        Mouse mouse = Mouse.current;
-        Keyboard keyboard = Keyboard.current;
-        bool pointerOverUi = EventSystem.current != null && EventSystem.current.IsPointerOverGameObject();
-        bool mouseFire = mouse != null && mouse.leftButton.isPressed && !pointerOverUi;
-        bool keyboardFire = keyboard != null && keyboard.spaceKey.isPressed;
+        AdvanceAutomaticGatlingCycle(Time.deltaTime);
         bool weaponFireLocked = IsAirPressureWeaponLocked();
-        bool gunFireInput = !weaponFireLocked && (mouseFire || keyboardFire);
-        UpdateGunFireLoop(gunFireInput);
-        if (gunFireInput)
+        bool shouldFireGatling = !weaponFireLocked && IsAutomaticGatlingFireWindow;
+        UpdateGunFireLoop(shouldFireGatling);
+        if (shouldFireGatling)
         {
             TryFire();
         }
@@ -200,6 +210,8 @@ public class PlayerCombatController : MonoBehaviour
         battleController = owner;
         bossController = boss;
         projectileTemplate = projectileTemplateSource;
+        EnsureAutomaticGatlingConfiguration();
+        ResetAutomaticGatlingCycle();
         ApplySelectedVehicleState(resetRuntimeValues: true);
         invulnerabilityDuration = Mathf.Max(MinimumHitInvulnerabilityDuration, invulnerabilityDuration);
 
@@ -232,7 +244,13 @@ public class PlayerCombatController : MonoBehaviour
 
     public void SetCombatEnabled(bool enabled)
     {
+        bool changed = combatEnabled != enabled;
         combatEnabled = enabled;
+        if (changed)
+        {
+            ResetAutomaticGatlingCycle();
+        }
+
         if (!combatEnabled)
         {
             StopGunFireLoop();
@@ -355,6 +373,12 @@ public class PlayerCombatController : MonoBehaviour
         armorRepairCooldownRemaining = armorRepairDelay;
         invulnerabilityRemaining = 0f;
         EndSalvoInvincibility();
+    }
+
+    public void ResetAutomaticGatlingCycleForDebug()
+    {
+        ResetAutomaticGatlingCycle();
+        DebugGatlingShotsFired = 0;
     }
 
     public void SetDamageHurtboxDebugVisibleForDebug(bool visible)
@@ -590,12 +614,51 @@ public class PlayerCombatController : MonoBehaviour
         GameObject projectileInstance = Instantiate(projectileTemplate, origin, Quaternion.LookRotation(direction) * PlayerProjectileVisualRotation);
         projectileInstance.name = "PlayerProjectileRuntime";
         projectileInstance.SetActive(true);
+        DebugGatlingShotsFired++;
         PlayMuzzleFlash();
 
         ProjectileController projectile = projectileInstance.GetComponent<ProjectileController>();
         if (projectile != null)
         {
             projectile.Launch(battleController, ProjectileTeam.Player, direction, projectileSpeed, projectileDamage);
+        }
+    }
+
+    private bool CanRunAutomaticGatling()
+    {
+        return combatEnabled && IsAlive &&
+               battleController != null && battleController.IsBattleActive &&
+               bossController != null && bossController.IsAlive;
+    }
+
+    private void AdvanceAutomaticGatlingCycle(float deltaSeconds)
+    {
+        float cycleDuration = automaticFireBurstDuration + automaticFireCooldownDuration;
+        automaticFireCycleElapsed = Mathf.Repeat(
+            automaticFireCycleElapsed + Mathf.Max(0f, deltaSeconds),
+            cycleDuration);
+    }
+
+    private void ResetAutomaticGatlingCycle()
+    {
+        automaticFireCycleElapsed = 0f;
+        shootCooldownRemaining = 0f;
+    }
+
+    private void EnsureAutomaticGatlingConfiguration()
+    {
+        if (float.IsNaN(automaticFireBurstDuration) ||
+            float.IsInfinity(automaticFireBurstDuration) ||
+            automaticFireBurstDuration <= 0f)
+        {
+            automaticFireBurstDuration = 2f;
+        }
+
+        if (float.IsNaN(automaticFireCooldownDuration) ||
+            float.IsInfinity(automaticFireCooldownDuration) ||
+            automaticFireCooldownDuration <= 0f)
+        {
+            automaticFireCooldownDuration = 2f;
         }
     }
 
@@ -1371,8 +1434,14 @@ public class PlayerCombatController : MonoBehaviour
 
     private void OnDisable()
     {
+        ResetAutomaticGatlingCycle();
         StopGunFireLoop();
         EndSalvoInvincibility();
+    }
+
+    private void OnValidate()
+    {
+        EnsureAutomaticGatlingConfiguration();
     }
 
     private void OnDestroy()

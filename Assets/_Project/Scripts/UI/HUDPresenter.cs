@@ -16,7 +16,7 @@ public class HUDPresenter : MonoBehaviour
     private const string PlayerArmorFillSpritePath = "Assets/Art/UI/Battle/HUD/player_armor_fill.png";
     private const string BossBaseSpritePath = "Assets/Art/UI/Battle/HUD/boss_hp_base.png";
     private const string BossFillSpritePath = "Assets/Art/UI/Battle/HUD/boss_hp_fill.png";
-    private const string ControlHintText = "A / D left-right   W / S up-down   Space / Left click fire   Hold Right click / LOCK ON, release to attack   R restart";
+    private const string ControlHintText = "A / D left-right   W / S up-down   Gatling auto: 2s fire / 2s cooldown   Hold Right click / LOCK ON, release to attack   R restart";
     private static readonly Vector2 LockOnButtonAnchoredPosition = new(-28f, 28f);
     private static readonly Vector2 LockOnButtonSize = new(208f, 74f);
     private static readonly Vector2 PlayerStatusBaseSourceSize = new(592f, 232f);
