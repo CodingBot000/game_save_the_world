@@ -360,7 +360,7 @@ void CancelPreparedSalvo(SalvoHandle handle, string reason)
 | 분야 | 필수 요구사항 | 설명 |
 | --- | --- | --- |
 | 입력 UI | 모바일 HUD 락온 버튼 | 기존 `Missile`/`Special` 버튼을 제거하고 락온 버튼 하나를 제공한다. `onClick` 대신 `PointerDown`·`PointerUp`·`PointerExit`을 처리하며 유효 타겟 0개 또는 5초 재사용 대기 중에는 비활성 상태로 표시한다. |
-| UI | 1~5단계 락온 아이콘 | 괴수 부위 위에 실제 타겟 생성에 성공한 아이콘만 순차 활성화. 성공 개수가 현재 단계이며 단계별 색/크기/효과 차등. |
+| UI | 1~5단계 락온 아이콘 | 괴수 부위 위에 실제 타겟 생성에 성공할 때마다 기존 `targeting_normal_base` + `targeting_normal_inner` 이미지를 합성한 락온 아이콘을 하나씩 순차 활성화한다. 성공 개수가 현재 단계이며 단계별 색/크기/효과를 차등한다. 릴리즈 뒤에는 확정된 타겟 스냅샷 위치를 따라가며 모든 미사일의 생성·발사가 끝날 때까지 유지하고, `OnSalvoCompleted` 또는 발사 큐 취소 시점부터 비스케일 시간 1초가 지난 뒤 해당 살보의 아이콘을 한꺼번에 제거한다. 개별 미사일 명중·소멸 시점에는 제거하지 않는다. |
 | UI | 차지 단계 게이지 | 버튼을 누르는 동안 현재 단계와 다음 단계까지의 진행률 표시. |
 | UI | 릴리즈 가능 피드백 | 1단계부터 발사 가능하다는 것을 즉시 알려야 함. |
 | UI | 재사용 대기 피드백 | 유효 릴리즈부터 5초 동안 락온 버튼을 비활성화하고 남은 시간을 선택적으로 표시. 대기 종료 시 유효 타겟이 있으면 즉시 다시 활성화. |
@@ -386,6 +386,7 @@ void CancelPreparedSalvo(SalvoHandle handle, string reason)
 | OnLockCanceled(reason) | HUD `PointerExit`, 게임 일시정지, 성공 락 0개 릴리즈, 타겟 0개 상태의 릴리즈 또는 유예시간 만료 | 차지 게이지·락온 아이콘·입력 유지 상태 초기화 |
 | OnSalvoPrepareFailed(status, reason) | 성공 락 1개 이상과 유효 타겟이 있는 플레이어 릴리즈가 `Busy`·`Rejected`이거나 첫 미사일 발사 전 시작 실패 | `HUDPresenter.ShowShootError(reason)` 호출, 화면에는 `SHOOT ERROR`, 상세 사유는 Console 로그에 기록 |
 | OnLockRelease(successfulLockCount, targetSnapshots) | 살보 준비 성공 후 무적을 켠 직후, 준비된 발사 시작 직전 | 성공 락 수와 확정 타겟 스냅샷 전달 |
+| OnLockOnSalvoFinished(salvoId, canceled) | 락온으로 시작한 살보의 마지막 미사일 생성·발사 완료 또는 발사 큐 취소 | 해당 살보 락온 아이콘의 1초 유지 타이머 시작. 미사일 명중 완료를 기다리지 않음 |
 | OnLockReuseWaitStarted(duration) | 살보 준비에 성공한 유효 릴리즈 프레임. `duration = 5.0` | 신규 락온 입력·HUD 버튼 비활성, 선택적 남은 시간 표시 |
 | OnLockReuseWaitEnded | 유효 릴리즈 기준 5초 종료 | 유효 타겟이 있으면 HUD 버튼·우클릭 신규 차지 입력 재활성 |
 | OnSalvoInvincibleStart(duration) | 살보 준비 성공 직후, `StartPreparedSalvo` 호출 전. `duration = 0.60` | 첫 미사일보다 먼저 발사 연동 무적 플래그 활성화 |
@@ -1086,7 +1087,7 @@ OnBossBodyDebugFlashDisabled():
 - `fullSalvoGatlingDamageMultiplier = 10.0` 별도 변수를 두고 5단계 약점 적용 전 기본 총 데미지를 릴리즈 시 개틀링 1발 기본 데미지 `G × 10.0`으로 계산
 - 단계별 기본 총 데미지를 5단계 대비 `[30%, 40%, 50%, 60%, 100%]`로 계산한 뒤 실제 발수로 나눠 발당 기본 데미지를 스냅샷
 - 개방 약점 타겟에 스냅샷한 발당 기본 데미지의 총 `2.0`배를 한 번만 적용하고 기존 랜덤 크리티컬과 중첩 금지
-- 단계별 락온 아이콘 표시
+- 실제 락온 성공마다 기존 `targeting_normal_base` + `targeting_normal_inner` 합성 아이콘을 타겟 위치에 하나씩 표시하고, 릴리즈 후 마지막 미사일 생성·발사 완료까지 유지한 뒤 비스케일 시간 1초 후 해당 아이콘을 동시에 제거
 - 버튼 릴리즈 시 모든 단계에서 현재 Special의 최대 4발 묶음·총 0.6초 흐름으로 단계별 발수 발사
 - 릴리즈 준비 성공 후 첫 묶음 전에 발사 연동 무적을 켜고 마지막 묶음 발사 완료 직후 해제하여 모든 단계에서 발사 흐름과 같은 약 0.6초만 무적 적용
 - 살보 준비에 성공한 유효 릴리즈 순간부터 모든 단계 공통 5초 락온 재사용 대기를 시작하고 별도 후딜레이·쿨다운 상태나 타이머를 만들지 않기
@@ -1109,6 +1110,7 @@ OnBossBodyDebugFlashDisabled():
 | 공격 정리·기관총 유지 | 좌클릭/`Space` 기관총은 기존 연사·탄도와 현재 런타임 데미지로 정상 발사된다. 우클릭 단발 미사일, 기존 Special 버튼·시네마틱, Missile/Special HUD, 수동 AimPoint 클릭과 랜덤 크리티컬 UI·판정은 동작하거나 표시되지 않는다. |
 | 기관총·락온 병행 | 기관총은 락온 차지, 0.6초 살보 발사 연동 무적과 5초 재사용 대기 중에도 입력과 발사가 유지되며, 우클릭 락온 상태를 취소·초기화하거나 재사용 대기 시간을 바꾸지 않는다. |
 | 성공 락 수와 발수 | 실제 타겟 아이콘 생성 성공 수가 1·2·3·4·5개일 때 좌우 합계로 정확히 5·10·15·20·30발이 발사되며, 시간만 경과하고 아이콘 생성에 실패한 단계는 발수에 포함되지 않는다. |
+| 락온 아이콘 표시·수명 | 성공 락이 1→5개로 증가할 때 기존 타게팅 이미지 합성 아이콘도 타겟 위치에 정확히 1→5개로 증가한다. 릴리즈 직후와 약 0.6초 발사 중, 마지막 발사 완료 시점 및 그 0.5초 뒤까지 같은 개수를 유지하며, 완료 시점부터 비스케일 시간 1초가 지나면 해당 살보 아이콘이 모두 동시에 0개가 된다. 미사일 명중 여부나 약점 개폐로 먼저 사라지지 않는다. |
 | 0.6초 발사 흐름 | 모든 단계가 한 묶음 최대 4발을 사용하고 첫 묶음부터 마지막 묶음까지 약 0.60초가 걸린다. 묶음 간격은 `0.60 / (묶음 수 - 1)`로 파생되며 마지막 묶음 뒤에는 추가 대기가 없다. |
 | 단계별 기본 데미지 | 릴리즈 시 개틀링 1발 기본 데미지가 `G`이면 일반 타겟 기준 단계별 총 기본 데미지가 각각 `3G`, `4G`, `5G`, `6G`, `10G`가 된다. 실제 발당값 합계가 부동소수점 허용 오차 안에서 이 예산과 일치한다. |
 | 타겟 랜덤 반복 | 같은 요청을 서로 다른 난수 시드로 반복하면 타겟 순서가 달라질 수 있고, 각 셔플 주기 안에서는 모든 성공 타겟을 한 번씩 사용한 뒤 다음 주기를 다시 섞는다. |
@@ -1183,6 +1185,7 @@ OnBossBodyDebugFlashDisabled():
 | 7. 플레이어 렌더링 구조 전환 | 복제 헬기·RenderTexture·RawImage 경로를 원본 3D + URP `PlayerVisual` Overlay 카메라로 교체한다. 먼저 새 경로를 검증한 뒤 기존 복제 출력 경로를 비활성화한다. | 원본 헬기 단일 표시, 기존 2D형 상하좌우 이동과 고정 깊이 유지, 화면 경계·피격 위치·좌우 발사 앵커·Base/Overlay 카메라 정합성 확인. | `refactor: render player through overlay camera` |
 | 8. UI·VFX·SFX 마감 | 단계 피드백, 미사일 연출, 화면 흔들림, 약점 점멸, 헬기 피격·발광·손상 확장 경로와 사운드를 원본 3D 기준으로 연결한다. | 원본 헬기 VFX 표시, 미사일 월드 깊이 유지, UI 가독성, 단계별 피드백과 저사양 최대 30발 성능 확인. | `feat: add lock-on combat feedback` |
 | 9. 교체 대상 코드 삭제·전체 회귀 검수 | 비활성 상태로 남겨둔 단발 미사일·기존 Special 입력/HUD/시네마틱·방송·수동 AimPoint·랜덤 크리티컬과 검증이 끝난 복제 렌더링 코드를 삭제한다. 기관총 입력·총알 발사·연사·데미지 경로는 삭제하지 않는다. | 프로젝트 전체 참조 검색, Unity 재컴파일, EditMode/PlayMode 테스트, 전체 보스전 실행. 기관총과 신규 락온이 모두 정상이며 누락 스크립트·Missing 참조·신규 Error 없음. | `chore: remove legacy missile and special paths` |
+| 10. 기존 락온 이미지·릴리즈 유지 보강 | 텍스트 마커에 기존 타게팅 Base/Inner 이미지를 합성하고, 릴리즈 타겟 스냅샷과 발사 완료 이벤트를 이용해 발사 종료 후 1초까지 아이콘을 유지한다. | 단계별 이미지 수 `[1,2,3,4,5]`, 릴리즈·발사 중·완료 시점·완료 0.5초 후 5개 유지, 완료 1초 후 동시 제거, 전체 컴파일과 EditMode 테스트 확인. | `feat: persist lock-on reticles through salvo` |
 
 #### 12.4.1 단계 종료 및 커밋 원칙
 
@@ -1208,6 +1211,7 @@ OnBossBodyDebugFlashDisabled():
 | 7. 플레이어 렌더링 구조 전환 | 완료 | `PlayerVisual` 레이어와 `PlayerVisualOverlayRenderer`를 추가해 실제 선택 헬기 원본의 Renderer 20개만 전용 레이어로 전환하고, Base 카메라에서는 해당 레이어를 제외한 뒤 같은 위치·회전·Projection을 쓰는 깊이 초기화 URP Overlay 카메라로 렌더링했다. `CrashObserver`와 게임플레이 Collider는 기존 레이어에 남기며 실제 헬기에서 Renderer와 Collider가 같은 오브젝트인 충돌 수가 0개임을 확인했다. 실행 중 새로 부착되는 헬기 Renderer/VFX도 0.25초 주기로 전용 레이어에 포함하고, 종료·외형 교체 시 원래 레이어와 로컬 위치를 복구한다. 기존 `_ScreenVisual`·RenderTexture·RawImage 생성은 비활성화해 실행 오브젝트가 0개이며 원본 헬기만 한 번 표시된다. 원본 Viper 프리팹의 내부 위치 오프셋은 Renderer Bounds 중심을 이동 앵커에 맞추는 방식으로 보정했다. 진단에서 Base/Overlay의 스태킹 지원·깊이 초기화·카메라 자세·투영 일치, 원본 Renderer 20개, Collider 레이어 충돌 0개, 레거시 화면 오브젝트 0개, 플레이어/외형 중심 일치를 확인했다. 좌·우·상·하 자동 이동은 각각 화면 끝에 도달하면서 모델 전체가 화면 안에 유지되어 `verified=True`였고, 화면 캡처로 헬기가 괴수·환경보다 앞에 표시되고 좌우 발사 앵커가 기체 범위에 놓인 것을 확인했다. 전환 뒤 실제 5.05초 간격 1→5단계 통합은 발수·데미지·0.6초 완료·기관총·보스 공격·풀 최대 30·오류 없음이 모두 유지됐으며 EditMode 테스트 59/59와 최종 컴파일·게임 예외 검사를 통과했다. 검증이 끝난 구 복제 메서드 본문 삭제는 계획대로 9단계에서 수행한다. | `refactor: render player through overlay camera` |
 | 8. UI·VFX·SFX 마감 | 완료 | 기존 `LockOnHudPresenter`의 모바일 `PointerDown/Up/Exit`, 타겟 0개·5초 대기 버튼 비활성, 다음 단계 게이지, 단계별 색·크기 마커, `RELEASE n/5`, 남은 재사용 시간과 `SHOOT ERROR`를 유지하고 새 락온 성공 마커마다 0.28초 확대 펄스를 추가했다. `LockOnCombatFeedback`은 단계 상승마다 서로 다른 높이의 짧은 톤을 재생하고 5단계에는 별도 화음 완성음을 사용한다. 유효 릴리즈에는 발사 충격음과 상승 부스트음을 두 AudioSource로 같은 프레임에 동시 재생한다. 전용 최종 오디오 에셋이 없는 현재 프로토타입에서는 `AudioClip.Create`로 생성한 교체 가능한 런타임 음을 사용하며 외부 에셋·씬 참조를 추가하지 않았다. 1~5단계 화면 충격은 `[0.07,0.09,0.11,0.14,0.20]`초와 Projection 진폭 `[0.0015,0.0022,0.0032,0.0048,0.0090]`으로 차등 적용한다. 카메라 Transform·플레이어 이동 평면·피격 위치를 움직이지 않고 Base 카메라 Projection만 흔들며 7단계 Overlay가 같은 프레임에 복사하고 종료 시 원래 행렬을 복구한다. 미사일은 기존 최대 4발 묶음·총 0.6초·기본/발광 Trail·유도·월드 깊이를 그대로 사용하고 별도 포드 애니메이션·대형 미사일·줌·슬로우는 추가하지 않았다. 전용 진단에서 마커/펄스 5개, 단계음 5회, 릴리즈/부스트 동시음 각 1회, 5단계 훅 1회, 오디오 재생, 화면 충격 최대 진폭과 종료 후 Projection 복구가 `verified=True`였다. 피드백 적용 후 실제 5.05초 간격 1→5 전투도 발수·데미지·기관총·보스 공격·풀 최대 30·오류 없음이 유지됐고, 런타임 카운터는 단계음 누적 15회·릴리즈/부스트 각 5회·5단계 훅 1회였다. 최종 컴파일·게임 예외 검사와 EditMode 테스트 59/59를 통과했다. 헬기 피격·발광·손상은 사양대로 원본 3D 확장 훅이며 이번 필수 무적 피드백에는 추가하지 않았다. | `feat: add lock-on combat feedback` |
 | 9. 교체 대상 코드 삭제·전체 회귀 검수 | 완료 | 기존 우클릭 단발 `TryFireMissile`·`HomingMissileController`, 단발 전용 쿨다운·데미지와 `IgnoreMissileCooldown` 디버그 조정값, `PlayerSpecialAttackController` 테스트 어댑터, Special 버튼·시네마틱 연결, `BattleEventBroadcastTrigger`, 수동 `BattleAimPointTargetingPresenter`·Builder, 5초 AimPoint 무작위 전환과 투사체 `criticalChance`·보스 랜덤 크리티컬 판정을 삭제했다. 기존 `AimPoint` Transform 하나는 기관총 조준과 보스 발사 기준점으로 유지하고 신규 락온은 계속 별도 타겟을 사용한다. HUD의 기존 `MissileButton`을 씬과 코드 모두 `LockOnButton`으로 확정하고 `SpecialButton`은 숨김이 아니라 씬에서 삭제했다. 좌클릭/`Space` 기관총의 입력·연사·투사체·데미지는 유지했으며 신규 살보가 읽는 기존 미사일 속도·유도·VFX 프로필과 `SpecialHomingMissileController`·고정 풀의 꼬리를 무는 비행/Trail은 보존했다. `PlayerOrbitController`에서는 복제 모델·별도 RenderTexture·RawImage·화면 복제 카메라의 필드, 생성, 갱신, 경계 계산, 정리 메서드 약 750행을 삭제하고 원본 3D + `PlayerVisualOverlayRenderer`만 남겼다. 씬 재저장 후 삭제 타입·구 버튼·구 크리티컬 직렬화 필드와 Missing Script가 없고 런타임 검색에서도 Special/Missile/AimPoint UI/방송/화면 복제 객체가 모두 0개였다. Unity 전체 컴파일 오류 0개, EditMode 59/59 통과. 실제 시간 1→5단계 회귀는 기관총·이동·보스 공격을 유지하면서 `[5,10,15,20,30]`발 전부 완료, `maxLeased=30`, 풀 불변식, `SHOOT ERROR=false`, 보스 피해 `550.001`로 `verified=True`였다. 별도 새 Play 세션의 승리·패배, Busy `SHOOT ERROR`, 타겟 소실 후 5초 최대 발사 보장, 원본 헬기 좌·우·상·하 화면 경계, 5단계 마커/SFX/Projection 피드백도 모두 `verified=True`를 확인했다. | `chore: remove legacy missile and special paths` |
+| 10. 기존 락온 이미지·릴리즈 유지 보강 | 완료 | `BattleCanvas`의 `LockOnHudPresenter`에 기존 `targeting_normal_base.png`와 `targeting_normal_inner.png` Sprite를 직렬화 연결하고, 각 성공 마커를 Base/Inner/번호 레이어로 합성했다. 차지 중에는 실제 락온 타겟을 따라 1개씩 추가하고, 유효 릴리즈에서는 `LockOnReleaseIntent.TargetSnapshots`의 Transform과 월드 위치를 별도로 보관해 컨트롤러가 차지 목록을 초기화해도 표시를 유지한다. `PlayerLockOnController.OnLockOnSalvoFinished(salvoId, canceled)`를 추가해 정상 완료와 큐 취소 모두 마지막 발사 시점부터 비스케일 1초 유지 타이머를 시작하며 한 살보의 아이콘을 동시에 제거한다. 전용 Play 진단에서 단계별 마커·이미지 `[1,2,3,4,5]`, 릴리즈 직후 5개, 발사 중 최소 5개, 발사 완료 시점 5개, 완료 0.5초 뒤 5개, 완료 1.12초 뒤 0개로 `verified=True`를 확인했다. 수정 스크립트 진단 오류 0개, Unity 전체 컴파일과 EditMode 테스트 59/59를 통과했다. | `feat: persist lock-on reticles through salvo` |
 
 #### 12.5.1 구현 중 발견 이슈
 
@@ -1244,6 +1248,7 @@ OnBossBodyDebugFlashDisabled():
 | DEV-029 | 9 | 해결 | 단발 `HomingMissileController` 파일을 삭제한 뒤에도 공용 연기 정리 코드가 삭제 타입을 직접 검색하고 Trail 판별에 사용하고 있어 참조 검색 단계에서 잔재를 발견했다. 단발 미사일 본체 정리와 `PlayerMissileRuntime` 이름 접두어만 제거하고, 고정 풀 소유 `SpecialHomingMissileController`·자식 Trail 보호와 기존 다연발 연기 정리는 유지했다. 정리 후 전체 참조 검색과 실제 30발/타겟 소실 회수 검증에서 풀 총합 40과 비행·Trail이 정상임을 확인했다. |
 | DEV-030 | 9 | 외부 서비스 경고 | 최종 Play Mode 회귀 중 Unity AI Toolkit 계정 서비스가 `Account API did not become accessible within 30 seconds` 경고를 한 차례 기록했다. 로컬 컴파일, MCP 실행, 59개 EditMode 테스트와 모든 전투 진단은 정상이며 이번 기능은 Unity 계정 API를 사용하지 않는다. DEV-022와 같은 외부 계정 연결 경고로 분리했다. |
 | DEV-031 | 9 | 해결 | 단발 발사 함수와 HUD 삭제 후 참조 검색에서 단발 전용 `missileCooldown`·`missileDamage`, `IgnoreMissileCooldown`, 전투 디버그 패널의 Cooldown/Damage 행이 실제 신규 살보에는 쓰이지 않는 채 남아 있었다. 해당 필드·플래그·조정 키를 제거하고 공용 설정 함수를 `SetMissileFlightTuningForDebug`로 명확히 변경했다. 차량 상태에서 신규 살보에 필요한 발사 속도·순항 속도·가속·회전·지연·수명·HitRadius만 계속 적용하며, 단계별 데미지는 `PlayerLockOnController.fullSalvoGatlingDamageMultiplier`와 개틀링 스냅샷만 사용한다. 변경 후 전체 컴파일, EditMode 59/59와 느린 타겟 소실 30발→5초 뒤 30발 보장 검증을 다시 통과했다. |
+| DEV-032 | 10 | 해결 | 기존 HUD는 동적 `Text`의 `◇번호`만 만들었고 `CHARGING` 상태에서만 표시했기 때문에 릴리즈와 동시에 락온 목록이 초기화되어 아이콘도 즉시 사라졌다. 기존 타게팅 PNG 두 장을 uGUI Sprite 레이어로 연결하고 릴리즈 타겟 스냅샷의 표시 수명을 발사 상태와 분리했다. 미사일은 발사 후 각자 비행·명중 시간이 달라 개별 명중을 종료 기준으로 쓰지 않고, 기존 약 0.6초 생성 큐의 `SalvoCompleted/Canceled`를 해당 살보의 표시 종료 기준으로 사용한 뒤 비스케일 1초를 더 유지한다. 타겟 Transform이 살아 있으면 이동을 계속 추적하고 소실되면 릴리즈 당시 월드 위치를 사용한다. |
 
 ## 부록 A. 개발자 전달 핵심 요약
 
@@ -1274,7 +1279,8 @@ OnBossBodyDebugFlashDisabled():
 > 23) 준비에 성공한 유효 릴리즈부터 모든 단계 공통 5초 동안 신규 락온만 막고, 별도 후딜레이·쿨다운은 두지 않으며 이동·전투·이미 발사된 미사일은 계속 진행
 > 24) 한 요청 최대 발수 `maxSalvoMissileCount = 30`과 풀 하드코딩 용량 `missilePoolCapacity = 40`을 분리하고, 정확히 40개 Prewarm·41번째 런타임 생성·부분 발사 금지
 > 25) 5초 후 유효 플레이어 릴리즈는 발사를 보장하며, 그럼에도 `Busy`·`Rejected`·풀 부족·첫 발 전 시작 오류가 발생하면 상단 중앙에 `SHOOT ERROR`를 3초 표시하고 상세 사유를 로그로 기록
-> 26) 12.4의 9단계 구현 순서를 따르고 각 단계가 컴파일·최소 실행 검증을 통과할 때마다 관련 파일만 별도 중간 커밋
+> 26) 12.4의 10단계 구현 순서를 따르고 각 단계가 컴파일·최소 실행 검증을 통과할 때마다 관련 파일만 별도 중간 커밋
+> 27) 실제 락온 성공마다 기존 타게팅 Base/Inner 합성 아이콘을 하나씩 타겟 위치에 표시하고, 릴리즈 후 마지막 미사일 생성·발사가 끝날 때까지 유지한 뒤 1초 후 해당 살보 아이콘을 모두 동시에 제거
 
 이 시스템이 성공하려면 “락온을 오래 모을수록 강하지만, 위험할 때는 낮은 단계라도 떼서 살아야 한다”는 판단이 반복적으로 발생해야 한다. 개발 초기에는 데미지보다 입력 반응성, 무적 타이밍, UI 피드백, 5단계 연출 차이를 먼저 검증한다.
 

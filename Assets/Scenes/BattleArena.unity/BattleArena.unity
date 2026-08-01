@@ -4392,6 +4392,7 @@ GameObject:
   - component: {fileID: 745161325}
   - component: {fileID: 745161328}
   - component: {fileID: 745161329}
+  - component: {fileID: 745161330}
   m_Layer: 0
   m_Name: BattleCanvas
   m_TagString: Untagged
@@ -4519,6 +4520,22 @@ MonoBehaviour:
   targetCanvas: {fileID: 745161327}
   environmentController: {fileID: 1684965567}
   worldRotationController: {fileID: 2056611781}
+--- !u!114 &745161330
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 745161323}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: b80a5d91ba55447894ab638296ced864, type: 3}
+  m_Name:
+  m_EditorClassIdentifier: Assembly-CSharp::LockOnHudPresenter
+  lockMarkerBaseSprite: {fileID: 21300000, guid: a245c81c0b8a3498cb0cc20597b9b827, type: 3}
+  lockMarkerInnerSprite: {fileID: 21300000, guid: 216700f1399124acca69b0a8a609d4d5, type: 3}
+  lockMarkerSize: {x: 96, y: 94}
+  releaseMarkerHoldDuration: 1
 --- !u!1 &764532005
 GameObject:
   m_ObjectHideFlags: 0

@@ -17,6 +17,12 @@ public sealed class LockOnHudPresenter : MonoBehaviour
         new(1f, 0.18f, 0.20f, 1f),
     };
 
+    [Header("Lock Marker Art")]
+    [SerializeField] private Sprite lockMarkerBaseSprite;
+    [SerializeField] private Sprite lockMarkerInnerSprite;
+    [SerializeField] private Vector2 lockMarkerSize = new(96f, 94f);
+    [SerializeField, Min(0f)] private float releaseMarkerHoldDuration = 1f;
+
     private PlayerLockOnController lockOnController;
     private Canvas battleCanvas;
     private Camera worldCamera;
@@ -25,13 +31,28 @@ public sealed class LockOnHudPresenter : MonoBehaviour
     private Text lockButtonLabel;
     private RectTransform runtimeRoot;
     private Image chargeFill;
-    private readonly Text[] lockMarkers = new Text[5];
+    private readonly RectTransform[] lockMarkerRoots = new RectTransform[5];
+    private readonly Image[] lockMarkerBaseImages = new Image[5];
+    private readonly Image[] lockMarkerInnerImages = new Image[5];
+    private readonly Text[] lockMarkerLabels = new Text[5];
     private readonly float[] markerPulseStartedAt = { -1f, -1f, -1f, -1f, -1f };
+    private readonly Transform[] releasedTargetAnchors = new Transform[5];
+    private readonly Vector3[] releasedTargetPositions = new Vector3[5];
     private bool ownsRuntimeRoot;
     private bool ownsChargeBackground;
     private bool configured;
+    private bool releaseMarkersActive;
+    private int releasedMarkerCount;
+    private int releasedSalvoId;
+    private float releaseMarkersClearAt = -1f;
 
     public int VisibleMarkerCount { get; private set; }
+    public int VisibleTargetingImageCount { get; private set; }
+    public bool ReleaseMarkersActive => releaseMarkersActive;
+    public float ReleaseMarkerHoldDuration => releaseMarkerHoldDuration;
+    public float ReleaseMarkerClearRemaining => releaseMarkersClearAt < 0f
+        ? -1f
+        : Mathf.Max(0f, releaseMarkersClearAt - Time.unscaledTime);
     public string ButtonLabelText => lockButtonLabel != null ? lockButtonLabel.text : string.Empty;
     public bool ButtonInteractable => lockButton != null && lockButton.interactable;
     public float ChargeFillAmount => chargeFill != null ? chargeFill.fillAmount : 0f;
@@ -61,6 +82,7 @@ public sealed class LockOnHudPresenter : MonoBehaviour
         Text buttonLabel)
     {
         UnsubscribeController();
+        ClearReleasedMarkers();
         lockOnController = controller;
         battleCanvas = canvas;
         worldCamera = Camera.main;
@@ -162,38 +184,90 @@ public sealed class LockOnHudPresenter : MonoBehaviour
 
     private void RefreshMarkers()
     {
+        ExpireReleasedMarkersIfNeeded();
         VisibleMarkerCount = 0;
-        for (int i = 0; i < lockMarkers.Length; i++)
+        VisibleTargetingImageCount = 0;
+        for (int i = 0; i < lockMarkerRoots.Length; i++)
         {
-            Text marker = lockMarkers[i];
-            if (marker == null)
+            RectTransform markerRoot = lockMarkerRoots[i];
+            if (markerRoot == null)
             {
                 continue;
             }
 
-            bool hasSlot = lockOnController != null &&
-                           lockOnController.State == LockOnCombatState.Charging &&
-                           i < lockOnController.LockedTargets.Count;
-            BossLockOnTarget target = hasSlot
-                ? lockOnController.LockedTargets[i]
-                : null;
+            bool hasSlot;
+            bool selectable = true;
+            Vector3 worldPosition = Vector3.zero;
+            if (releaseMarkersActive)
+            {
+                hasSlot = i < releasedMarkerCount;
+                if (hasSlot)
+                {
+                    Transform anchor = releasedTargetAnchors[i];
+                    worldPosition = anchor != null ? anchor.position : releasedTargetPositions[i];
+                }
+            }
+            else
+            {
+                hasSlot = lockOnController != null &&
+                          lockOnController.State == LockOnCombatState.Charging &&
+                          i < lockOnController.LockedTargets.Count;
+                BossLockOnTarget target = hasSlot
+                    ? lockOnController.LockedTargets[i]
+                    : null;
+                selectable = target != null && target.IsSelectable;
+                if (target != null)
+                {
+                    worldPosition = target.WorldPosition;
+                }
+            }
+
             Vector2 canvasPosition = Vector2.zero;
-            bool show = target != null && target.IsSelectable &&
-                        TryGetCanvasPosition(target.WorldPosition, out canvasPosition);
-            marker.gameObject.SetActive(show);
+            bool show = hasSlot && selectable &&
+                        TryGetCanvasPosition(worldPosition, out canvasPosition);
+            markerRoot.gameObject.SetActive(show);
             if (!show)
             {
                 continue;
             }
 
-            marker.rectTransform.anchoredPosition = canvasPosition;
-            marker.text = $"◇{i + 1}";
-            marker.color = StageColors[Mathf.Clamp(i, 0, StageColors.Length - 1)];
+            Color stageColor = StageColors[Mathf.Clamp(i, 0, StageColors.Length - 1)];
+            markerRoot.anchoredPosition = canvasPosition;
+            if (lockMarkerBaseImages[i] != null)
+            {
+                lockMarkerBaseImages[i].color = stageColor;
+                if (lockMarkerBaseImages[i].sprite != null)
+                {
+                    VisibleTargetingImageCount++;
+                }
+            }
+
+            if (lockMarkerInnerImages[i] != null)
+            {
+                lockMarkerInnerImages[i].color = stageColor;
+            }
+
+            Text label = lockMarkerLabels[i];
+            if (label != null)
+            {
+                label.text = (i + 1).ToString();
+                label.color = stageColor;
+            }
+
             float baseScale = 1f + i * 0.08f;
             float pulse = ResolveMarkerPulse(i);
             float scale = baseScale * (1f + pulse * 0.42f);
-            marker.rectTransform.localScale = new Vector3(scale, scale, 1f);
+            markerRoot.localScale = new Vector3(scale, scale, 1f);
             VisibleMarkerCount++;
+        }
+    }
+
+    private void ExpireReleasedMarkersIfNeeded()
+    {
+        if (releaseMarkersActive && releaseMarkersClearAt >= 0f &&
+            Time.unscaledTime >= releaseMarkersClearAt)
+        {
+            ClearReleasedMarkers();
         }
     }
 
@@ -224,6 +298,70 @@ public sealed class LockOnHudPresenter : MonoBehaviour
         }
     }
 
+    private void HandleLockStarted(LockOnInputSource inputSource)
+    {
+        ClearReleasedMarkers();
+    }
+
+    private void HandleLockCanceled(LockOnCancelReason reason)
+    {
+        if (!releaseMarkersActive)
+        {
+            HideAllMarkers();
+        }
+    }
+
+    private void HandleLockReleased(LockOnReleaseIntent intent)
+    {
+        ClearReleasedMarkers();
+        if (intent == null)
+        {
+            return;
+        }
+
+        releasedMarkerCount = Mathf.Min(
+            lockMarkerRoots.Length,
+            intent.TargetSnapshots.Count);
+        for (int i = 0; i < releasedMarkerCount; i++)
+        {
+            SalvoTargetSnapshot snapshot = intent.TargetSnapshots[i];
+            releasedTargetAnchors[i] = snapshot?.Target;
+            releasedTargetPositions[i] = snapshot != null
+                ? snapshot.TargetWorldPosition
+                : Vector3.zero;
+        }
+
+        releaseMarkersActive = releasedMarkerCount > 0;
+        releasedSalvoId = lockOnController != null
+            ? lockOnController.CurrentLockOnSalvoId
+            : 0;
+        releaseMarkersClearAt = -1f;
+        RefreshMarkers();
+    }
+
+    private void HandleLockOnSalvoFinished(int salvoId, bool canceled)
+    {
+        if (!releaseMarkersActive || releasedSalvoId != salvoId)
+        {
+            return;
+        }
+
+        releaseMarkersClearAt = Time.unscaledTime + releaseMarkerHoldDuration;
+    }
+
+    private void ClearReleasedMarkers()
+    {
+        releaseMarkersActive = false;
+        releasedMarkerCount = 0;
+        releasedSalvoId = 0;
+        releaseMarkersClearAt = -1f;
+        for (int i = 0; i < releasedTargetAnchors.Length; i++)
+        {
+            releasedTargetAnchors[i] = null;
+            releasedTargetPositions[i] = Vector3.zero;
+        }
+    }
+
     private void SubscribeController()
     {
         if (lockOnController == null)
@@ -233,6 +371,14 @@ public sealed class LockOnHudPresenter : MonoBehaviour
 
         lockOnController.OnLockStageUp -= HandleLockStageUp;
         lockOnController.OnLockStageUp += HandleLockStageUp;
+        lockOnController.OnLockStart -= HandleLockStarted;
+        lockOnController.OnLockStart += HandleLockStarted;
+        lockOnController.OnLockCanceled -= HandleLockCanceled;
+        lockOnController.OnLockCanceled += HandleLockCanceled;
+        lockOnController.OnLockRelease -= HandleLockReleased;
+        lockOnController.OnLockRelease += HandleLockReleased;
+        lockOnController.OnLockOnSalvoFinished -= HandleLockOnSalvoFinished;
+        lockOnController.OnLockOnSalvoFinished += HandleLockOnSalvoFinished;
     }
 
     private void UnsubscribeController()
@@ -240,6 +386,10 @@ public sealed class LockOnHudPresenter : MonoBehaviour
         if (lockOnController != null)
         {
             lockOnController.OnLockStageUp -= HandleLockStageUp;
+            lockOnController.OnLockStart -= HandleLockStarted;
+            lockOnController.OnLockCanceled -= HandleLockCanceled;
+            lockOnController.OnLockRelease -= HandleLockReleased;
+            lockOnController.OnLockOnSalvoFinished -= HandleLockOnSalvoFinished;
         }
     }
 
@@ -356,48 +506,113 @@ public sealed class LockOnHudPresenter : MonoBehaviour
         runtimeRoot.offsetMax = Vector2.zero;
         runtimeRoot.SetAsLastSibling();
         Font font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
-        for (int i = 0; i < lockMarkers.Length; i++)
+        for (int i = 0; i < lockMarkerRoots.Length; i++)
         {
             string markerName = $"LockOnMarker_{i + 1}";
             Transform existingMarker = runtimeRoot.Find(markerName);
-            Text marker = existingMarker != null
-                ? existingMarker.GetComponent<Text>()
-                : null;
-            if (marker == null)
+            RectTransform markerRoot = existingMarker as RectTransform;
+            if (markerRoot == null)
             {
                 GameObject markerObject = new(markerName, typeof(RectTransform));
                 markerObject.transform.SetParent(runtimeRoot, false);
-                marker = markerObject.AddComponent<Text>();
+                markerRoot = markerObject.GetComponent<RectTransform>();
             }
 
-            marker.font = font;
-            marker.fontSize = 34;
-            marker.fontStyle = FontStyle.Bold;
-            marker.alignment = TextAnchor.MiddleCenter;
-            marker.raycastTarget = false;
-            marker.horizontalOverflow = HorizontalWrapMode.Overflow;
-            marker.verticalOverflow = VerticalWrapMode.Overflow;
-            marker.rectTransform.anchorMin = new Vector2(0.5f, 0.5f);
-            marker.rectTransform.anchorMax = new Vector2(0.5f, 0.5f);
-            marker.rectTransform.pivot = new Vector2(0.5f, 0.5f);
-            marker.rectTransform.sizeDelta = new Vector2(90f, 54f);
-            Outline outline = marker.GetComponent<Outline>() ?? marker.gameObject.AddComponent<Outline>();
+            Text legacyText = markerRoot.GetComponent<Text>();
+            if (legacyText != null)
+            {
+                legacyText.enabled = false;
+            }
+
+            markerRoot.anchorMin = new Vector2(0.5f, 0.5f);
+            markerRoot.anchorMax = new Vector2(0.5f, 0.5f);
+            markerRoot.pivot = new Vector2(0.5f, 0.5f);
+            markerRoot.sizeDelta = lockMarkerSize;
+
+            Image baseImage = EnsureMarkerImage(markerRoot, "TargetingBase", lockMarkerBaseSprite);
+            Image innerImage = EnsureMarkerImage(markerRoot, "TargetingInner", lockMarkerInnerSprite);
+            Text label = EnsureMarkerLabel(markerRoot, font);
+            Outline outline = label.GetComponent<Outline>() ?? label.gameObject.AddComponent<Outline>();
             outline.effectColor = new Color(0f, 0f, 0f, 0.95f);
             outline.effectDistance = new Vector2(2f, -2f);
-            marker.gameObject.SetActive(false);
-            lockMarkers[i] = marker;
+            markerRoot.gameObject.SetActive(false);
+            lockMarkerRoots[i] = markerRoot;
+            lockMarkerBaseImages[i] = baseImage;
+            lockMarkerInnerImages[i] = innerImage;
+            lockMarkerLabels[i] = label;
+        }
+    }
+
+    private static Image EnsureMarkerImage(
+        RectTransform markerRoot,
+        string childName,
+        Sprite sprite)
+    {
+        Transform existing = markerRoot.Find(childName);
+        Image image = existing != null ? existing.GetComponent<Image>() : null;
+        if (image == null)
+        {
+            GameObject imageObject = new(childName, typeof(RectTransform));
+            imageObject.transform.SetParent(markerRoot, false);
+            image = imageObject.AddComponent<Image>();
+        }
+
+        image.sprite = sprite;
+        image.enabled = sprite != null;
+        image.preserveAspect = true;
+        image.raycastTarget = false;
+        RectTransform rect = image.rectTransform;
+        rect.anchorMin = Vector2.zero;
+        rect.anchorMax = Vector2.one;
+        rect.offsetMin = Vector2.zero;
+        rect.offsetMax = Vector2.zero;
+        return image;
+    }
+
+    private static Text EnsureMarkerLabel(RectTransform markerRoot, Font font)
+    {
+        const string labelName = "MarkerLabel";
+        Transform existing = markerRoot.Find(labelName);
+        Text label = existing != null ? existing.GetComponent<Text>() : null;
+        if (label == null)
+        {
+            GameObject labelObject = new(labelName, typeof(RectTransform));
+            labelObject.transform.SetParent(markerRoot, false);
+            label = labelObject.AddComponent<Text>();
+        }
+
+        label.font = font;
+        label.fontSize = 24;
+        label.fontStyle = FontStyle.Bold;
+        label.alignment = TextAnchor.MiddleCenter;
+        label.raycastTarget = false;
+        label.horizontalOverflow = HorizontalWrapMode.Overflow;
+        label.verticalOverflow = VerticalWrapMode.Overflow;
+        RectTransform rect = label.rectTransform;
+        rect.anchorMin = new Vector2(0.5f, 0.5f);
+        rect.anchorMax = new Vector2(0.5f, 0.5f);
+        rect.pivot = new Vector2(0.5f, 0.5f);
+        rect.sizeDelta = new Vector2(40f, 40f);
+        label.transform.SetAsLastSibling();
+        return label;
+    }
+
+    private void HideAllMarkers()
+    {
+        VisibleMarkerCount = 0;
+        VisibleTargetingImageCount = 0;
+        for (int i = 0; i < lockMarkerRoots.Length; i++)
+        {
+            if (lockMarkerRoots[i] != null)
+            {
+                lockMarkerRoots[i].gameObject.SetActive(false);
+            }
         }
     }
 
     private void OnDisable()
     {
-        for (int i = 0; i < lockMarkers.Length; i++)
-        {
-            if (lockMarkers[i] != null)
-            {
-                lockMarkers[i].gameObject.SetActive(false);
-            }
-        }
+        HideAllMarkers();
     }
 
     private void OnDestroy()

@@ -141,6 +141,7 @@ public sealed class PlayerLockOnController : MonoBehaviour
     public event Action<BossLockOnTarget, int> OnLockTargetAdded;
     public event Action<LockOnCancelReason> OnLockCanceled;
     public event Action<LockOnReleaseIntent> OnLockRelease;
+    public event Action<int, bool> OnLockOnSalvoFinished;
     public event Action<string, string> OnSalvoPrepareFailed;
     public event Action OnFullSalvo;
     public event Action<float> OnLockReuseWaitStarted;
@@ -767,6 +768,7 @@ public sealed class PlayerLockOnController : MonoBehaviour
         }
 
         EndOwnedSalvoInvincibility();
+        OnLockOnSalvoFinished?.Invoke(salvoId, false);
         currentLockOnSalvoId = 0;
     }
 
@@ -779,6 +781,7 @@ public sealed class PlayerLockOnController : MonoBehaviour
 
         bool canceledBeforeFirstMissile = currentLockOnMissilesFired == 0;
         EndOwnedSalvoInvincibility();
+        OnLockOnSalvoFinished?.Invoke(salvoId, true);
         currentLockOnSalvoId = 0;
         if (canceledBeforeFirstMissile && state == LockOnCombatState.ReuseWait)
         {
