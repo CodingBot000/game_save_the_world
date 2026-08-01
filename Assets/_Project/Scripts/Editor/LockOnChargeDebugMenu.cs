@@ -30,7 +30,7 @@ public static class LockOnChargeDebugMenu
         }
 
         bool began = controller.TryBeginCharging(LockOnInputSource.Debug);
-        controller.AdvanceChargeForDebug(2.6f);
+        controller.AdvanceChargeForDebug(controller.FullChargeDuration + 0.01f);
         hud?.RefreshForDebug();
         int chargedStage = controller.ChargeStage;
         int successfulLocks = controller.SuccessfulLockCount;
@@ -231,7 +231,7 @@ public static class LockOnChargeDebugMenu
 
         testState.SetWeakPointOpen(true);
         bool began = controller.TryBeginCharging(LockOnInputSource.Debug);
-        controller.AdvanceChargeForDebug(2.6f);
+        controller.AdvanceChargeForDebug(controller.FullChargeDuration + 0.01f);
         int successBeforeClose = controller.SuccessfulLockCount;
         testState.SetWeakPointOpen(false);
         hud?.RefreshForDebug();
@@ -280,7 +280,7 @@ public static class LockOnChargeDebugMenu
             combat.RefillForDebug();
             int salvoIdBefore = controller.LastStartedSalvoId;
             bool began = controller.TryBeginCharging(LockOnInputSource.MouseRight);
-            controller.AdvanceChargeForDebug(2.6f);
+            controller.AdvanceChargeForDebug(controller.FullChargeDuration + 0.01f);
             int locksBeforeDamage = controller.SuccessfulLockCount;
             bool damageApplied = combat.ApplyDamage(1f);
             hud?.RefreshForDebug();
@@ -363,6 +363,68 @@ public static class LockOnChargeDebugMenu
             $"chargingStrafe={chargingStrafeSpeed:0.###}, " +
             $"chargingAltitude={chargingAltitudeSpeed:0.###}, " +
             $"restoredMultiplier={restoredMultiplier:0.###}, " +
+            $"finalState={controller.State}.");
+    }
+
+    [MenuItem(MenuRoot + "Run First Lock Three Seconds", priority = 289)]
+    private static void RunFirstLockThreeSeconds()
+    {
+        if (!TryGetRuntime(out PlayerLockOnController controller,
+                out BossLockOnTargetProvider provider, out LockOnHudPresenter hud) ||
+            !PrepareReadyState(controller, provider))
+        {
+            return;
+        }
+
+        float firstThreshold = controller.GetCumulativeChargeTimeForStage(1);
+        float secondThreshold = controller.GetCumulativeChargeTimeForStage(2);
+        bool beganEarlyReleaseCheck =
+            controller.TryBeginCharging(LockOnInputSource.MouseRight);
+        controller.AdvanceChargeForDebug(Mathf.Max(0f, firstThreshold - 0.01f));
+        int stageBeforeFirst = controller.ChargeStage;
+        int locksBeforeFirst = controller.SuccessfulLockCount;
+        bool earlyReleaseAccepted =
+            controller.TryReleaseCharging(LockOnInputSource.MouseRight);
+        bool earlyReleaseBlocked = !earlyReleaseAccepted &&
+                                   controller.State == LockOnCombatState.Ready &&
+                                   controller.LastReleaseIntent == null;
+
+        bool beganThresholdCheck =
+            controller.TryBeginCharging(LockOnInputSource.MouseRight);
+        controller.AdvanceChargeForDebug(firstThreshold + 0.01f);
+        hud?.RefreshForDebug();
+        int stageAfterFirst = controller.ChargeStage;
+        int locksAfterFirst = controller.SuccessfulLockCount;
+
+        float beforeSecondElapsed = Mathf.Max(0f, secondThreshold - 0.01f);
+        controller.AdvanceChargeForDebug(
+            Mathf.Max(0f, beforeSecondElapsed - controller.ChargeElapsed));
+        int stageBeforeSecond = controller.ChargeStage;
+        controller.AdvanceChargeForDebug(0.02f);
+        int stageAfterSecond = controller.ChargeStage;
+        int locksAfterSecond = controller.SuccessfulLockCount;
+
+        controller.HandleGamePaused();
+        bool verified = beganEarlyReleaseCheck && beganThresholdCheck &&
+                        Mathf.Approximately(firstThreshold, 3f) &&
+                        Mathf.Approximately(secondThreshold, 3.4f) &&
+                        stageBeforeFirst == 0 && locksBeforeFirst == 0 &&
+                        earlyReleaseBlocked &&
+                        stageAfterFirst == 1 && locksAfterFirst == 1 &&
+                        stageBeforeSecond == 1 &&
+                        stageAfterSecond == 2 && locksAfterSecond == 2 &&
+                        controller.State == LockOnCombatState.Ready;
+        Debug.Log(
+            $"[LockChargeDebug] first lock three seconds verified={verified}, " +
+            $"beganEarly={beganEarlyReleaseCheck}, " +
+            $"earlyReleaseAccepted={earlyReleaseAccepted}, " +
+            $"beganThreshold={beganThresholdCheck}, " +
+            $"firstThreshold={firstThreshold:0.###}, " +
+            $"secondThreshold={secondThreshold:0.###}, " +
+            $"beforeFirst={stageBeforeFirst}/{locksBeforeFirst}, " +
+            $"afterFirst={stageAfterFirst}/{locksAfterFirst}, " +
+            $"beforeSecond={stageBeforeSecond}, " +
+            $"afterSecond={stageAfterSecond}/{locksAfterSecond}, " +
             $"finalState={controller.State}.");
     }
 

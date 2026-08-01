@@ -5,7 +5,6 @@ using UnityEngine;
 public static class LockOnCombatDebugMenu
 {
     private const string MenuRoot = "TitanDestroyer/Debug/Lock-On Combat/";
-    private static readonly float[] StageChargeSeconds = { 0.36f, 0.76f, 1.26f, 1.81f, 2.51f };
     private static readonly int[] ExpectedMissileCounts = { 5, 10, 15, 20, 30 };
     private static readonly float[] ExpectedDamageBudgetsAtG25 = { 75f, 100f, 125f, 150f, 250f };
     private static EditorApplication.CallbackFunction pendingTimelineCheck;
@@ -105,7 +104,8 @@ public static class LockOnCombatDebugMenu
         try
         {
             began = controller.TryBeginCharging(LockOnInputSource.Debug);
-            controller.AdvanceChargeForDebug(StageChargeSeconds[0]);
+            controller.AdvanceChargeForDebug(
+                controller.GetCumulativeChargeTimeForStage(1) + 0.01f);
             released = controller.TryReleaseCharging(LockOnInputSource.Debug);
         }
         finally
@@ -223,7 +223,8 @@ public static class LockOnCombatDebugMenu
         bool blockerStarted = prepared.IsPrepared &&
                               launcher.StartPreparedSalvo(blockerHandle).IsStarted;
         bool began = controller.TryBeginCharging(LockOnInputSource.Debug);
-        controller.AdvanceChargeForDebug(StageChargeSeconds[0]);
+        controller.AdvanceChargeForDebug(
+            controller.GetCumulativeChargeTimeForStage(1) + 0.01f);
         bool releaseAccepted = controller.TryReleaseCharging(LockOnInputSource.Debug);
         bool verified = blockerStarted && began && !releaseAccepted &&
                         controller.State == LockOnCombatState.Ready &&
@@ -253,7 +254,8 @@ public static class LockOnCombatDebugMenu
         bool previousUndead = GameplayDebugFlags.Undead;
         GameplayDebugFlags.Undead = true;
         bool began = controller.TryBeginCharging(LockOnInputSource.Debug);
-        controller.AdvanceChargeForDebug(StageChargeSeconds[1]);
+        controller.AdvanceChargeForDebug(
+            controller.GetCumulativeChargeTimeForStage(2) + 0.01f);
         bool released = controller.TryReleaseCharging(LockOnInputSource.Debug);
         bool firstMissileProtected = controller.LastFirstMissileWasInvincible &&
                                      combat.IsSalvoInvincible;
@@ -395,7 +397,8 @@ public static class LockOnCombatDebugMenu
         }
 
         bool began = controller.TryBeginCharging(LockOnInputSource.Debug);
-        controller.AdvanceChargeForDebug(StageChargeSeconds[successfulLocks - 1]);
+        controller.AdvanceChargeForDebug(
+            controller.GetCumulativeChargeTimeForStage(successfulLocks) + 0.01f);
         bool released = controller.TryReleaseCharging(LockOnInputSource.Debug);
         int expectedCount = ExpectedMissileCounts[successfulLocks - 1];
         float expectedBudget = combat.CurrentGatlingBaseDamage / 25f *

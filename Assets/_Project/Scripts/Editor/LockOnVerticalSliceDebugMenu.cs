@@ -11,7 +11,6 @@ public static class LockOnVerticalSliceDebugMenu
     private const double InputProbeDuration = 0.55;
     private const double RealReuseInterval = 5.05;
     private const double FullRunTimeout = 35.0;
-    private static readonly float[] StageChargeSeconds = { 0.36f, 0.76f, 1.26f, 1.81f, 2.51f };
     private static readonly int[] ExpectedMissiles = { 5, 10, 15, 20, 30 };
     private static readonly float[] ExpectedRatios = { 0.30f, 0.40f, 0.50f, 0.60f, 1f };
 
@@ -466,7 +465,8 @@ public static class LockOnVerticalSliceDebugMenu
     {
         int stageIndex = run.NextStage - 1;
         bool began = run.LockOn.TryBeginCharging(LockOnInputSource.Debug);
-        run.LockOn.AdvanceChargeForDebug(StageChargeSeconds[stageIndex]);
+        run.LockOn.AdvanceChargeForDebug(
+            run.LockOn.GetCumulativeChargeTimeForStage(run.NextStage) + 0.01f);
         bool released = run.LockOn.TryReleaseCharging(LockOnInputSource.Debug);
         float expectedBudget = run.GatlingDamage * 10f * ExpectedRatios[stageIndex];
         bool immediateValid = began && released &&

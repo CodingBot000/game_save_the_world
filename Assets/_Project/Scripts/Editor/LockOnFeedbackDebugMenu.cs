@@ -68,7 +68,7 @@ public static class LockOnFeedbackDebugMenu
         };
 
         context.Began = lockOn.TryBeginCharging(LockOnInputSource.Debug);
-        lockOn.AdvanceChargeForDebug(2.51f);
+        lockOn.AdvanceChargeForDebug(lockOn.FullChargeDuration + 0.01f);
         hud.RefreshForDebug();
         context.MarkersAtFullCharge = hud.VisibleMarkerCount;
         context.PulsesAtFullCharge = hud.ActiveMarkerPulseCount;

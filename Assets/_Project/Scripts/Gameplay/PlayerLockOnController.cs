@@ -59,15 +59,17 @@ public sealed class LockOnReleaseIntent
 [DisallowMultipleComponent]
 public sealed class PlayerLockOnController : MonoBehaviour
 {
-    private static readonly float[] DefaultStageChargeTimes =
+    private static readonly float[] PreviousDefaultStageChargeTimes =
         { 0.35f, 0.75f, 1.25f, 1.80f, 2.50f };
+    private static readonly float[] DefaultStageChargeTimes =
+        { 3.00f, 3.40f, 3.90f, 4.45f, 5.15f };
     private static readonly int[] DefaultMissileCountsBySuccessfulLocks =
         { 5, 10, 15, 20, 30 };
     private static readonly float[] DefaultStageTotalDamageRatios =
         { 0.30f, 0.40f, 0.50f, 0.60f, 1f };
 
     [SerializeField] private float[] stageChargeTimes =
-        { 0.35f, 0.75f, 1.25f, 1.80f, 2.50f };
+        { 3.00f, 3.40f, 3.90f, 4.45f, 5.15f };
     [SerializeField, Range(0.1f, 3f)] private float targetGraceTime = 1.25f;
     [Header("Missile Salvo")]
     [SerializeField] private int[] missileCountsBySuccessfulLocks =
@@ -111,6 +113,10 @@ public sealed class PlayerLockOnController : MonoBehaviour
     public int SuccessfulLockCount => lockedTargets.Count;
     public int AssignedLockCount => CountAssignedTargets();
     public int MaxLockStage => stageChargeTimes != null ? stageChargeTimes.Length : 0;
+    public float FullChargeDuration =>
+        stageChargeTimes != null && stageChargeTimes.Length > 0
+            ? stageChargeTimes[stageChargeTimes.Length - 1]
+            : 0f;
     public float NextStageProgress =>
         LockOnChargeRules.GetNextStageProgress(chargeElapsed, stageChargeTimes);
     public float ReuseWaitRemaining => Mathf.Max(0f, reuseWaitRemaining);
@@ -148,6 +154,13 @@ public sealed class PlayerLockOnController : MonoBehaviour
     public event Action<float> OnLockReuseWaitStarted;
     public event Action OnLockReuseWaitEnded;
     public event Action<LockOnCombatState> OnLockStateChanged;
+
+    public float GetCumulativeChargeTimeForStage(int stage)
+    {
+        return stageChargeTimes != null && stage >= 1 && stage <= stageChargeTimes.Length
+            ? stageChargeTimes[stage - 1]
+            : 0f;
+    }
 
     public void Configure(
         BattleController battle,
@@ -882,12 +895,31 @@ public sealed class PlayerLockOnController : MonoBehaviour
     private void EnsureStageConfiguration()
     {
         if (stageChargeTimes == null || stageChargeTimes.Length != DefaultStageChargeTimes.Length ||
-            !LockOnChargeRules.AreStrictlyIncreasing(stageChargeTimes))
+            !LockOnChargeRules.AreStrictlyIncreasing(stageChargeTimes) ||
+            MatchesStageChargeTimes(stageChargeTimes, PreviousDefaultStageChargeTimes))
         {
             stageChargeTimes = (float[])DefaultStageChargeTimes.Clone();
         }
 
         targetGraceTime = Mathf.Clamp(targetGraceTime, 0.1f, 3f);
+    }
+
+    private static bool MatchesStageChargeTimes(float[] values, float[] expected)
+    {
+        if (values == null || expected == null || values.Length != expected.Length)
+        {
+            return false;
+        }
+
+        for (int i = 0; i < values.Length; i++)
+        {
+            if (!Mathf.Approximately(values[i], expected[i]))
+            {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     private void EnsureSalvoConfiguration()

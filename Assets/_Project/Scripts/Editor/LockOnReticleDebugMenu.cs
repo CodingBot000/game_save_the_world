@@ -60,12 +60,12 @@ public static class LockOnReticleDebugMenu
         };
 
         context.Began = lockOn.TryBeginCharging(LockOnInputSource.Debug);
-        float[] chargeAdvances = { 0.36f, 0.40f, 0.50f, 0.55f, 0.70f };
-        context.StageMarkerCounts = new int[chargeAdvances.Length];
-        context.StageImageCounts = new int[chargeAdvances.Length];
-        for (int i = 0; i < chargeAdvances.Length; i++)
+        context.StageMarkerCounts = new int[lockOn.MaxLockStage];
+        context.StageImageCounts = new int[lockOn.MaxLockStage];
+        for (int i = 0; i < lockOn.MaxLockStage; i++)
         {
-            lockOn.AdvanceChargeForDebug(chargeAdvances[i]);
+            float targetElapsed = lockOn.GetCumulativeChargeTimeForStage(i + 1) + 0.01f;
+            lockOn.AdvanceChargeForDebug(Mathf.Max(0f, targetElapsed - lockOn.ChargeElapsed));
             hud.RefreshForDebug();
             context.StageMarkerCounts[i] = hud.VisibleMarkerCount;
             context.StageImageCounts[i] = hud.VisibleTargetingImageCount;
