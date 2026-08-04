@@ -3,9 +3,9 @@ title: Titan Destroyer 게임 시스템 중심 문서
 document_id: TD-GAME-SYSTEM-SSOT
 document_type: game-system-ssot
 status: live
-version: "1.0.10"
-last_verified: "2026-08-04"
-implementation_baseline: "git 7fd66db + 2026-08-04 scene BGM verified working tree"
+version: "1.0.11"
+last_verified: "2026-08-05"
+implementation_baseline: "git 3cc538d + 2026-08-05 MainMenu layer order verified working tree"
 unity_version: 6000.4.0f1
 authoritative_scope:
   - game_flow
@@ -16,6 +16,7 @@ authoritative_scope:
   - boss_attack_patterns
   - combat_balance
   - scene_music
+  - main_menu_presentation
 ---
 
 # Titan Destroyer 게임 시스템 중심 문서
@@ -112,6 +113,19 @@ authoritative_scope:
 - 두 BGM은 긴 음원용 `Streaming` 로드와 백그라운드 로드를 사용한다.
 - 씬 전용 AudioSource이며 `DontDestroyOnLoad`로 유지하지 않는다. 따라서 씬을 떠나면 해당 BGM이 종료되고, 다음 씬에 지정된 BGM이 별도로 시작한다.
 - 이전 전투 음원 `battle_arena_bgm.mp3`와 그 메타 파일은 프로젝트에서 제거했다. 현재 전투 씬과 HUD 직렬화 참조는 모두 `BGM_battle_01.ogg`를 사용한다.
+
+### 2.5 메인 메뉴 배경 레이어
+
+상태: **구현됨**
+
+`MainMenu`의 전체 화면 배경은 `MenuPresenter`가 런타임에 아래 순서로 생성한다. 목록의 뒤쪽 레이어일수록 화면 앞에 그려진다.
+
+```text
+MainSky → MainCloud → MainBackground → MainHellicopter → Muffler → MainCharacter
+```
+
+- `Muffler`는 `MainCharacter` 바로 뒤에 배치한다. 따라서 머플러 애니메이션이 캐릭터 몸과 머리카락보다 앞을 덮지 않는다.
+- 머플러 프레임 애니메이션과 12 FPS 재생 속도는 그대로 유지하며, 이번 변경은 형제 순서만 바꾼다.
 
 ## 3. 플레이어 조작과 이동
 
@@ -574,6 +588,7 @@ Armor가 120 흡수 → Armor 0, 잔여 피해 30
 | 보스 패턴 | `Assets/_Project/Scripts/Gameplay/BossBulletPatternController.cs` | 현재 씬의 `activePatternSet`, `kaijuHeavyThreatSequence` |
 | 난이도/스테이지 선택 | `Assets/_Project/Scripts/Core/StageSelectionState.cs` | 스테이지 선택 씬과 `Assets/_Project/Scripts/Gameplay/BattleController.cs` |
 | 씬 BGM | `Assets/Scenes/MainMenu.unity/MainMenu.unity`, `Assets/Scenes/BattleArena.unity/BattleArena.unity` | `Assets/Audio/Music/MainMenu/BGM_title.wav`, `Assets/Audio/Music/BattleArena/BGM_battle_01.ogg`, `Assets/_Project/Scripts/UI/HUDPresenter.cs` |
+| 메인 메뉴 배경 레이어 | `Assets/_Project/Scripts/UI/MenuPresenter.cs` | `Assets/Scenes/MainMenu.unity/MainMenu.unity`, 메인 메뉴 배경·캐릭터·머플러 텍스처 |
 
 ## 11. 불일치 및 결정 필요 항목
 
@@ -620,6 +635,15 @@ Armor가 120 흡수 → Armor 0, 잔여 피해 30
 
 ## 13. 검증 메모
 
+### 2026-08-05
+
+- Git 기준점: `3cc538d` 및 기존 사용자 미커밋 작업 트리
+- Unity 버전: `6000.4.0f1`
+- `MainMenu` Play Mode에서 변경 전 형제 순서가 `MainHellicopter → MainCharacter → Muffler`인 것을 확인한 뒤, 변경 후 `MainHellicopter → Muffler → MainCharacter`로 바뀐 것을 런타임 계층에서 확인했다.
+- 1920×1080 Game View 전·후 화면 비교에서 캐릭터 몸과 머리카락이 머플러를 앞에서 가리며, 다른 배경 레이어와 머플러 프레임 애니메이션은 유지되는 것을 확인했다.
+- `MenuPresenter.cs` 스크립트 진단 오류 0개, Unity 전체 컴파일 오류 0개, EditMode 테스트 59/59 통과.
+- Unity MCP `read_console`의 기존 reflection 초기화 오류는 계속되어 `Editor.log`로 대체 확인했으며, 이번 변경과 관련된 실행·컴파일 예외는 없었다.
+
 ### 2026-08-04
 
 - Git 기준점: `7fd66db` 및 현재 미커밋 `BattleArena` 사용자 작업 트리
@@ -660,6 +684,7 @@ Armor가 120 흡수 → Armor 0, 잔여 피해 30
 
 | 날짜 | 버전 | 변경 내용 | 검증 |
 | --- | --- | --- | --- |
+| 2026-08-05 | 1.0.11 | MainMenu 런타임 배경에서 머플러를 캐릭터 바로 뒤 레이어로 이동 | Play Mode 형제 순서·1920×1080 화면 비교, 스크립트 진단, 전체 컴파일, EditMode 59/59 |
 | 2026-08-04 | 1.0.10 | MainMenu에 `BGM_title.wav` 반복 BGM을 추가하고 BattleArena의 기존 음악을 `BGM_battle_01.ogg`로 교체. 두 클립을 스트리밍·2D로 설정하고 구형 전투 MP3를 제거 | 씬별 Play Mode 실제 재생·시간 진행, 직렬화/GUID 정적 확인, 전체 컴파일, EditMode 59/59 |
 | 2026-08-01 | 1.0.9 | 락온 미사일 피해를 개틀링 기준값에서 분리하고 성공 락 1~5개 총 기본 피해를 `9/20/35/60/100` 고정값으로 변경 | 독립 계산 API, 단계별 1발 피해, Play Mode 5단계 피해표, 컴파일, EditMode 59/59 |
 | 2026-08-01 | 1.0.8 | 개틀링 기본 1발 피해를 25에서 3으로 변경하고 이를 참조하는 락온 1~5단계 총 기본 피해를 `9/12/15/18/30`으로 갱신 | 코드·프리팹·런타임 기본값 3, 락온 피해 표, 컴파일, EditMode 59/59 |

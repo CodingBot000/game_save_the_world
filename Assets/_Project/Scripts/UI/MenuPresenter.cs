@@ -361,8 +361,8 @@ public class MenuPresenter : MonoBehaviour
         cloudLayerImage = ConfigureBackdropLayer(backdropTransform, "MainCloud", mainCloudTexture);
         ConfigureBackdropLayer(backdropTransform, "MainBackground", mainBackgroundTexture);
         ConfigureBackdropLayer(backdropTransform, "MainHellicopter", mainHellicopterTexture);
-        ConfigureBackdropLayer(backdropTransform, "MainCharacter", mainCharacterTexture);
         mufflerLayerImage = ConfigureBackdropLayer(backdropTransform, "Muffler", GetMufflerFrame(0));
+        ConfigureBackdropLayer(backdropTransform, "MainCharacter", mainCharacterTexture);
         ApplyBackdropLayerCover();
         ApplyCloudScroll();
         ApplyMufflerAnimation();
