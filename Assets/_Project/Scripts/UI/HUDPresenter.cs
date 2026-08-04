@@ -74,7 +74,6 @@ public class HUDPresenter : MonoBehaviour
 
     private string statusMessage = string.Empty;
     private float statusTimer;
-    private bool musicEnabled;
     private bool shootErrorVisible;
     private float shootErrorRemaining;
     private string statusMessageBeforeShootError = string.Empty;
@@ -95,13 +94,16 @@ public class HUDPresenter : MonoBehaviour
     {
         RestoreRuntimeAudioOutput();
         ResolveBattleMusicSource();
-        SetMusicEnabled(true, updateStatus: false);
         EnsureUiReferences();
     }
 
     private void OnEnable()
     {
+        GlobalMusicSettings.MusicEnabledChanged -= HandleGlobalMusicEnabledChanged;
+        GlobalMusicSettings.MusicEnabledChanged += HandleGlobalMusicEnabledChanged;
+        ResolveBattleMusicSource();
         EnsureUiReferences();
+        UpdateMusicButtonState();
     }
 
     private void Start()
@@ -605,6 +607,7 @@ public class HUDPresenter : MonoBehaviour
 
     private void OnDisable()
     {
+        GlobalMusicSettings.MusicEnabledChanged -= HandleGlobalMusicEnabledChanged;
         ClearShootError();
     }
 
@@ -646,7 +649,8 @@ public class HUDPresenter : MonoBehaviour
             return;
         }
 
-        musicButton.interactable = battleMusicSource != null;
+        bool musicEnabled = GlobalMusicSettings.MusicEnabled;
+        musicButton.interactable = true;
         musicButtonImage.color = musicEnabled
             ? new Color(0.18f, 0.48f, 0.44f, 0.96f)
             : new Color(0.20f, 0.22f, 0.26f, 0.92f);
@@ -893,35 +897,15 @@ public class HUDPresenter : MonoBehaviour
 
     private void ToggleMusic()
     {
-        SetMusicEnabled(!musicEnabled, updateStatus: true);
+        GlobalMusicSettings.ToggleMusic();
+        bool musicEnabled = GlobalMusicSettings.MusicEnabled;
+        UpdateMusicButtonState();
+        SetStatusMessage(musicEnabled ? "Music on." : "Music off.");
     }
 
-    private void SetMusicEnabled(bool enabled, bool updateStatus)
+    private void HandleGlobalMusicEnabledChanged(bool enabled)
     {
-        RestoreRuntimeAudioOutput();
-        ResolveBattleMusicSource();
-        musicEnabled = enabled && battleMusicSource != null && battleMusicSource.clip != null;
-        if (battleMusicSource != null)
-        {
-            battleMusicSource.mute = !musicEnabled;
-            if (musicEnabled)
-            {
-                if (!battleMusicSource.isPlaying)
-                {
-                    battleMusicSource.Play();
-                }
-            }
-            else
-            {
-                battleMusicSource.Stop();
-            }
-        }
-
         UpdateMusicButtonState();
-        if (updateStatus)
-        {
-            SetStatusMessage(musicEnabled ? "Music on." : "Music off.");
-        }
     }
 
     private void ResolveBattleMusicSource()
@@ -961,6 +945,7 @@ public class HUDPresenter : MonoBehaviour
         battleMusicSource.playOnAwake = false;
         battleMusicSource.loop = true;
         RuntimeAudioOutputGuard.ConfigureAlwaysAudible2D(battleMusicSource, battleMusicVolume);
+        GlobalMusicSource.Ensure(battleMusicSource);
     }
 
     private static void RestoreRuntimeAudioOutput()

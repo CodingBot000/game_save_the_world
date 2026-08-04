@@ -5,6 +5,8 @@ using UnityEngine.UI;
 
 public class MenuPresenter : MonoBehaviour
 {
+    private const string MusicObjectName = "MainMenuMusic";
+
     [SerializeField] private bool autoBuildUi = true;
     [SerializeField] private float inputLockDuration = 0.35f;
     [SerializeField] private Texture2D mainSkyTexture;
@@ -27,12 +29,14 @@ public class MenuPresenter : MonoBehaviour
 
     private void Awake()
     {
+        EnsureGlobalMusicSource();
         ResolveCanvas();
         TryBuildUi();
     }
 
     private void OnEnable()
     {
+        EnsureGlobalMusicSource();
         ResolveCanvas();
         TryBuildUi();
         inputUnlockTime = Time.unscaledTime + inputLockDuration;
@@ -98,6 +102,18 @@ public class MenuPresenter : MonoBehaviour
     public void OpenPlaceholder(string featureName)
     {
         Debug.Log($"{featureName} is not implemented yet.");
+    }
+
+    private static void EnsureGlobalMusicSource()
+    {
+        GameObject musicObject = GameObject.Find(MusicObjectName);
+        if (musicObject == null)
+        {
+            return;
+        }
+
+        AudioSource musicSource = musicObject.GetComponent<AudioSource>();
+        GlobalMusicSource.Ensure(musicSource);
     }
 
     private void ResolveCanvas()

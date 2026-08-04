@@ -3,9 +3,9 @@ title: Titan Destroyer 게임 시스템 중심 문서
 document_id: TD-GAME-SYSTEM-SSOT
 document_type: game-system-ssot
 status: live
-version: "1.0.11"
+version: "1.0.12"
 last_verified: "2026-08-05"
-implementation_baseline: "git 3cc538d + 2026-08-05 MainMenu layer order verified working tree"
+implementation_baseline: "git 867a274 + 2026-08-05 global BGM control verified working tree"
 unity_version: 6000.4.0f1
 authoritative_scope:
   - game_flow
@@ -66,7 +66,7 @@ authoritative_scope:
 | 활성 보스 패턴 | 파편 산탄, 파편 일제사격, 가속 횡단 빔, 추적 잔류 빔 | 구현됨 |
 | 난이도 | Easy / Normal / Expert / Nightmare 선택 상태는 있으나 전투 수치 연동 없음 | 불일치 |
 | 약점 개방 | 타깃과 배율은 있으나 실제 전투에서 개방시키는 흐름은 디버그에만 연결 | 프로토타입/디버그 |
-| 씬 BGM | MainMenu `BGM_title.wav`, BattleArena `BGM_battle_01.ogg`, 씬 진입 시 자동 시작·무한 반복 | 구현됨 |
+| 씬 BGM | MainMenu `BGM_title.wav`, BattleArena `BGM_battle_01.ogg`, 무한 반복, 전역 static 상태로 모든 등록 BGM 일괄 ON/OFF | 구현됨 |
 
 현재 플레이어에게 유효한 공격 선택지는 아래 두 가지뿐이다.
 
@@ -107,10 +107,17 @@ authoritative_scope:
 
 | 씬 | 재생 에셋 | AudioSource | 재생 규칙 |
 | --- | --- | --- | --- |
-| `MainMenu` | `Assets/Audio/Music/MainMenu/BGM_title.wav` | `MainMenuRoot/Systems/MainMenuMusic` | 씬 활성화 시 자동 시작, 2D, 볼륨 0.7, 무한 반복 |
-| `BattleArena` | `Assets/Audio/Music/BattleArena/BGM_battle_01.ogg` | `BattleArenaRoot/BattleArenaMusic` | 씬 활성화 시 자동 시작 후 HUD가 동일 소스를 초기화, 2D, 볼륨 0.7, 무한 반복 |
+| `MainMenu` | `Assets/Audio/Music/MainMenu/BGM_title.wav` | `MainMenuRoot/Systems/MainMenuMusic` | 씬 활성화 시 자동 시작, 2D, 볼륨 0.7, 무한 반복. 전역 OFF이면 즉시 음소거 |
+| `BattleArena` | `Assets/Audio/Music/BattleArena/BGM_battle_01.ogg` | `BattleArenaRoot/BattleArenaMusic` | HUD가 동일 소스를 초기화, 2D, 볼륨 0.7, 무한 반복. 전역 ON이면 재생하고 OFF이면 음소거 |
 
 - 두 BGM은 긴 음원용 `Streaming` 로드와 백그라운드 로드를 사용한다.
+- 모든 씬에서 `GlobalMusicSettings.MusicEnabled = true/false` 또는 `GlobalMusicSettings.ToggleMusic()`를 호출해 등록된 BGM 전체를 일괄 제어한다. `MusicEnabled`는 public static 프로퍼티이며 기본값은 ON이다.
+- 전역 음악 상태는 현재 실행 중인 앱 또는 Play Mode 안에서 씬이 바뀌어도 유지된다. 앱/Play Mode를 새로 시작하면 ON으로 초기화하며, 아직 `PlayerPrefs`에 저장하지는 않는다.
+- `GlobalMusicSource`가 각 BGM AudioSource를 전역 레지스트리에 등록한다. 현재 MainMenu는 `MenuPresenter`, BattleArena는 `HUDPresenter`가 기존 씬 AudioSource에 이 컴포넌트를 보장한다.
+- OFF 전환은 재생 중인 BGM을 정지시키지 않고 `mute`하여 재생 위치를 유지한다. OFF 상태에서 새로 들어온 씬의 정지된 BGM은 재생을 시작하지 않으며, ON 전환 시 음소거를 해제하고 정지된 등록 BGM도 재생한다.
+- BattleArena의 `MUSIC ON/OFF` HUD 버튼도 같은 전역 상태를 변경하며, 다른 코드가 상태를 바꾸면 이벤트를 받아 표시를 동기화한다.
+- 이 상태는 BGM 전용이다. 기관총·미사일·피격 등 효과음 AudioSource에는 적용하지 않는다.
+- 향후 다른 씬에 BGM을 추가할 때는 해당 AudioSource에 `GlobalMusicSource`를 붙이거나 `GlobalMusicSettings.RegisterSource(...)`로 등록해야 일괄 ON/OFF 대상이 된다.
 - 씬 전용 AudioSource이며 `DontDestroyOnLoad`로 유지하지 않는다. 따라서 씬을 떠나면 해당 BGM이 종료되고, 다음 씬에 지정된 BGM이 별도로 시작한다.
 - 이전 전투 음원 `battle_arena_bgm.mp3`와 그 메타 파일은 프로젝트에서 제거했다. 현재 전투 씬과 HUD 직렬화 참조는 모두 `BGM_battle_01.ogg`를 사용한다.
 
@@ -587,7 +594,7 @@ Armor가 120 흡수 → Armor 0, 잔여 피해 30
 | 보스 공통 공격값 | `Assets/_Project/Scripts/Gameplay/BossAttackController.cs` | 현재 씬 |
 | 보스 패턴 | `Assets/_Project/Scripts/Gameplay/BossBulletPatternController.cs` | 현재 씬의 `activePatternSet`, `kaijuHeavyThreatSequence` |
 | 난이도/스테이지 선택 | `Assets/_Project/Scripts/Core/StageSelectionState.cs` | 스테이지 선택 씬과 `Assets/_Project/Scripts/Gameplay/BattleController.cs` |
-| 씬 BGM | `Assets/Scenes/MainMenu.unity/MainMenu.unity`, `Assets/Scenes/BattleArena.unity/BattleArena.unity` | `Assets/Audio/Music/MainMenu/BGM_title.wav`, `Assets/Audio/Music/BattleArena/BGM_battle_01.ogg`, `Assets/_Project/Scripts/UI/HUDPresenter.cs` |
+| 씬 BGM/전역 음악 상태 | `Assets/_Project/Scripts/Audio/GlobalMusicSettings.cs`, `Assets/_Project/Scripts/Audio/GlobalMusicSource.cs` | `Assets/Scenes/MainMenu.unity/MainMenu.unity`, `Assets/Scenes/BattleArena.unity/BattleArena.unity`, 두 BGM 에셋, `Assets/_Project/Scripts/UI/MenuPresenter.cs`, `Assets/_Project/Scripts/UI/HUDPresenter.cs` |
 | 메인 메뉴 배경 레이어 | `Assets/_Project/Scripts/UI/MenuPresenter.cs` | `Assets/Scenes/MainMenu.unity/MainMenu.unity`, 메인 메뉴 배경·캐릭터·머플러 텍스처 |
 
 ## 11. 불일치 및 결정 필요 항목
@@ -637,11 +644,14 @@ Armor가 120 흡수 → Armor 0, 잔여 피해 30
 
 ### 2026-08-05
 
-- Git 기준점: `3cc538d` 및 기존 사용자 미커밋 작업 트리
+- Git 기준점: `867a274` 및 기존 사용자 미커밋 작업 트리
 - Unity 버전: `6000.4.0f1`
 - `MainMenu` Play Mode에서 변경 전 형제 순서가 `MainHellicopter → MainCharacter → Muffler`인 것을 확인한 뒤, 변경 후 `MainHellicopter → Muffler → MainCharacter`로 바뀐 것을 런타임 계층에서 확인했다.
 - 1920×1080 Game View 전·후 화면 비교에서 캐릭터 몸과 머리카락이 머플러를 앞에서 가리며, 다른 배경 레이어와 머플러 프레임 애니메이션은 유지되는 것을 확인했다.
-- `MenuPresenter.cs` 스크립트 진단 오류 0개, Unity 전체 컴파일 오류 0개, EditMode 테스트 59/59 통과.
+- 전역 음악 기본 ON 상태의 `MainMenu` Play Mode에서 `BGM_title.wav`가 `isPlaying=true`, `mute=false`이고 `GlobalMusicSource`에 등록된 것을 확인했다.
+- 전역 OFF 전환 후 MainMenu BGM이 `mute=true`인 채 재생 위치를 계속 진행했으며, OFF 상태로 `BattleArena`를 로드했을 때 `BGM_battle_01.ogg`가 `mute=true`, `isPlaying=false`로 유지되어 씬 전환 중 상태가 보존되는 것을 확인했다.
+- BattleArena에서 전역 ON 전환 후 전투 BGM이 `mute=false`, `isPlaying=true`로 시작되고 HUD 문구가 `MUSIC ON`으로, 다시 OFF 전환하면 `MUSIC OFF`로 동기화되는 것을 확인했다.
+- `MenuPresenter.cs`와 전역 음악 스크립트 컴파일 오류 0개, Unity 전체 컴파일 오류 0개, EditMode 테스트 59/59 통과.
 - Unity MCP `read_console`의 기존 reflection 초기화 오류는 계속되어 `Editor.log`로 대체 확인했으며, 이번 변경과 관련된 실행·컴파일 예외는 없었다.
 
 ### 2026-08-04
@@ -684,6 +694,7 @@ Armor가 120 흡수 → Armor 0, 잔여 피해 30
 
 | 날짜 | 버전 | 변경 내용 | 검증 |
 | --- | --- | --- | --- |
+| 2026-08-05 | 1.0.12 | 모든 씬에서 접근 가능한 `GlobalMusicSettings.MusicEnabled`와 BGM 등록 컴포넌트를 추가하고 MainMenu/BattleArena 음악 및 전투 HUD 버튼을 하나의 전역 ON/OFF 상태로 통합 | MainMenu OFF, OFF 상태 BattleArena 전환, 전투 BGM ON 재생, HUD ON/OFF 동기화, 전체 컴파일, EditMode 59/59 |
 | 2026-08-05 | 1.0.11 | MainMenu 런타임 배경에서 머플러를 캐릭터 바로 뒤 레이어로 이동 | Play Mode 형제 순서·1920×1080 화면 비교, 스크립트 진단, 전체 컴파일, EditMode 59/59 |
 | 2026-08-04 | 1.0.10 | MainMenu에 `BGM_title.wav` 반복 BGM을 추가하고 BattleArena의 기존 음악을 `BGM_battle_01.ogg`로 교체. 두 클립을 스트리밍·2D로 설정하고 구형 전투 MP3를 제거 | 씬별 Play Mode 실제 재생·시간 진행, 직렬화/GUID 정적 확인, 전체 컴파일, EditMode 59/59 |
 | 2026-08-01 | 1.0.9 | 락온 미사일 피해를 개틀링 기준값에서 분리하고 성공 락 1~5개 총 기본 피해를 `9/20/35/60/100` 고정값으로 변경 | 독립 계산 API, 단계별 1발 피해, Play Mode 5단계 피해표, 컴파일, EditMode 59/59 |
