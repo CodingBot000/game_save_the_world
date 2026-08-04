@@ -4,8 +4,9 @@ using UnityEngine;
 
 public static class GlobalMusicSettings
 {
+    private const bool DefaultMusicEnabled = false;
     private static readonly HashSet<AudioSource> RegisteredSources = new HashSet<AudioSource>();
-    private static bool musicEnabled = true;
+    private static bool musicEnabled = DefaultMusicEnabled;
 
     public static event Action<bool> MusicEnabledChanged;
 
@@ -55,7 +56,7 @@ public static class GlobalMusicSettings
     private static void ResetRuntimeState()
     {
         RegisteredSources.Clear();
-        musicEnabled = true;
+        musicEnabled = DefaultMusicEnabled;
         MusicEnabledChanged = null;
     }
 

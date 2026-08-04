@@ -3,9 +3,9 @@ title: Titan Destroyer 게임 시스템 중심 문서
 document_id: TD-GAME-SYSTEM-SSOT
 document_type: game-system-ssot
 status: live
-version: "1.0.13"
+version: "1.0.14"
 last_verified: "2026-08-05"
-implementation_baseline: "git ac05877 + 2026-08-05 full-lock front-view verified working tree"
+implementation_baseline: "git 9d63f4f + 2026-08-05 default-music-off working tree"
 unity_version: 6000.4.0f1
 authoritative_scope:
   - game_flow
@@ -66,7 +66,7 @@ authoritative_scope:
 | 활성 보스 패턴 | 파편 산탄, 파편 일제사격, 가속 횡단 빔, 추적 잔류 빔 | 구현됨 |
 | 난이도 | Easy / Normal / Expert / Nightmare 선택 상태는 있으나 전투 수치 연동 없음 | 불일치 |
 | 약점 개방 | 타깃과 배율은 있으나 실제 전투에서 개방시키는 흐름은 디버그에만 연결 | 프로토타입/디버그 |
-| 씬 BGM | MainMenu `BGM_title.wav`, BattleArena `BGM_battle_01.ogg`, 무한 반복, 전역 static 상태로 모든 등록 BGM 일괄 ON/OFF | 구현됨 |
+| 씬 BGM | MainMenu `BGM_title.wav`, BattleArena `BGM_battle_01.ogg`, 무한 반복, 앱 시작 기본 OFF, 전역 static 상태로 모든 등록 BGM 일괄 ON/OFF | 구현됨 |
 
 현재 플레이어에게 유효한 공격 선택지는 아래 두 가지뿐이다.
 
@@ -111,8 +111,8 @@ authoritative_scope:
 | `BattleArena` | `Assets/Audio/Music/BattleArena/BGM_battle_01.ogg` | `BattleArenaRoot/BattleArenaMusic` | HUD가 동일 소스를 초기화, 2D, 볼륨 0.7, 무한 반복. 전역 ON이면 재생하고 OFF이면 음소거 |
 
 - 두 BGM은 긴 음원용 `Streaming` 로드와 백그라운드 로드를 사용한다.
-- 모든 씬에서 `GlobalMusicSettings.MusicEnabled = true/false` 또는 `GlobalMusicSettings.ToggleMusic()`를 호출해 등록된 BGM 전체를 일괄 제어한다. `MusicEnabled`는 public static 프로퍼티이며 기본값은 ON이다.
-- 전역 음악 상태는 현재 실행 중인 앱 또는 Play Mode 안에서 씬이 바뀌어도 유지된다. 앱/Play Mode를 새로 시작하면 ON으로 초기화하며, 아직 `PlayerPrefs`에 저장하지는 않는다.
+- 모든 씬에서 `GlobalMusicSettings.MusicEnabled = true/false` 또는 `GlobalMusicSettings.ToggleMusic()`를 호출해 등록된 BGM 전체를 일괄 제어한다. `MusicEnabled`는 public static 프로퍼티이며 기본값은 OFF다.
+- 전역 음악 상태는 현재 실행 중인 앱 또는 Play Mode 안에서 씬이 바뀌어도 유지된다. 앱/Play Mode를 새로 시작하면 OFF로 초기화하며, 아직 `PlayerPrefs`에 저장하지는 않는다.
 - `GlobalMusicSource`가 각 BGM AudioSource를 전역 레지스트리에 등록한다. 현재 MainMenu는 `MenuPresenter`, BattleArena는 `HUDPresenter`가 기존 씬 AudioSource에 이 컴포넌트를 보장한다.
 - OFF 전환은 재생 중인 BGM을 정지시키지 않고 `mute`하여 재생 위치를 유지한다. OFF 상태에서 새로 들어온 씬의 정지된 BGM은 재생을 시작하지 않으며, ON 전환 시 음소거를 해제하고 정지된 등록 BGM도 재생한다.
 - BattleArena의 `MUSIC ON/OFF` HUD 버튼도 같은 전역 상태를 변경하며, 다른 코드가 상태를 바꾸면 이벤트를 받아 표시를 동기화한다.
@@ -647,6 +647,16 @@ Armor가 120 흡수 → Armor 0, 잔여 피해 30
 
 ## 13. 검증 메모
 
+### 2026-08-05 — BGM 기본 OFF
+
+- Git 기준점: `9d63f4f` 및 기존 사용자 미커밋 작업 트리
+- Unity 버전: `6000.4.0f1`
+- `GlobalMusicSettings`의 정적 초기값과 `SubsystemRegistration` 재초기화 값을 같은 `DefaultMusicEnabled = false` 상수로 통일했다. 따라서 앱 또는 Play Mode를 새로 시작할 때마다 저장값 없이 OFF로 시작한다.
+- `MainMenu`를 새 Play Mode로 시작했을 때 `BGM_title.wav` AudioSource가 `mute=true`였고, `playOnAwake` 재생 위치는 기존 규칙대로 계속 진행했다.
+- `BattleArena`를 별도 새 Play Mode로 시작했을 때 `BGM_battle_01.ogg` AudioSource가 `mute=true`, `isPlaying=false`였고 전투 HUD 버튼은 `MUSIC OFF`를 표시했다.
+- 전역 ON/OFF API와 실행 중 씬 간 상태 유지 방식은 변경하지 않았다. 이번 작업은 새 앱/Play Mode 시작 기본값만 OFF로 바꾼다.
+- 수정 스크립트 진단 오류 0개, Unity 전체 컴파일 오류 0개, EditMode 테스트 작업 성공 및 59/59 완료·실패 0개를 확인했다.
+
 ### 2026-08-05 — 5단계 풀차지 정면 연출
 
 - Git 기준점: `ac05877` 및 기존 사용자 미커밋 작업 트리
@@ -710,6 +720,7 @@ Armor가 120 흡수 → Armor 0, 잔여 피해 30
 
 | 날짜 | 버전 | 변경 내용 | 검증 |
 | --- | --- | --- | --- |
+| 2026-08-05 | 1.0.14 | 전역 BGM의 앱/Play Mode 시작 기본값을 ON에서 OFF로 변경. 실행 중 ON/OFF 전환과 씬 간 상태 유지는 기존대로 유지 | MainMenu/BattleArena 새 Play Mode 기본 음소거, 전투 HUD `MUSIC OFF`, 스크립트 진단, 전체 컴파일, EditMode 59/59 |
 | 2026-08-05 | 1.0.13 | 5단계 풀차지 일제사격 시 첫 미사일 이전에 보이는 헬기만 게임 카메라 정면으로 전환하고, 마지막 발사 웨이브 완료 1초 뒤 평상시 측면 자세로 복귀하도록 구현. 발사 시작 거부·취소 시 즉시 복귀하는 안전 처리 포함 | 30발 풀차지 Play Mode, 1920×1080 전·후 화면, 살보 ID/정면 상태/회전 복귀, 스크립트 진단, 전체 컴파일, EditMode 59/59 |
 | 2026-08-05 | 1.0.12 | 모든 씬에서 접근 가능한 `GlobalMusicSettings.MusicEnabled`와 BGM 등록 컴포넌트를 추가하고 MainMenu/BattleArena 음악 및 전투 HUD 버튼을 하나의 전역 ON/OFF 상태로 통합 | MainMenu OFF, OFF 상태 BattleArena 전환, 전투 BGM ON 재생, HUD ON/OFF 동기화, 전체 컴파일, EditMode 59/59 |
 | 2026-08-05 | 1.0.11 | MainMenu 런타임 배경에서 머플러를 캐릭터 바로 뒤 레이어로 이동 | Play Mode 형제 순서·1920×1080 화면 비교, 스크립트 진단, 전체 컴파일, EditMode 59/59 |
