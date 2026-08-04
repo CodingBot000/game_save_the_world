@@ -4501,7 +4501,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::HUDPresenter
   showDebugPanel: 1
-  battleMusicClip: {fileID: 8300000, guid: a382ec1039316458e85de84e272f385f, type: 3}
+  battleMusicClip: {fileID: 8300000, guid: 88fb30ee855fb42c0a514e3cb2fa77be, type: 3}
   battleMusicVolume: 0.7
 --- !u!114 &745161329
 MonoBehaviour:
@@ -5120,7 +5120,7 @@ AudioSource:
   serializedVersion: 4
   OutputAudioMixerGroup: {fileID: 0}
   m_audioClip: {fileID: 0}
-  m_Resource: {fileID: 8300000, guid: a382ec1039316458e85de84e272f385f, type: 3}
+  m_Resource: {fileID: 8300000, guid: 88fb30ee855fb42c0a514e3cb2fa77be, type: 3}
   m_PlayOnAwake: 1
   m_Volume: 0.7
   m_Pitch: 1

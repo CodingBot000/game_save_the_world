@@ -3,9 +3,9 @@ title: Titan Destroyer 게임 시스템 중심 문서
 document_id: TD-GAME-SYSTEM-SSOT
 document_type: game-system-ssot
 status: live
-version: "1.0.9"
-last_verified: "2026-08-01"
-implementation_baseline: "git eef9125 + 2026-08-01 fixed lock-on damage table verified working tree"
+version: "1.0.10"
+last_verified: "2026-08-04"
+implementation_baseline: "git 7fd66db + 2026-08-04 scene BGM verified working tree"
 unity_version: 6000.4.0f1
 authoritative_scope:
   - game_flow
@@ -15,6 +15,7 @@ authoritative_scope:
   - boss_stats
   - boss_attack_patterns
   - combat_balance
+  - scene_music
 ---
 
 # Titan Destroyer 게임 시스템 중심 문서
@@ -64,6 +65,7 @@ authoritative_scope:
 | 활성 보스 패턴 | 파편 산탄, 파편 일제사격, 가속 횡단 빔, 추적 잔류 빔 | 구현됨 |
 | 난이도 | Easy / Normal / Expert / Nightmare 선택 상태는 있으나 전투 수치 연동 없음 | 불일치 |
 | 약점 개방 | 타깃과 배율은 있으나 실제 전투에서 개방시키는 흐름은 디버그에만 연결 | 프로토타입/디버그 |
+| 씬 BGM | MainMenu `BGM_title.wav`, BattleArena `BGM_battle_01.ogg`, 씬 진입 시 자동 시작·무한 반복 | 구현됨 |
 
 현재 플레이어에게 유효한 공격 선택지는 아래 두 가지뿐이다.
 
@@ -97,6 +99,19 @@ authoritative_scope:
 - 선택 가능한 지역 데이터: Tokyo, Seoul, Paris, Hollywood, Beijing
 - 선택 가능한 난이도: Easy, Normal, Expert, Nightmare
 - **현재 확인 결과:** 선택 상태와 UI는 존재하지만 난이도별 보스 체력, 공격력, 패턴, 플레이어 수치를 바꾸는 전투 연결은 없다.
+
+### 2.4 씬 BGM
+
+상태: **구현됨**
+
+| 씬 | 재생 에셋 | AudioSource | 재생 규칙 |
+| --- | --- | --- | --- |
+| `MainMenu` | `Assets/Audio/Music/MainMenu/BGM_title.wav` | `MainMenuRoot/Systems/MainMenuMusic` | 씬 활성화 시 자동 시작, 2D, 볼륨 0.7, 무한 반복 |
+| `BattleArena` | `Assets/Audio/Music/BattleArena/BGM_battle_01.ogg` | `BattleArenaRoot/BattleArenaMusic` | 씬 활성화 시 자동 시작 후 HUD가 동일 소스를 초기화, 2D, 볼륨 0.7, 무한 반복 |
+
+- 두 BGM은 긴 음원용 `Streaming` 로드와 백그라운드 로드를 사용한다.
+- 씬 전용 AudioSource이며 `DontDestroyOnLoad`로 유지하지 않는다. 따라서 씬을 떠나면 해당 BGM이 종료되고, 다음 씬에 지정된 BGM이 별도로 시작한다.
+- 이전 전투 음원 `battle_arena_bgm.mp3`와 그 메타 파일은 프로젝트에서 제거했다. 현재 전투 씬과 HUD 직렬화 참조는 모두 `BGM_battle_01.ogg`를 사용한다.
 
 ## 3. 플레이어 조작과 이동
 
@@ -558,6 +573,7 @@ Armor가 120 흡수 → Armor 0, 잔여 피해 30
 | 보스 공통 공격값 | `Assets/_Project/Scripts/Gameplay/BossAttackController.cs` | 현재 씬 |
 | 보스 패턴 | `Assets/_Project/Scripts/Gameplay/BossBulletPatternController.cs` | 현재 씬의 `activePatternSet`, `kaijuHeavyThreatSequence` |
 | 난이도/스테이지 선택 | `Assets/_Project/Scripts/Core/StageSelectionState.cs` | 스테이지 선택 씬과 `Assets/_Project/Scripts/Gameplay/BattleController.cs` |
+| 씬 BGM | `Assets/Scenes/MainMenu.unity/MainMenu.unity`, `Assets/Scenes/BattleArena.unity/BattleArena.unity` | `Assets/Audio/Music/MainMenu/BGM_title.wav`, `Assets/Audio/Music/BattleArena/BGM_battle_01.ogg`, `Assets/_Project/Scripts/UI/HUDPresenter.cs` |
 
 ## 11. 불일치 및 결정 필요 항목
 
@@ -604,6 +620,18 @@ Armor가 120 흡수 → Armor 0, 잔여 피해 30
 
 ## 13. 검증 메모
 
+### 2026-08-04
+
+- Git 기준점: `7fd66db` 및 현재 미커밋 `BattleArena` 사용자 작업 트리
+- Unity 버전: `6000.4.0f1`
+- 확인 범위: MainMenu/BattleArena AudioSource 직렬화 값, 새 BGM 클립 참조, 스트리밍 임포트 설정, 씬별 Play Mode 실제 재생 상태
+- `MainMenu` Play Mode에서 `BGM_title.wav`, 볼륨 0.7, 2D, `loop=true`, `isPlaying=true`와 재생 시간 4.97초 진행을 확인했다.
+- `BattleArena` Play Mode에서 `BGM_battle_01.ogg`, 볼륨 0.7, 2D, `loop=true`, `isPlaying=true`와 재생 시간 10.30초 진행을 확인했다. HUD 초기화 뒤에도 새 클립 참조가 유지됐다.
+- 두 클립 모두 `Streaming`, 백그라운드 로드, 2D 임포트 설정을 사용하며 기존 `battle_arena_bgm.mp3` 참조가 남지 않은 것을 정적 검색으로 확인했다.
+- 전체 컴파일에서 C# 오류가 없었고 EditMode 테스트 59/59가 통과했다.
+- Unity MCP `read_console`은 프로젝트의 기존 reflection 초기화 오류로 사용할 수 없었다. 대체 확인한 `Editor.log`에는 C# 컴파일 오류가 없었으며, MCP의 `TransformHandle` 직렬화 과정에서 발생한 도구 측 `NullReferenceException` 외에 이번 BGM 변경으로 인한 실행 예외는 확인되지 않았다.
+- 사용자 작업인 `BattleArena`의 조명 참조, Viper 스케일 2, 공백 정규화 등 기존 미커밋 씬 변경은 수정 범위와 커밋 대상에서 제외한다.
+
 ### 2026-08-01
 
 - Git 기준점: `eef9125` 및 현재 미커밋 `BattleArena` 작업 트리
@@ -632,6 +660,7 @@ Armor가 120 흡수 → Armor 0, 잔여 피해 30
 
 | 날짜 | 버전 | 변경 내용 | 검증 |
 | --- | --- | --- | --- |
+| 2026-08-04 | 1.0.10 | MainMenu에 `BGM_title.wav` 반복 BGM을 추가하고 BattleArena의 기존 음악을 `BGM_battle_01.ogg`로 교체. 두 클립을 스트리밍·2D로 설정하고 구형 전투 MP3를 제거 | 씬별 Play Mode 실제 재생·시간 진행, 직렬화/GUID 정적 확인, 전체 컴파일, EditMode 59/59 |
 | 2026-08-01 | 1.0.9 | 락온 미사일 피해를 개틀링 기준값에서 분리하고 성공 락 1~5개 총 기본 피해를 `9/20/35/60/100` 고정값으로 변경 | 독립 계산 API, 단계별 1발 피해, Play Mode 5단계 피해표, 컴파일, EditMode 59/59 |
 | 2026-08-01 | 1.0.8 | 개틀링 기본 1발 피해를 25에서 3으로 변경하고 이를 참조하는 락온 1~5단계 총 기본 피해를 `9/12/15/18/30`으로 갱신 | 코드·프리팹·런타임 기본값 3, 락온 피해 표, 컴파일, EditMode 59/59 |
 | 2026-08-01 | 1.0.7 | 기관총의 좌클릭/Space 입력을 제거하고 전투 중 2초 자동 발사/2초 휴지 주기로 변경. 런타임 HUD 조작 안내도 자동 기관총 기준으로 교체 | 입력 없음 상태에서 첫 발사, 휴지 구간 발사 수 `12→12`, 4초 이후 재발사, 락온 30발 회귀, 컴파일, EditMode 59/59 |
