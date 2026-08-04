@@ -153,6 +153,7 @@ public sealed class PlayerLockOnController : MonoBehaviour
     public event Action<BossLockOnTarget, int> OnLockTargetAdded;
     public event Action<LockOnCancelReason> OnLockCanceled;
     public event Action<LockOnReleaseIntent> OnLockRelease;
+    public event Action<int> OnFullSalvoStarting;
     public event Action<int, bool> OnLockOnSalvoFinished;
     public event Action<string, string> OnSalvoPrepareFailed;
     public event Action OnFullSalvo;
@@ -474,11 +475,23 @@ public sealed class PlayerLockOnController : MonoBehaviour
         }
 
         ownsSalvoInvincibility = true;
+        bool isFullSalvo = intent.SuccessfulLockCount == MaxLockStage;
+        if (isFullSalvo)
+        {
+            // Visual listeners must run before StartPreparedSalvo because its coroutine
+            // launches the first missile wave synchronously before returning.
+            OnFullSalvoStarting?.Invoke(handle.SalvoId);
+        }
 
         SalvoCommitResult commitResult = salvoLauncher.StartPreparedSalvo(handle);
         if (!commitResult.IsStarted)
         {
             playerCombatController.EndSalvoInvincibility();
+            if (isFullSalvo)
+            {
+                OnLockOnSalvoFinished?.Invoke(handle.SalvoId, true);
+            }
+
             currentLockOnSalvoId = 0;
             ReportPlayerSalvoFailure(
                 commitResult.Status.ToString(),
@@ -496,7 +509,7 @@ public sealed class PlayerLockOnController : MonoBehaviour
         }
 
         OnLockRelease?.Invoke(intent);
-        if (intent.SuccessfulLockCount == MaxLockStage)
+        if (isFullSalvo)
         {
             OnFullSalvo?.Invoke();
         }

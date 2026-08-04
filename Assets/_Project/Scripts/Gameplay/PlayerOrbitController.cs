@@ -12,6 +12,7 @@ public class PlayerOrbitController : MonoBehaviour
     private const float DefaultAltitudeSpeed = 7.2f;
     private const float DefaultForwardSpeed = 10f;
     private const float DefaultLockOnChargingMovementSpeedMultiplier = 0.6f;
+    private const float DefaultFullSalvoVisualRestoreDelay = 1f;
     private static readonly Rect DefaultViewportRect = Rect.MinMaxRect(0f, 0f, 1f, 1f);
 
     [FormerlySerializedAs("horizontalScreenSpeed")]
@@ -46,6 +47,9 @@ public class PlayerOrbitController : MonoBehaviour
     [SerializeField] private float visualTiltDuration = 0.18f;
     [SerializeField] private Vector3 cinematicRearViewEulerOffset = Vector3.zero;
     [SerializeField] private Vector3 cinematicFrontViewEulerOffset = Vector3.zero;
+    [Tooltip("Keeps the helicopter facing the gameplay camera for this long after a full lock-on salvo finishes launching.")]
+    [SerializeField, Min(0f)]
+    private float fullSalvoVisualRestoreDelay = DefaultFullSalvoVisualRestoreDelay;
 
     private Transform orbitCenter;
     private Transform lookTarget;
@@ -80,8 +84,11 @@ public class PlayerOrbitController : MonoBehaviour
     private Quaternion cinematicReturnDisplayRotation = Quaternion.identity;
     private Coroutine airPressureImpulseRoutine;
     private Coroutine airPressureRollRoutine;
+    private Coroutine fullSalvoVisualRestoreRoutine;
     private float airPressureRollDegrees;
     private float airPressureSwayDegrees;
+    private int fullSalvoVisualSalvoId;
+    private bool fullSalvoFrontViewActive;
 
     public float CurrentDistance { get; private set; }
     public Vector3 CurrentWorldVelocity { get; private set; }
@@ -93,6 +100,9 @@ public class PlayerOrbitController : MonoBehaviour
     public float DebugEffectiveAltitudeSpeed => altitudeSpeed * ResolveMovementSpeedMultiplier();
     public float DebugMaxVisualTiltAngle => maxVisualTiltAngle;
     public float DebugVisualTiltDuration => visualTiltDuration;
+    public float DebugFullSalvoVisualRestoreDelay => fullSalvoVisualRestoreDelay;
+    public bool IsFullSalvoFrontViewActive => fullSalvoFrontViewActive;
+    public int FullSalvoVisualSalvoId => fullSalvoVisualSalvoId;
     public bool IsAirPressureRotationActive =>
         airPressureRollRoutine != null ||
         Mathf.Abs(airPressureRollDegrees) > 0.001f ||
@@ -125,6 +135,11 @@ public class PlayerOrbitController : MonoBehaviour
         ResetVelocityTracking();
     }
 
+    private void OnEnable()
+    {
+        SubscribeLockOnController();
+    }
+
     private void LateUpdate()
     {
         if (lookTarget == null && orbitCenter == null)
@@ -150,8 +165,16 @@ public class PlayerOrbitController : MonoBehaviour
         UpdateWorldVelocity();
     }
 
+    private void OnDisable()
+    {
+        UnsubscribeLockOnController();
+        ResetFullSalvoVisualImmediate();
+    }
+
     private void OnDestroy()
     {
+        UnsubscribeLockOnController();
+        ResetFullSalvoVisualImmediate();
         playerVisualOverlayRenderer?.Shutdown();
     }
 
@@ -178,12 +201,15 @@ public class PlayerOrbitController : MonoBehaviour
         PlayerMoveGuide moveGuide = null,
         PlayerLockOnController lockOnController = null)
     {
+        UnsubscribeLockOnController();
+        ResetFullSalvoVisualImmediate();
         EnsureRuntimeDefaults();
         orbitCenter = center;
         lookTarget = targetToLookAt;
         movementBounds = bounds;
         playerMoveGuide = moveGuide;
         playerLockOnController = lockOnController;
+        SubscribeLockOnController();
         ResetMovementViewportInitialization();
         movementViewportInitializationEnabled = true;
         CaptureRootRotation(transform.position);
@@ -191,6 +217,100 @@ public class PlayerOrbitController : MonoBehaviour
         CacheVisualTiltRoot();
         ResetVisualTiltImmediate();
         ResetVelocityTracking();
+    }
+
+    private void SubscribeLockOnController()
+    {
+        if (playerLockOnController == null || !isActiveAndEnabled)
+        {
+            return;
+        }
+
+        playerLockOnController.OnFullSalvoStarting -= HandleFullSalvoStarting;
+        playerLockOnController.OnLockOnSalvoFinished -= HandleLockOnSalvoFinished;
+        playerLockOnController.OnFullSalvoStarting += HandleFullSalvoStarting;
+        playerLockOnController.OnLockOnSalvoFinished += HandleLockOnSalvoFinished;
+    }
+
+    private void UnsubscribeLockOnController()
+    {
+        if (playerLockOnController == null)
+        {
+            return;
+        }
+
+        playerLockOnController.OnFullSalvoStarting -= HandleFullSalvoStarting;
+        playerLockOnController.OnLockOnSalvoFinished -= HandleLockOnSalvoFinished;
+    }
+
+    private void HandleFullSalvoStarting(int salvoId)
+    {
+        if (salvoId <= 0)
+        {
+            return;
+        }
+
+        if (fullSalvoVisualRestoreRoutine != null)
+        {
+            StopCoroutine(fullSalvoVisualRestoreRoutine);
+            fullSalvoVisualRestoreRoutine = null;
+        }
+
+        fullSalvoVisualSalvoId = salvoId;
+        fullSalvoFrontViewActive = true;
+        SetCinematicVisualFacingCamera();
+    }
+
+    private void HandleLockOnSalvoFinished(int salvoId, bool canceled)
+    {
+        if (!fullSalvoFrontViewActive || salvoId != fullSalvoVisualSalvoId)
+        {
+            return;
+        }
+
+        if (canceled)
+        {
+            ResetFullSalvoVisualImmediate();
+            return;
+        }
+
+        if (fullSalvoVisualRestoreRoutine != null)
+        {
+            StopCoroutine(fullSalvoVisualRestoreRoutine);
+        }
+
+        fullSalvoVisualRestoreRoutine = StartCoroutine(RestoreFullSalvoVisualAfterDelay());
+    }
+
+    private IEnumerator RestoreFullSalvoVisualAfterDelay()
+    {
+        float delay = Mathf.Max(0f, fullSalvoVisualRestoreDelay);
+        if (delay > 0f)
+        {
+            yield return new WaitForSeconds(delay);
+        }
+
+        fullSalvoVisualRestoreRoutine = null;
+        fullSalvoVisualSalvoId = 0;
+        fullSalvoFrontViewActive = false;
+        ClearCinematicVisualOverride();
+    }
+
+    private void ResetFullSalvoVisualImmediate()
+    {
+        if (fullSalvoVisualRestoreRoutine != null)
+        {
+            StopCoroutine(fullSalvoVisualRestoreRoutine);
+            fullSalvoVisualRestoreRoutine = null;
+        }
+
+        bool shouldClearVisualOverride = fullSalvoFrontViewActive;
+        fullSalvoVisualSalvoId = 0;
+        fullSalvoFrontViewActive = false;
+        if (shouldClearVisualOverride)
+        {
+            ClearCinematicVisualOverride();
+        }
     }
 
     public void RefreshVisualBindings()
@@ -1169,6 +1289,11 @@ public class PlayerOrbitController : MonoBehaviour
         if (visualTiltDuration <= 0.01f || visualTiltDuration > 0.25f)
         {
             visualTiltDuration = 0.18f;
+        }
+
+        if (fullSalvoVisualRestoreDelay <= 0f || fullSalvoVisualRestoreDelay > 10f)
+        {
+            fullSalvoVisualRestoreDelay = DefaultFullSalvoVisualRestoreDelay;
         }
     }
 

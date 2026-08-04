@@ -3,9 +3,9 @@ title: Titan Destroyer 게임 시스템 중심 문서
 document_id: TD-GAME-SYSTEM-SSOT
 document_type: game-system-ssot
 status: live
-version: "1.0.12"
+version: "1.0.13"
 last_verified: "2026-08-05"
-implementation_baseline: "git 867a274 + 2026-08-05 global BGM control verified working tree"
+implementation_baseline: "git ac05877 + 2026-08-05 full-lock front-view verified working tree"
 unity_version: 6000.4.0f1
 authoritative_scope:
   - game_flow
@@ -168,6 +168,7 @@ MainSky → MainCloud → MainBackground → MainHellicopter → Muffler → Mai
 - 헬기 Renderer 크기로 이동 범위를 줄이지 않는다. 확대된 헬기의 이동 기준점은 화면 끝까지 갈 수 있고 이때 로터나 기체 일부가 화면 밖으로 나가는 것은 현재 허용 규칙이다. 추후 여백이 필요하면 공용 픽셀 패딩을 사용한다.
 - 확대된 3D 모델의 화면 투영 사각형 중심을 이동 앵커에 맞춰, 3D AABB의 원근 차이 때문에 외형이 한쪽으로 치우치지 않게 한다.
 - 보이는 헬기 모델만 이동 방향으로 최대 12도, 약 0.18초 동안 기울어진다. 이동 앵커와 피격 판정은 기울지 않는다.
+- 5단계 락온을 모두 성공한 일제사격은 첫 미사일 웨이브보다 먼저 보이는 헬기 모델만 게임 카메라 정면을 향하게 한다. 마지막 발사 웨이브가 끝난 뒤 1초 동안 정면을 유지하고, 이후 평상시의 카메라 우측을 향한 측면 자세로 복귀한다. 이동 앵커·화면 위치·피격 판정은 회전시키지 않으며 1~4단계 발사에는 이 연출을 적용하지 않는다.
 - `forwardSpeed = 10` 값은 남아 있으나 현재 키 입력은 수평/수직 2축만 만든다. 이번 10% 감속 대상은 실제 입력에 쓰이는 두 축이며, 전진값 10과 이를 보조 기준으로 사용하는 추적 빔 속도는 변경하지 않았다.
 - 공기압 회전 연출 중에는 기관총 발사가 잠시 차단된다. 현재 활성 패턴 4종에는 공기압 패턴이 없다.
 
@@ -321,8 +322,11 @@ ReuseWait 5초 종료 → Ready
 | 수명 | 6초 |
 | 명중 반경 | 1.8 |
 | 타깃 소실 | 재탐색하지 않고 마지막 진행 방향으로 비행 후 소멸 |
+| 5단계 풀차지 헬기 자세 | 첫 웨이브 이전 카메라 정면 전환 → 마지막 웨이브 완료 뒤 1초 유지 → 평상시 측면 자세 복귀 |
 
 목표점에는 수평 1.6, 수직 배율 1.25, 깊이 0.2의 분산을 주어 동일 지점에 모든 미사일이 겹치지 않게 한다.
+
+5단계 풀차지 정면 전환 신호는 발사 준비와 일제사격 무적 확보가 성공한 뒤, 실제 `StartPreparedSalvo` 호출보다 먼저 발생한다. 따라서 첫 웨이브도 정면 자세에서 발사하며, 준비 후 실제 살보 시작이 거부되거나 취소되면 정면 자세를 즉시 해제한다.
 
 ### 일제사격 중 무적
 
@@ -582,6 +586,7 @@ Armor가 120 흡수 → Armor 0, 잔여 피해 30
 | --- | --- | --- |
 | 전투 모드/승패/초기화 | `Assets/_Project/Scripts/Gameplay/BattleController.cs` | `Assets/_Project/Scripts/Core/GameFlowController.cs`, `Assets/Scenes/BattleArena.unity/BattleArena.unity` |
 | 플레이어 이동 | `Assets/_Project/Scripts/Gameplay/PlayerOrbitController.cs` | `Assets/_Project/Scripts/Core/PlayerRuntimeState.cs`, `Assets/_Project/Scripts/Gameplay/BattleController.cs`, `Assets/_Project/Scripts/Gameplay/PlayerLockOnController.cs`, `Assets/_Project/Scripts/Gameplay/PlayerMovementBounds.cs`, `Assets/_Project/Scripts/Gameplay/PlayerMoveGuide.cs`, `Assets/_Project/Scripts/Gameplay/PlayerVisualOverlayRenderer.cs`, 현재 씬 |
+| 헬기 시각 자세/5단계 풀차지 정면 연출 | `Assets/_Project/Scripts/Gameplay/PlayerOrbitController.cs` | `Assets/_Project/Scripts/Gameplay/PlayerLockOnController.cs`, `Assets/_Project/Scripts/Gameplay/PlayerMissileSalvoLauncher.cs`, `Assets/_Project/Scripts/Gameplay/PlayerVisualOverlayRenderer.cs` |
 | 기관총 | `Assets/_Project/Scripts/Gameplay/PlayerCombatController.cs` | `Assets/_Project/Scripts/Gameplay/ProjectileController.cs`, `Assets/_Project/Scripts/UI/HUDPresenter.cs`, 현재 씬/투사체 프리팹 |
 | 락온 상태/충전 시간/피해 공식/피격 취소 | `Assets/_Project/Scripts/Gameplay/PlayerLockOnController.cs` | `Assets/_Project/Scripts/Gameplay/PlayerCombatController.cs`, `Assets/_Project/Scripts/UI/LockOnButtonInputRelay.cs`, `Assets/_Project/Scripts/MissileStrike/LockOnChargeRules.cs`, `Assets/_Project/Scripts/MissileStrike/LockOnSalvoRules.cs` |
 | 락온 HUD/월드 마커 | `Assets/_Project/Scripts/UI/LockOnHudPresenter.cs` | `Assets/_Project/Scripts/Gameplay/PlayerLockOnController.cs`, 락온 마커 Sprite, 현재 씬의 HUD |
@@ -642,7 +647,18 @@ Armor가 120 흡수 → Armor 0, 잔여 피해 30
 
 ## 13. 검증 메모
 
-### 2026-08-05
+### 2026-08-05 — 5단계 풀차지 정면 연출
+
+- Git 기준점: `ac05877` 및 기존 사용자 미커밋 작업 트리
+- Unity 버전: `6000.4.0f1`
+- `BattleArena` Play Mode의 5단계 풀차지 진단에서 30발 요청과 발사가 정상 완료됐고, 첫 발사 웨이브가 실행되기 전에 `IsFullSalvoFrontViewActive=true`와 살보 ID 연결을 확인했다.
+- 1920×1080 Game View 캡처에서 평상시에는 헬기가 화면 우측을 향한 측면 모습이고, 5단계 발사 중에는 기수와 조종석이 게임 카메라를 향한 정면 모습으로 바뀌는 것을 확인했다.
+- 실제 `SalvoCompleted`는 마지막 발사 웨이브 뒤 발생하며, 그 이벤트 이후 1초 지연 코루틴이 정면 자세를 해제한다. 해제 후 상태는 `IsFullSalvoFrontViewActive=false`, 살보 ID `0`이었고 보이는 Viper 회전은 발사 전 측면 회전값으로 복귀했다.
+- 1~4단계에는 정면 시작 이벤트를 보내지 않는 조건을 코드에서 확인했다. 이번 작업에서는 1~4단계 각각의 화면 캡처는 반복하지 않았다.
+- 수정 스크립트 진단 오류 0개, Unity 전체 컴파일 오류 0개, 실행 중 신규 예외 없음, EditMode 테스트 59/59 통과.
+- Unity MCP `read_console`의 기존 reflection 초기화 오류는 계속되어 `Editor.log`로 대체 확인했다.
+
+### 2026-08-05 — 전역 음악/메인 메뉴
 
 - Git 기준점: `867a274` 및 기존 사용자 미커밋 작업 트리
 - Unity 버전: `6000.4.0f1`
@@ -694,6 +710,7 @@ Armor가 120 흡수 → Armor 0, 잔여 피해 30
 
 | 날짜 | 버전 | 변경 내용 | 검증 |
 | --- | --- | --- | --- |
+| 2026-08-05 | 1.0.13 | 5단계 풀차지 일제사격 시 첫 미사일 이전에 보이는 헬기만 게임 카메라 정면으로 전환하고, 마지막 발사 웨이브 완료 1초 뒤 평상시 측면 자세로 복귀하도록 구현. 발사 시작 거부·취소 시 즉시 복귀하는 안전 처리 포함 | 30발 풀차지 Play Mode, 1920×1080 전·후 화면, 살보 ID/정면 상태/회전 복귀, 스크립트 진단, 전체 컴파일, EditMode 59/59 |
 | 2026-08-05 | 1.0.12 | 모든 씬에서 접근 가능한 `GlobalMusicSettings.MusicEnabled`와 BGM 등록 컴포넌트를 추가하고 MainMenu/BattleArena 음악 및 전투 HUD 버튼을 하나의 전역 ON/OFF 상태로 통합 | MainMenu OFF, OFF 상태 BattleArena 전환, 전투 BGM ON 재생, HUD ON/OFF 동기화, 전체 컴파일, EditMode 59/59 |
 | 2026-08-05 | 1.0.11 | MainMenu 런타임 배경에서 머플러를 캐릭터 바로 뒤 레이어로 이동 | Play Mode 형제 순서·1920×1080 화면 비교, 스크립트 진단, 전체 컴파일, EditMode 59/59 |
 | 2026-08-04 | 1.0.10 | MainMenu에 `BGM_title.wav` 반복 BGM을 추가하고 BattleArena의 기존 음악을 `BGM_battle_01.ogg`로 교체. 두 클립을 스트리밍·2D로 설정하고 구형 전투 MP3를 제거 | 씬별 Play Mode 실제 재생·시간 진행, 직렬화/GUID 정적 확인, 전체 컴파일, EditMode 59/59 |
