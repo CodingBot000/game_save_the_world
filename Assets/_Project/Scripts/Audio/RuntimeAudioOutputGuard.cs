@@ -6,17 +6,14 @@ public static class RuntimeAudioOutputGuard
 
     public static void Restore()
     {
-        AudioListener.pause = false;
-        AudioListener.volume = 1f;
-
-        if (audioSettingsReset)
+        if (!audioSettingsReset)
         {
-            return;
+            AudioConfiguration configuration = AudioSettings.GetConfiguration();
+            AudioSettings.Reset(configuration);
+            audioSettingsReset = true;
         }
 
-        AudioConfiguration configuration = AudioSettings.GetConfiguration();
-        AudioSettings.Reset(configuration);
-        audioSettingsReset = true;
+        GlobalSoundSettings.ApplyCurrentState();
     }
 
     public static void PrimeClip(AudioClip clip)
@@ -29,7 +26,17 @@ public static class RuntimeAudioOutputGuard
         clip.LoadAudioData();
     }
 
-    public static void ConfigureAlwaysAudible2D(AudioSource source, float volume)
+    public static void ConfigureMusic2D(AudioSource source, float volume)
+    {
+        Configure2D(source, volume, true);
+    }
+
+    public static void ConfigureSoundEffect2D(AudioSource source, float volume)
+    {
+        Configure2D(source, volume, false);
+    }
+
+    private static void Configure2D(AudioSource source, float volume, bool ignoreListenerControls)
     {
         if (source == null)
         {
@@ -38,8 +45,8 @@ public static class RuntimeAudioOutputGuard
 
         source.volume = Mathf.Clamp01(volume);
         source.spatialBlend = 0f;
-        source.ignoreListenerPause = true;
-        source.ignoreListenerVolume = true;
+        source.ignoreListenerPause = ignoreListenerControls;
+        source.ignoreListenerVolume = ignoreListenerControls;
         source.bypassEffects = true;
         source.bypassListenerEffects = true;
         source.bypassReverbZones = true;

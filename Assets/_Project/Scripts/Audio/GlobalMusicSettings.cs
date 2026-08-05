@@ -38,6 +38,8 @@ public static class GlobalMusicSettings
         }
 
         RemoveInvalidSources();
+        source.ignoreListenerPause = true;
+        source.ignoreListenerVolume = true;
         RegisteredSources.Add(source);
         ApplyState(source);
     }

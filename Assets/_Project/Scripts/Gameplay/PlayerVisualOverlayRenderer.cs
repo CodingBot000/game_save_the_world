@@ -12,6 +12,10 @@ public sealed class PlayerVisualOverlayRenderer : MonoBehaviour
     private readonly Dictionary<GameObject, int> originalVisualLayers = new();
     private readonly HashSet<GameObject> currentVisualObjects = new();
     private readonly List<GameObject> staleVisualObjects = new();
+    private readonly HashSet<Transform> externalVisualRoots = new();
+    private readonly List<Transform> staleExternalVisualRoots = new();
+    private readonly HashSet<Transform> centeringIgnoredRoots = new();
+    private readonly List<Transform> staleCenteringIgnoredRoots = new();
     private Camera baseCamera;
     private Camera overlayCamera;
     private UniversalAdditionalCameraData baseCameraData;
@@ -25,6 +29,11 @@ public sealed class PlayerVisualOverlayRenderer : MonoBehaviour
     private bool visualRootPositionCaptured;
     private bool centerVisualOnOwner;
     private float nextVisualContentRefreshTime;
+    private bool stableOverlayProjectionActive;
+    private Camera stableOverlayProjectionSource;
+    private Matrix4x4 stableOverlayProjection;
+    private Vector3 stableOverlayCameraPosition;
+    private Quaternion stableOverlayCameraRotation = Quaternion.identity;
 
     public bool IsConfigured { get; private set; }
     public Camera BaseCamera => baseCamera;
@@ -33,6 +42,9 @@ public sealed class PlayerVisualOverlayRenderer : MonoBehaviour
     public int VisualLayer => visualLayer;
     public int VisualRendererCount { get; private set; }
     public int RendererColliderLayerConflictCount { get; private set; }
+    public int CenteringRendererCount { get; private set; }
+    public int IgnoredDynamicCenteringRendererCount { get; private set; }
+    public int IgnoredAttachmentCenteringRendererCount { get; private set; }
     public bool CentersVisualOnOwner => centerVisualOnOwner;
     public Vector3 LastAlignmentWorldOffset { get; private set; }
     public bool BaseCameraExcludesVisualLayer =>
@@ -53,6 +65,106 @@ public sealed class PlayerVisualOverlayRenderer : MonoBehaviour
         {
             List<Camera> stack = baseCameraData != null ? baseCameraData.cameraStack : null;
             return stack != null && overlayCamera != null && stack.Contains(overlayCamera);
+        }
+    }
+
+    public int ExternalVisualRootCount => externalVisualRoots.Count;
+    public bool UsesStableOverlayProjectionDuringCameraShake =>
+        stableOverlayProjectionActive;
+
+    public void SetStableOverlayProjectionDuringCameraShake(
+        Camera sourceCamera,
+        Matrix4x4 projection)
+    {
+        if (!IsConfigured || sourceCamera == null || sourceCamera != baseCamera)
+        {
+            return;
+        }
+
+        stableOverlayProjectionSource = sourceCamera;
+        stableOverlayProjection = projection;
+        if (overlayCamera != null)
+        {
+            stableOverlayCameraPosition = overlayCamera.transform.position;
+            stableOverlayCameraRotation = overlayCamera.transform.rotation;
+        }
+        else
+        {
+            stableOverlayCameraPosition = sourceCamera.transform.position;
+            stableOverlayCameraRotation = sourceCamera.transform.rotation;
+        }
+
+        stableOverlayProjectionActive = true;
+        if (overlayCamera != null)
+        {
+            overlayCamera.transform.SetPositionAndRotation(
+                stableOverlayCameraPosition,
+                stableOverlayCameraRotation);
+            overlayCamera.projectionMatrix = stableOverlayProjection;
+        }
+    }
+
+    public void ClearStableOverlayProjectionDuringCameraShake(Camera sourceCamera)
+    {
+        if (!stableOverlayProjectionActive ||
+            (sourceCamera != null && sourceCamera != stableOverlayProjectionSource))
+        {
+            return;
+        }
+
+        stableOverlayProjectionActive = false;
+        stableOverlayProjectionSource = null;
+        if (overlayCamera != null && baseCamera != null)
+        {
+            overlayCamera.transform.SetPositionAndRotation(
+                baseCamera.transform.position,
+                baseCamera.transform.rotation);
+            overlayCamera.projectionMatrix = baseCamera.projectionMatrix;
+        }
+    }
+
+    /// <summary>
+    /// Keeps a temporarily detached part of the player model in the player-only
+    /// overlay camera. Detached Sidewinders use this so buildings never cover the
+    /// cosmetic flight while the helicopter body continues to define centering.
+    /// </summary>
+    public void RegisterExternalVisualRoot(Transform root)
+    {
+        if (root == null || !externalVisualRoots.Add(root))
+        {
+            return;
+        }
+
+        RefreshVisualContentLayers();
+    }
+
+    public void UnregisterExternalVisualRoot(Transform root)
+    {
+        if (root == null || !externalVisualRoots.Remove(root))
+        {
+            return;
+        }
+
+        RefreshVisualContentLayers();
+    }
+
+    /// <summary>
+    /// Keeps a detachable visual attachment from changing the body center when it
+    /// leaves or returns to the helicopter hierarchy.
+    /// </summary>
+    public void RegisterCenteringIgnoredRoot(Transform root)
+    {
+        if (root != null)
+        {
+            centeringIgnoredRoots.Add(root);
+        }
+    }
+
+    public void UnregisterCenteringIgnoredRoot(Transform root)
+    {
+        if (root != null)
+        {
+            centeringIgnoredRoots.Remove(root);
         }
     }
 
@@ -134,12 +246,14 @@ public sealed class PlayerVisualOverlayRenderer : MonoBehaviour
             RefreshVisualContentLayers();
         }
 
+        SyncOverlayCameraPose();
+        overlayCamera.projectionMatrix = stableOverlayProjectionActive
+            ? stableOverlayProjection
+            : baseCamera.projectionMatrix;
         AlignVisualCenterToOwner();
 
         baseCamera.cullingMask &= ~visualLayerMask;
         EnsureCameraStackRegistration();
-        Transform baseTransform = baseCamera.transform;
-        overlayCamera.transform.SetPositionAndRotation(baseTransform.position, baseTransform.rotation);
         overlayCamera.transform.localScale = Vector3.one;
         overlayCamera.orthographic = baseCamera.orthographic;
         overlayCamera.orthographicSize = baseCamera.orthographicSize;
@@ -155,8 +269,30 @@ public sealed class PlayerVisualOverlayRenderer : MonoBehaviour
         overlayCamera.useOcclusionCulling = false;
         overlayCamera.cullingMask = visualLayerMask;
         overlayCamera.depth = baseCamera.depth + 1f;
-        overlayCamera.projectionMatrix = baseCamera.projectionMatrix;
         overlayCamera.enabled = true;
+    }
+
+    private void SyncOverlayCameraPose()
+    {
+        if (overlayCamera == null)
+        {
+            return;
+        }
+
+        if (stableOverlayProjectionActive)
+        {
+            overlayCamera.transform.SetPositionAndRotation(
+                stableOverlayCameraPosition,
+                stableOverlayCameraRotation);
+            return;
+        }
+
+        if (baseCamera != null)
+        {
+            overlayCamera.transform.SetPositionAndRotation(
+                baseCamera.transform.position,
+                baseCamera.transform.rotation);
+        }
     }
 
     public bool TryGetVisualViewportExtents(
@@ -220,8 +356,23 @@ public sealed class PlayerVisualOverlayRenderer : MonoBehaviour
 
     public bool TryGetVisualViewportRect(out Rect viewportRect)
     {
+        return TryGetVisualViewportRect(baseCamera, out viewportRect);
+    }
+
+    /// <summary>
+    /// Returns the helicopter rectangle through the camera that actually renders it.
+    /// During world-camera shake this camera keeps the pre-shake projection, so this
+    /// value can be used to verify that the helicopter itself remains stationary.
+    /// </summary>
+    public bool TryGetRenderedVisualViewportRect(out Rect viewportRect)
+    {
+        return TryGetVisualViewportRect(overlayCamera, out viewportRect);
+    }
+
+    private bool TryGetVisualViewportRect(Camera projectionCamera, out Rect viewportRect)
+    {
         viewportRect = default;
-        if (baseCamera == null || visualRoot == null ||
+        if (projectionCamera == null || visualRoot == null ||
             !TryGetRendererBounds(visualRoot, out Bounds bounds))
         {
             return false;
@@ -239,7 +390,7 @@ public sealed class PlayerVisualOverlayRenderer : MonoBehaviour
                 (cornerIndex & 1) == 0 ? min.x : max.x,
                 (cornerIndex & 2) == 0 ? min.y : max.y,
                 (cornerIndex & 4) == 0 ? min.z : max.z);
-            Vector3 viewport = baseCamera.WorldToViewportPoint(corner);
+            Vector3 viewport = projectionCamera.WorldToViewportPoint(corner);
             if (viewport.z <= 0f)
             {
                 continue;
@@ -291,9 +442,21 @@ public sealed class PlayerVisualOverlayRenderer : MonoBehaviour
         visualLayerMask = 0;
         VisualRendererCount = 0;
         RendererColliderLayerConflictCount = 0;
+        CenteringRendererCount = 0;
+        IgnoredDynamicCenteringRendererCount = 0;
+        IgnoredAttachmentCenteringRendererCount = 0;
         LastAlignmentWorldOffset = Vector3.zero;
         centerVisualOnOwner = false;
         nextVisualContentRefreshTime = 0f;
+        stableOverlayProjectionActive = false;
+        stableOverlayProjectionSource = null;
+        stableOverlayProjection = Matrix4x4.identity;
+        stableOverlayCameraPosition = Vector3.zero;
+        stableOverlayCameraRotation = Quaternion.identity;
+        externalVisualRoots.Clear();
+        staleExternalVisualRoots.Clear();
+        centeringIgnoredRoots.Clear();
+        staleCenteringIgnoredRoots.Clear();
     }
 
     private void AlignVisualCenterToOwner()
@@ -304,7 +467,10 @@ public sealed class PlayerVisualOverlayRenderer : MonoBehaviour
             return;
         }
 
-        Vector3 ownerViewport = baseCamera.WorldToViewportPoint(transform.position);
+        Camera alignmentCamera = stableOverlayProjectionActive && overlayCamera != null
+            ? overlayCamera
+            : baseCamera;
+        Vector3 ownerViewport = alignmentCamera.WorldToViewportPoint(transform.position);
         if (ownerViewport.z <= 0f)
         {
             return;
@@ -316,7 +482,7 @@ public sealed class PlayerVisualOverlayRenderer : MonoBehaviour
         // the helicopter centered on the gameplay movement anchor.
         for (int pass = 0; pass < 2; pass++)
         {
-            if (!TryGetVisualViewportRect(out Rect visualViewportRect))
+            if (!TryGetVisualViewportRect(alignmentCamera, out Rect visualViewportRect))
             {
                 return;
             }
@@ -328,9 +494,9 @@ public sealed class PlayerVisualOverlayRenderer : MonoBehaviour
                 break;
             }
 
-            Vector3 currentCenterAtOwnerDepth = baseCamera.ViewportToWorldPoint(
+            Vector3 currentCenterAtOwnerDepth = alignmentCamera.ViewportToWorldPoint(
                 new Vector3(visualViewportRect.center.x, visualViewportRect.center.y, ownerViewport.z));
-            Vector3 desiredCenterAtOwnerDepth = baseCamera.ViewportToWorldPoint(ownerViewport);
+            Vector3 desiredCenterAtOwnerDepth = alignmentCamera.ViewportToWorldPoint(ownerViewport);
             Vector3 offset = desiredCenterAtOwnerDepth - currentCenterAtOwnerDepth;
             visualRoot.position += offset;
             LastAlignmentWorldOffset += offset;
@@ -441,8 +607,57 @@ public sealed class PlayerVisualOverlayRenderer : MonoBehaviour
             return;
         }
 
-        Renderer[] renderers = visualRoot.GetComponentsInChildren<Renderer>(true);
         HashSet<GameObject> countedConflicts = new();
+        CollectVisualRenderers(visualRoot, countedConflicts);
+
+        staleExternalVisualRoots.Clear();
+        foreach (Transform externalRoot in externalVisualRoots)
+        {
+            if (externalRoot == null)
+            {
+                staleExternalVisualRoots.Add(externalRoot);
+                continue;
+            }
+
+            CollectVisualRenderers(externalRoot, countedConflicts);
+        }
+
+        for (int i = 0; i < staleExternalVisualRoots.Count; i++)
+        {
+            externalVisualRoots.Remove(staleExternalVisualRoots[i]);
+        }
+
+        foreach (KeyValuePair<GameObject, int> pair in originalVisualLayers)
+        {
+            if (pair.Key != null && currentVisualObjects.Contains(pair.Key))
+            {
+                continue;
+            }
+
+            if (pair.Key != null)
+            {
+                pair.Key.layer = pair.Value;
+            }
+
+            staleVisualObjects.Add(pair.Key);
+        }
+
+        for (int i = 0; i < staleVisualObjects.Count; i++)
+        {
+            originalVisualLayers.Remove(staleVisualObjects[i]);
+        }
+    }
+
+    private void CollectVisualRenderers(
+        Transform root,
+        HashSet<GameObject> countedConflicts)
+    {
+        if (root == null)
+        {
+            return;
+        }
+
+        Renderer[] renderers = root.GetComponentsInChildren<Renderer>(true);
         for (int i = 0; i < renderers.Length; i++)
         {
             Renderer renderer = renderers[i];
@@ -470,26 +685,6 @@ public sealed class PlayerVisualOverlayRenderer : MonoBehaviour
 
             rendererObject.layer = visualLayer;
             VisualRendererCount++;
-        }
-
-        foreach (KeyValuePair<GameObject, int> pair in originalVisualLayers)
-        {
-            if (pair.Key != null && currentVisualObjects.Contains(pair.Key))
-            {
-                continue;
-            }
-
-            if (pair.Key != null)
-            {
-                pair.Key.layer = pair.Value;
-            }
-
-            staleVisualObjects.Add(pair.Key);
-        }
-
-        for (int i = 0; i < staleVisualObjects.Count; i++)
-        {
-            originalVisualLayers.Remove(staleVisualObjects[i]);
         }
     }
 
@@ -526,15 +721,19 @@ public sealed class PlayerVisualOverlayRenderer : MonoBehaviour
         baseMaskCaptured = false;
     }
 
-    private static bool TryGetRendererBounds(Transform root, out Bounds bounds)
+    private bool TryGetRendererBounds(Transform root, out Bounds bounds)
     {
         bounds = default;
+        CenteringRendererCount = 0;
+        IgnoredDynamicCenteringRendererCount = 0;
+        IgnoredAttachmentCenteringRendererCount = 0;
         if (root == null)
         {
             return false;
         }
 
         Renderer[] renderers = root.GetComponentsInChildren<Renderer>(true);
+        PruneCenteringIgnoredRoots();
         bool hasBounds = false;
         for (int i = 0; i < renderers.Length; i++)
         {
@@ -544,6 +743,23 @@ public sealed class PlayerVisualOverlayRenderer : MonoBehaviour
             {
                 continue;
             }
+
+            // Particle/trail bounds expand and move every frame. They must still be
+            // rendered by the player overlay, but letting them define the helicopter
+            // center would move the visual root as Sidewinder exhaust grows.
+            if (!CanDefineVisualCenter(renderer))
+            {
+                IgnoredDynamicCenteringRendererCount++;
+                continue;
+            }
+
+            if (IsUnderCenteringIgnoredRoot(renderer.transform))
+            {
+                IgnoredAttachmentCenteringRendererCount++;
+                continue;
+            }
+
+            CenteringRendererCount++;
 
             if (!hasBounds)
             {
@@ -557,6 +773,50 @@ public sealed class PlayerVisualOverlayRenderer : MonoBehaviour
         }
 
         return hasBounds;
+    }
+
+    private void PruneCenteringIgnoredRoots()
+    {
+        staleCenteringIgnoredRoots.Clear();
+        foreach (Transform ignoredRoot in centeringIgnoredRoots)
+        {
+            if (ignoredRoot == null)
+            {
+                staleCenteringIgnoredRoots.Add(ignoredRoot);
+            }
+        }
+
+        for (int i = 0; i < staleCenteringIgnoredRoots.Count; i++)
+        {
+            centeringIgnoredRoots.Remove(staleCenteringIgnoredRoots[i]);
+        }
+    }
+
+    private bool IsUnderCenteringIgnoredRoot(Transform target)
+    {
+        if (target == null)
+        {
+            return false;
+        }
+
+        foreach (Transform ignoredRoot in centeringIgnoredRoots)
+        {
+            if (ignoredRoot != null &&
+                (target == ignoredRoot || target.IsChildOf(ignoredRoot)))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool CanDefineVisualCenter(Renderer renderer)
+    {
+        return renderer != null &&
+               !(renderer is ParticleSystemRenderer) &&
+               !(renderer is TrailRenderer) &&
+               !(renderer is LineRenderer);
     }
 
     private static bool IsUnderDamageHurtbox(Transform target)

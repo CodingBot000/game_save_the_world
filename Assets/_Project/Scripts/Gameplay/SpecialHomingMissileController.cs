@@ -19,6 +19,7 @@ public class SpecialHomingMissileController : MonoBehaviour
     private const float DefaultTrailTime = 1.6f;
     private static Material sharedTrailCoreMaterial;
     private static Material sharedTrailGlowMaterial;
+    private static Mesh sharedBarrageConeMesh;
     private enum MissilePhase
     {
         FanOut,
@@ -429,11 +430,6 @@ public class SpecialHomingMissileController : MonoBehaviour
                     }
                 }
             }
-            else
-            {
-                Debug.LogWarning("Missile visual template is missing. Using gameplay shell only.", this);
-            }
-
             if (!hasCustomVisual)
             {
                 CreateGameplayShell(visualRoot);
@@ -454,29 +450,20 @@ public class SpecialHomingMissileController : MonoBehaviour
         shellRoot.transform.localScale = Vector3.one * GetGameplayShellScale();
 
         Material bodyMaterial = CreateRuntimeMaterial(
-            "RuntimeMissileShellMaterial",
-            new Color(0.76f, 0.8f, 0.86f, 1f),
+            "RuntimeBlackBarrageMissileMaterial",
+            new Color(0.012f, 0.014f, 0.018f, 1f),
             false,
             "Universal Render Pipeline/Unlit",
             "Sprites/Default",
             "Universal Render Pipeline/Lit",
             "Standard");
 
-        Material accentMaterial = CreateRuntimeMaterial(
-            "RuntimeMissileShellAccentMaterial",
-            new Color(0.98f, 0.62f, 0.2f, 1f),
-            false,
-            "Universal Render Pipeline/Unlit",
-            "Sprites/Default",
-            "Universal Render Pipeline/Lit",
-            "Standard");
-
-        GameObject body = GameObject.CreatePrimitive(PrimitiveType.Capsule);
-        body.name = "MissileVisual";
+        GameObject body = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+        body.name = "BarrageMissileCylinder";
         body.transform.SetParent(shellRoot.transform, false);
-        body.transform.localPosition = Vector3.zero;
+        body.transform.localPosition = new Vector3(0f, 0f, -0.02f);
         body.transform.localRotation = Quaternion.Euler(90f, 0f, 0f);
-        body.transform.localScale = new Vector3(0.13f, 0.42f, 0.13f);
+        body.transform.localScale = new Vector3(0.18f, 0.30f, 0.18f);
         Collider bodyCollider = body.GetComponent<Collider>();
         if (bodyCollider != null)
         {
@@ -485,30 +472,67 @@ public class SpecialHomingMissileController : MonoBehaviour
 
         ApplyMaterial(body.GetComponent<Renderer>(), bodyMaterial);
 
-        GameObject nose = GameObject.CreatePrimitive(PrimitiveType.Sphere);
-        nose.name = "MissileNose";
+        GameObject nose = new("BarrageMissileConeNose");
         nose.transform.SetParent(shellRoot.transform, false);
-        nose.transform.localPosition = new Vector3(0f, 0f, 0.38f);
+        nose.transform.localPosition = new Vector3(0f, 0f, 0.28f);
         nose.transform.localRotation = Quaternion.identity;
-        nose.transform.localScale = new Vector3(0.1f, 0.1f, 0.16f);
-        Collider noseCollider = nose.GetComponent<Collider>();
-        if (noseCollider != null)
-        {
-            Destroy(noseCollider);
-        }
-
-        ApplyMaterial(nose.GetComponent<Renderer>(), accentMaterial ?? bodyMaterial);
-
-        CreateFin(shellRoot.transform, accentMaterial ?? bodyMaterial, "ShellFinTop", new Vector3(0f, 0.06f, -0.2f), new Vector3(0.02f, 0.12f, 0.14f));
-        CreateFin(shellRoot.transform, accentMaterial ?? bodyMaterial, "ShellFinBottom", new Vector3(0f, -0.06f, -0.2f), new Vector3(0.02f, 0.12f, 0.14f));
-        CreateFin(shellRoot.transform, accentMaterial ?? bodyMaterial, "ShellFinLeft", new Vector3(-0.06f, 0f, -0.2f), new Vector3(0.12f, 0.02f, 0.14f));
-        CreateFin(shellRoot.transform, accentMaterial ?? bodyMaterial, "ShellFinRight", new Vector3(0.06f, 0f, -0.2f), new Vector3(0.12f, 0.02f, 0.14f));
+        nose.transform.localScale = new Vector3(0.18f, 0.18f, 0.28f);
+        MeshFilter noseMeshFilter = nose.AddComponent<MeshFilter>();
+        noseMeshFilter.sharedMesh = GetSharedBarrageConeMesh();
+        MeshRenderer noseRenderer = nose.AddComponent<MeshRenderer>();
+        ApplyMaterial(noseRenderer, bodyMaterial);
     }
 
     private float GetGameplayShellScale()
     {
-        // Keep the shell readable without overpowering the decorative missile skin.
-        return Mathf.Clamp(0.55f + visualScale * 0.08f, 0.7f, 1.1f);
+        return Mathf.Clamp(0.9f + visualScale * 0.1f, 0.9f, 1.2f);
+    }
+
+    private static Mesh GetSharedBarrageConeMesh()
+    {
+        if (sharedBarrageConeMesh != null)
+        {
+            return sharedBarrageConeMesh;
+        }
+
+        const int segmentCount = 16;
+        Vector3[] vertices = new Vector3[segmentCount + 2];
+        int[] triangles = new int[segmentCount * 6];
+        vertices[0] = Vector3.zero;
+        for (int segment = 0; segment < segmentCount; segment++)
+        {
+            float angle = segment / (float)segmentCount * Mathf.PI * 2f;
+            vertices[segment + 1] = new Vector3(
+                Mathf.Cos(angle) * 0.5f,
+                Mathf.Sin(angle) * 0.5f,
+                0f);
+        }
+
+        int tipIndex = vertices.Length - 1;
+        vertices[tipIndex] = Vector3.forward;
+        for (int segment = 0; segment < segmentCount; segment++)
+        {
+            int current = segment + 1;
+            int next = (segment + 1) % segmentCount + 1;
+            int triangle = segment * 6;
+            triangles[triangle] = 0;
+            triangles[triangle + 1] = next;
+            triangles[triangle + 2] = current;
+            triangles[triangle + 3] = current;
+            triangles[triangle + 4] = next;
+            triangles[triangle + 5] = tipIndex;
+        }
+
+        sharedBarrageConeMesh = new Mesh
+        {
+            name = "RuntimeBlackBarrageConeMesh",
+            vertices = vertices,
+            triangles = triangles,
+            hideFlags = HideFlags.HideAndDontSave,
+        };
+        sharedBarrageConeMesh.RecalculateNormals();
+        sharedBarrageConeMesh.RecalculateBounds();
+        return sharedBarrageConeMesh;
     }
 
     private void CreateDefaultVisual(Transform parent)

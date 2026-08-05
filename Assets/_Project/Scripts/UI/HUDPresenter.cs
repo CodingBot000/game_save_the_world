@@ -19,6 +19,9 @@ public class HUDPresenter : MonoBehaviour
     private const string ControlHintText = "A / D left-right   W / S up-down   Gatling auto: 2s fire / 2s cooldown   Hold Right click / LOCK ON, release to attack   R restart";
     private static readonly Vector2 LockOnButtonAnchoredPosition = new(-28f, 28f);
     private static readonly Vector2 LockOnButtonSize = new(208f, 74f);
+    private static readonly Vector2 AudioToggleButtonSize = new(148f, 56f);
+    private static readonly Vector2 MusicButtonAnchoredPosition = new(28f, 28f);
+    private static readonly Vector2 SoundButtonAnchoredPosition = new(188f, 28f);
     private static readonly Vector2 PlayerStatusBaseSourceSize = new(592f, 232f);
     private static readonly Vector2 PlayerStatusBaseDisplaySize = new(414f, 162.2f);
     private static readonly Vector2 PlayerHullFillSourceOffset = new(118f, 17f);
@@ -64,6 +67,9 @@ public class HUDPresenter : MonoBehaviour
     private Button musicButton;
     private Image musicButtonImage;
     private Text musicButtonLabel;
+    private Button soundButton;
+    private Image soundButtonImage;
+    private Text soundButtonLabel;
     private AudioSource battleMusicSource;
     private GameObject missionFailedOverlay;
     private Button retryButton;
@@ -101,9 +107,12 @@ public class HUDPresenter : MonoBehaviour
     {
         GlobalMusicSettings.MusicEnabledChanged -= HandleGlobalMusicEnabledChanged;
         GlobalMusicSettings.MusicEnabledChanged += HandleGlobalMusicEnabledChanged;
+        GlobalSoundSettings.SoundEnabledChanged -= HandleGlobalSoundEnabledChanged;
+        GlobalSoundSettings.SoundEnabledChanged += HandleGlobalSoundEnabledChanged;
         ResolveBattleMusicSource();
         EnsureUiReferences();
         UpdateMusicButtonState();
+        UpdateSoundButtonState();
     }
 
     private void Start()
@@ -198,6 +207,7 @@ public class HUDPresenter : MonoBehaviour
         }
 
         UpdateMusicButtonState();
+        UpdateSoundButtonState();
     }
 
     public void Configure(
@@ -453,8 +463,10 @@ public class HUDPresenter : MonoBehaviour
             LockOnButtonAnchoredPosition,
             LockOnButtonSize);
         EnsureMusicButton(hudRoot.transform);
+        EnsureSoundButton(hudRoot.transform);
         WireUiEvents();
         UpdateMusicButtonState();
+        UpdateSoundButtonState();
         if (missionFailedOverlay != null)
         {
             missionFailedOverlay.transform.SetAsLastSibling();
@@ -528,12 +540,17 @@ public class HUDPresenter : MonoBehaviour
             }
         }
 
+        DisableDebugPanelBackground();
+
         lockOnButton = FindUiComponent<Button>(hudRootTransform, "LockOnButton");
         lockOnButtonImage = FindUiComponent<Image>(hudRootTransform, "LockOnButton");
         lockOnButtonLabel = FindUiComponent<Text>(hudRootTransform, "LockOnButton/LockOnButtonLabel");
         musicButton = FindUiComponent<Button>(hudRootTransform, "MusicButton");
         musicButtonImage = FindUiComponent<Image>(hudRootTransform, "MusicButton");
         musicButtonLabel = FindUiComponent<Text>(hudRootTransform, "MusicButton/MusicButtonLabel");
+        soundButton = FindUiComponent<Button>(hudRootTransform, "SoundButton");
+        soundButtonImage = FindUiComponent<Image>(hudRootTransform, "SoundButton");
+        soundButtonLabel = FindUiComponent<Text>(hudRootTransform, "SoundButton/SoundButtonLabel");
 
         missionFailedOverlay = FindUiTransform(hudRootTransform, "MissionFailedOverlay")?.gameObject;
         retryButton = FindUiComponent<Button>(hudRootTransform, "MissionFailedOverlay/Panel/RetryButton");
@@ -560,6 +577,12 @@ public class HUDPresenter : MonoBehaviour
         {
             musicButton.onClick.RemoveListener(ToggleMusic);
             musicButton.onClick.AddListener(ToggleMusic);
+        }
+
+        if (soundButton != null)
+        {
+            soundButton.onClick.RemoveListener(ToggleSound);
+            soundButton.onClick.AddListener(ToggleSound);
         }
 
         if (retryButton != null)
@@ -600,6 +623,9 @@ public class HUDPresenter : MonoBehaviour
         musicButton = null;
         musicButtonImage = null;
         musicButtonLabel = null;
+        soundButton = null;
+        soundButtonImage = null;
+        soundButtonLabel = null;
         missionFailedOverlay = null;
         retryButton = null;
         quitButton = null;
@@ -608,6 +634,7 @@ public class HUDPresenter : MonoBehaviour
     private void OnDisable()
     {
         GlobalMusicSettings.MusicEnabledChanged -= HandleGlobalMusicEnabledChanged;
+        GlobalSoundSettings.SoundEnabledChanged -= HandleGlobalSoundEnabledChanged;
         ClearShootError();
     }
 
@@ -633,13 +660,44 @@ public class HUDPresenter : MonoBehaviour
             new Vector2(0f, 0f),
             new Vector2(0f, 0f),
             new Vector2(0f, 0f),
-            new Vector2(28f, 28f),
-            new Vector2(148f, 56f),
+            MusicButtonAnchoredPosition,
+            AudioToggleButtonSize,
             new Color(0.20f, 0.22f, 0.26f, 0.92f),
             ToggleMusic,
             out musicButtonImage,
             out musicButtonLabel);
         musicButton.transform.SetAsLastSibling();
+    }
+
+    private void EnsureSoundButton(Transform hudRootTransform)
+    {
+        if (hudRootTransform == null)
+        {
+            return;
+        }
+
+        if (soundButton != null && soundButtonImage != null && soundButtonLabel != null)
+        {
+            soundButton.transform.SetAsLastSibling();
+            return;
+        }
+
+        Font runtimeFont = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+        soundButton = CreateAnchoredButton(
+            "SoundButton",
+            hudRootTransform,
+            runtimeFont,
+            "SOUND\nOFF",
+            new Vector2(0f, 0f),
+            new Vector2(0f, 0f),
+            new Vector2(0f, 0f),
+            SoundButtonAnchoredPosition,
+            AudioToggleButtonSize,
+            new Color(0.20f, 0.22f, 0.26f, 0.92f),
+            ToggleSound,
+            out soundButtonImage,
+            out soundButtonLabel);
+        soundButton.transform.SetAsLastSibling();
     }
 
     private void UpdateMusicButtonState()
@@ -655,6 +713,21 @@ public class HUDPresenter : MonoBehaviour
             ? new Color(0.18f, 0.48f, 0.44f, 0.96f)
             : new Color(0.20f, 0.22f, 0.26f, 0.92f);
         musicButtonLabel.text = musicEnabled ? "MUSIC\nON" : "MUSIC\nOFF";
+    }
+
+    private void UpdateSoundButtonState()
+    {
+        if (soundButton == null || soundButtonImage == null || soundButtonLabel == null)
+        {
+            return;
+        }
+
+        bool soundEnabled = GlobalSoundSettings.SoundEnabled;
+        soundButton.interactable = true;
+        soundButtonImage.color = soundEnabled
+            ? new Color(0.18f, 0.48f, 0.44f, 0.96f)
+            : new Color(0.20f, 0.22f, 0.26f, 0.92f);
+        soundButtonLabel.text = soundEnabled ? "SOUND\nON" : "SOUND\nOFF";
     }
 
     private void BuildHudUi(Transform canvasTransform)
@@ -786,7 +859,9 @@ public class HUDPresenter : MonoBehaviour
 
         GameObject createdDebugPanelRoot = FindOrCreateUiObject("DebugPanelRoot", runtimeHudRoot.transform);
         Image createdDebugPanelImage = createdDebugPanelRoot.GetComponent<Image>() ?? createdDebugPanelRoot.AddComponent<Image>();
-        createdDebugPanelImage.color = new Color(0.05f, 0.08f, 0.12f, 0.52f);
+        createdDebugPanelImage.color = Color.clear;
+        createdDebugPanelImage.raycastTarget = false;
+        createdDebugPanelImage.enabled = false;
         RectTransform debugPanelRect = createdDebugPanelRoot.GetComponent<RectTransform>();
         debugPanelRect.anchorMin = new Vector2(0f, 0f);
         debugPanelRect.anchorMax = new Vector2(0f, 0f);
@@ -825,10 +900,25 @@ public class HUDPresenter : MonoBehaviour
             new Vector2(0f, 0f),
             new Vector2(0f, 0f),
             new Vector2(0f, 0f),
-            new Vector2(28f, 28f),
-            new Vector2(148f, 56f),
+            MusicButtonAnchoredPosition,
+            AudioToggleButtonSize,
             new Color(0.20f, 0.22f, 0.26f, 0.92f),
             ToggleMusic,
+            out _,
+            out _);
+
+        CreateAnchoredButton(
+            "SoundButton",
+            runtimeHudRoot.transform,
+            runtimeFont,
+            "SOUND\nOFF",
+            new Vector2(0f, 0f),
+            new Vector2(0f, 0f),
+            new Vector2(0f, 0f),
+            SoundButtonAnchoredPosition,
+            AudioToggleButtonSize,
+            new Color(0.20f, 0.22f, 0.26f, 0.92f),
+            ToggleSound,
             out _,
             out _);
 
@@ -890,6 +980,25 @@ public class HUDPresenter : MonoBehaviour
         createdMissionFailedOverlay.SetActive(false);
     }
 
+    private void DisableDebugPanelBackground()
+    {
+        if (debugPanelRoot != null)
+        {
+            Image debugPanelImage = debugPanelRoot.GetComponent<Image>();
+            if (debugPanelImage != null)
+            {
+                debugPanelImage.color = Color.clear;
+                debugPanelImage.raycastTarget = false;
+                debugPanelImage.enabled = false;
+            }
+        }
+
+        if (stageDebugText != null)
+        {
+            stageDebugText.raycastTarget = false;
+        }
+    }
+
     private void HandleRetryButtonClicked()
     {
         RetryRequested?.Invoke();
@@ -906,6 +1015,19 @@ public class HUDPresenter : MonoBehaviour
     private void HandleGlobalMusicEnabledChanged(bool enabled)
     {
         UpdateMusicButtonState();
+    }
+
+    private void ToggleSound()
+    {
+        GlobalSoundSettings.ToggleSound();
+        bool soundEnabled = GlobalSoundSettings.SoundEnabled;
+        UpdateSoundButtonState();
+        SetStatusMessage(soundEnabled ? "Sound on." : "Sound off.");
+    }
+
+    private void HandleGlobalSoundEnabledChanged(bool enabled)
+    {
+        UpdateSoundButtonState();
     }
 
     private void ResolveBattleMusicSource()
@@ -944,7 +1066,7 @@ public class HUDPresenter : MonoBehaviour
         RuntimeAudioOutputGuard.PrimeClip(battleMusicSource.clip);
         battleMusicSource.playOnAwake = false;
         battleMusicSource.loop = true;
-        RuntimeAudioOutputGuard.ConfigureAlwaysAudible2D(battleMusicSource, battleMusicVolume);
+        RuntimeAudioOutputGuard.ConfigureMusic2D(battleMusicSource, battleMusicVolume);
         GlobalMusicSource.Ensure(battleMusicSource);
     }
 

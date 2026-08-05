@@ -19,8 +19,15 @@ public static class EditorAudioDiagnostics
         changedCount += SetStaticBoolProperties("Internal_AudioMasterMute", false);
         changedCount += InvokeAudioManagerBoolMethod("SetMasterGroupMute", false);
 
-        AudioListener.pause = false;
-        AudioListener.volume = 1f;
+        if (Application.isPlaying)
+        {
+            GlobalSoundSettings.SoundEnabled = true;
+        }
+        else
+        {
+            AudioListener.pause = false;
+            AudioListener.volume = 1f;
+        }
 
         Debug.Log($"Editor audio unmute requested. Applied {changedCount} editor mute setter(s).");
         LogEditorAudioState("after");

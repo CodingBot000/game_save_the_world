@@ -2,7 +2,8 @@
     "name": "TitanDestroyer.MissileStrike.EditModeTests",
     "rootNamespace": "",
     "references": [
-        "TitanDestroyer.MissileStrike"
+        "TitanDestroyer.MissileStrike",
+        "Unity.InputSystem"
     ],
     "includePlatforms": [
         "Editor"

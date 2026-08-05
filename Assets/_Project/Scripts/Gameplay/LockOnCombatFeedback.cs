@@ -5,9 +5,9 @@ using UnityEngine;
 public sealed class LockOnCombatFeedback : MonoBehaviour
 {
     private const int SampleRate = 24000;
+    private const float TemporaryCameraShakeVisibilityTestMultiplier = 8f;
+    private const float FullSalvoCameraShakeAmplitude = 0.0075f;
     private static readonly float[] StageFrequencies = { 480f, 610f, 760f, 930f, 1120f };
-    private static readonly float[] ReleaseShakeDurations = { 0.07f, 0.09f, 0.11f, 0.14f, 0.20f };
-    private static readonly float[] ReleaseShakeAmplitudes = { 0.0015f, 0.0022f, 0.0032f, 0.0048f, 0.009f };
 
     [SerializeField, Range(0f, 1f)] private float stageSfxVolume = 0.52f;
     [SerializeField, Range(0f, 1f)] private float releaseSfxVolume = 0.68f;
@@ -16,6 +16,8 @@ public sealed class LockOnCombatFeedback : MonoBehaviour
 
     private readonly AudioClip[] stageClips = new AudioClip[5];
     private PlayerLockOnController lockOnController;
+    private PlayerCombatController playerCombatController;
+    private PlayerVisualOverlayRenderer visualOverlayRenderer;
     private Camera battleCamera;
     private AudioSource stageAudioSource;
     private AudioSource releaseAudioSource;
@@ -36,6 +38,11 @@ public sealed class LockOnCombatFeedback : MonoBehaviour
     public float LastShakeAmplitude { get; private set; }
     public float PeakShakeProjectionOffset { get; private set; }
     public bool ProjectionRestoredAfterShake { get; private set; } = true;
+    public bool LastShakeStartedWhileSalvoInvincible { get; private set; }
+    public bool LastShakeStoppedAtSalvoInvincibilityEnd { get; private set; }
+    public bool KeepsHelicopterProjectionStable =>
+        visualOverlayRenderer != null &&
+        visualOverlayRenderer.UsesStableOverlayProjectionDuringCameraShake;
     public bool HasGeneratedFeedbackAudio =>
         stageClips[0] != null && stageClips[4] != null &&
         releaseClip != null && boostClip != null;
@@ -44,10 +51,18 @@ public sealed class LockOnCombatFeedback : MonoBehaviour
         (releaseAudioSource != null && releaseAudioSource.isPlaying) ||
         (boostAudioSource != null && boostAudioSource.isPlaying);
 
-    public void Configure(PlayerLockOnController controller, Camera targetCamera)
+    public void Configure(
+        PlayerLockOnController controller,
+        PlayerCombatController combatController,
+        Camera targetCamera)
     {
         Unsubscribe();
+        StopProjectionShake(restoreProjection: true);
         lockOnController = controller;
+        playerCombatController = combatController;
+        visualOverlayRenderer = playerCombatController != null
+            ? playerCombatController.GetComponent<PlayerVisualOverlayRenderer>()
+            : null;
         battleCamera = targetCamera != null ? targetCamera : Camera.main;
         EnsureAudioOutput();
         configured = lockOnController != null;
@@ -70,7 +85,7 @@ public sealed class LockOnCombatFeedback : MonoBehaviour
 
     private void HandleLockRelease(LockOnReleaseIntent intent)
     {
-        int stage = Mathf.Clamp(intent?.SuccessfulLockCount ?? 1, 1, stageClips.Length);
+        int stage = Mathf.Clamp(intent?.SalvoProfileLockCount ?? 1, 1, stageClips.Length);
         LastFeedbackStage = stage;
         if (releaseAudioSource != null && releaseClip != null)
         {
@@ -84,22 +99,31 @@ public sealed class LockOnCombatFeedback : MonoBehaviour
 
         ReleaseSfxPlayCount++;
         BoostSfxPlayCount++;
-        TriggerProjectionShake(stage);
     }
 
     private void HandleFullSalvo()
     {
         FullSalvoFeedbackCount++;
+        TriggerFullSalvoProjectionShake();
     }
 
-    private void TriggerProjectionShake(int stage)
+    private void TriggerFullSalvoProjectionShake()
     {
         StopProjectionShake(restoreProjection: true);
-        int index = Mathf.Clamp(stage - 1, 0, ReleaseShakeAmplitudes.Length - 1);
-        LastShakeAmplitude = ReleaseShakeAmplitudes[index];
+        LastShakeAmplitude =
+            FullSalvoCameraShakeAmplitude * TemporaryCameraShakeVisibilityTestMultiplier;
         PeakShakeProjectionOffset = 0f;
         ProjectionRestoredAfterShake = false;
+        LastShakeStartedWhileSalvoInvincible =
+            playerCombatController != null && playerCombatController.IsSalvoInvincible;
+        LastShakeStoppedAtSalvoInvincibilityEnd = false;
         if (!enableProjectionShake || battleCamera == null || LastShakeAmplitude <= 0f)
+        {
+            ProjectionRestoredAfterShake = true;
+            return;
+        }
+
+        if (playerCombatController != null && !playerCombatController.IsSalvoInvincible)
         {
             ProjectionRestoredAfterShake = true;
             return;
@@ -107,22 +131,22 @@ public sealed class LockOnCombatFeedback : MonoBehaviour
 
         shakenCamera = battleCamera;
         shakeBaseProjection = shakenCamera.projectionMatrix;
+        visualOverlayRenderer?.SetStableOverlayProjectionDuringCameraShake(
+            shakenCamera,
+            shakeBaseProjection);
         shakeRoutine = StartCoroutine(ShakeProjectionRoutine(
-            ReleaseShakeDurations[index],
             LastShakeAmplitude,
-            stage * 19.37f));
+            stageClips.Length * 19.37f));
     }
 
-    private IEnumerator ShakeProjectionRoutine(float duration, float amplitude, float seed)
+    private IEnumerator ShakeProjectionRoutine(float amplitude, float seed)
     {
-        float elapsed = 0f;
-        while (elapsed < duration && shakenCamera != null)
+        while (shakenCamera != null &&
+               (playerCombatController == null || playerCombatController.IsSalvoInvincible))
         {
-            float progress = Mathf.Clamp01(elapsed / Mathf.Max(0.01f, duration));
-            float envelope = 1f - progress;
-            float sampleTime = Time.unscaledTime * 47f;
-            float offsetX = (Mathf.PerlinNoise(seed, sampleTime) * 2f - 1f) * amplitude * envelope;
-            float offsetY = (Mathf.PerlinNoise(seed + 11.9f, sampleTime) * 2f - 1f) * amplitude * envelope;
+            float sampleTime = Time.unscaledTime * 31f;
+            float offsetX = (Mathf.PerlinNoise(seed, sampleTime) * 2f - 1f) * amplitude;
+            float offsetY = (Mathf.PerlinNoise(seed + 11.9f, sampleTime) * 2f - 1f) * amplitude;
             Matrix4x4 projection = shakeBaseProjection;
             projection.m02 += offsetX;
             projection.m12 += offsetY;
@@ -130,7 +154,6 @@ public sealed class LockOnCombatFeedback : MonoBehaviour
             PeakShakeProjectionOffset = Mathf.Max(
                 PeakShakeProjectionOffset,
                 Mathf.Max(Mathf.Abs(offsetX), Mathf.Abs(offsetY)));
-            elapsed += Mathf.Min(Time.unscaledDeltaTime, 1f / 30f);
             yield return null;
         }
 
@@ -154,13 +177,29 @@ public sealed class LockOnCombatFeedback : MonoBehaviour
 
     private void RestoreProjection()
     {
+        Camera restoredCamera = shakenCamera;
         if (shakenCamera != null)
         {
             shakenCamera.projectionMatrix = shakeBaseProjection;
         }
 
+        visualOverlayRenderer?.ClearStableOverlayProjectionDuringCameraShake(restoredCamera);
         shakenCamera = null;
         ProjectionRestoredAfterShake = true;
+    }
+
+    private void HandleSalvoInvincibilityEnded()
+    {
+        LastShakeStoppedAtSalvoInvincibilityEnd = IsProjectionShakeActive;
+        StopProjectionShake(restoreProjection: true);
+    }
+
+    private void HandleLockOnSalvoFinished(int salvoId, bool canceled)
+    {
+        if (playerCombatController == null || !playerCombatController.IsSalvoInvincible)
+        {
+            StopProjectionShake(restoreProjection: true);
+        }
     }
 
     private void EnsureAudioOutput()
@@ -189,7 +228,7 @@ public sealed class LockOnCombatFeedback : MonoBehaviour
         AudioSource source = sourceObject.AddComponent<AudioSource>();
         source.playOnAwake = false;
         source.loop = false;
-        RuntimeAudioOutputGuard.ConfigureAlwaysAudible2D(source, 1f);
+        RuntimeAudioOutputGuard.ConfigureSoundEffect2D(source, 1f);
         return source;
     }
 
@@ -277,21 +316,32 @@ public sealed class LockOnCombatFeedback : MonoBehaviour
         lockOnController.OnLockStageUp -= HandleStageUp;
         lockOnController.OnLockRelease -= HandleLockRelease;
         lockOnController.OnFullSalvo -= HandleFullSalvo;
+        lockOnController.OnLockOnSalvoFinished -= HandleLockOnSalvoFinished;
         lockOnController.OnLockStageUp += HandleStageUp;
         lockOnController.OnLockRelease += HandleLockRelease;
         lockOnController.OnFullSalvo += HandleFullSalvo;
+        lockOnController.OnLockOnSalvoFinished += HandleLockOnSalvoFinished;
+        if (playerCombatController != null)
+        {
+            playerCombatController.SalvoInvincibilityEnded -= HandleSalvoInvincibilityEnded;
+            playerCombatController.SalvoInvincibilityEnded += HandleSalvoInvincibilityEnded;
+        }
     }
 
     private void Unsubscribe()
     {
-        if (lockOnController == null)
+        if (lockOnController != null)
         {
-            return;
+            lockOnController.OnLockStageUp -= HandleStageUp;
+            lockOnController.OnLockRelease -= HandleLockRelease;
+            lockOnController.OnFullSalvo -= HandleFullSalvo;
+            lockOnController.OnLockOnSalvoFinished -= HandleLockOnSalvoFinished;
         }
 
-        lockOnController.OnLockStageUp -= HandleStageUp;
-        lockOnController.OnLockRelease -= HandleLockRelease;
-        lockOnController.OnFullSalvo -= HandleFullSalvo;
+        if (playerCombatController != null)
+        {
+            playerCombatController.SalvoInvincibilityEnded -= HandleSalvoInvincibilityEnded;
+        }
     }
 
     private void OnEnable()

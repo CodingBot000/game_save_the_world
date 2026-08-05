@@ -12,7 +12,10 @@ public class PlayerOrbitController : MonoBehaviour
     private const float DefaultAltitudeSpeed = 7.2f;
     private const float DefaultForwardSpeed = 10f;
     private const float DefaultLockOnChargingMovementSpeedMultiplier = 0.6f;
+    private const float DefaultFullSalvoVisualTurnDuration = 0.3f;
     private const float DefaultFullSalvoVisualRestoreDelay = 1f;
+    private const float DefaultFullSalvoVisualReturnDuration = 0.3f;
+    private const float FullSalvoCameraFacingReversalDegrees = 180f;
     private static readonly Rect DefaultViewportRect = Rect.MinMaxRect(0f, 0f, 1f, 1f);
 
     [FormerlySerializedAs("horizontalScreenSpeed")]
@@ -46,10 +49,17 @@ public class PlayerOrbitController : MonoBehaviour
     [SerializeField] private float maxVisualTiltAngle = 12f;
     [SerializeField] private float visualTiltDuration = 0.18f;
     [SerializeField] private Vector3 cinematicRearViewEulerOffset = Vector3.zero;
+    [Tooltip("Additional model-space tuning applied after the fixed 180-degree full-salvo camera-facing reversal.")]
     [SerializeField] private Vector3 cinematicFrontViewEulerOffset = Vector3.zero;
-    [Tooltip("Keeps the helicopter facing the gameplay camera for this long after a full lock-on salvo finishes launching.")]
+    [Tooltip("Seconds used to ease the visible helicopter from its current pose into the full-salvo pose.")]
+    [SerializeField, Min(0.01f)]
+    private float fullSalvoVisualTurnDuration = DefaultFullSalvoVisualTurnDuration;
+    [Tooltip("Keeps the helicopter in its reversed full-salvo pose for this long after launching finishes.")]
     [SerializeField, Min(0f)]
     private float fullSalvoVisualRestoreDelay = DefaultFullSalvoVisualRestoreDelay;
+    [Tooltip("Seconds used to ease the visible helicopter from the full-salvo pose back to its normal side pose.")]
+    [SerializeField, Min(0.01f)]
+    private float fullSalvoVisualReturnDuration = DefaultFullSalvoVisualReturnDuration;
 
     private Transform orbitCenter;
     private Transform lookTarget;
@@ -84,23 +94,35 @@ public class PlayerOrbitController : MonoBehaviour
     private Quaternion cinematicReturnDisplayRotation = Quaternion.identity;
     private Coroutine airPressureImpulseRoutine;
     private Coroutine airPressureRollRoutine;
+    private Coroutine fullSalvoVisualTurnRoutine;
     private Coroutine fullSalvoVisualRestoreRoutine;
     private float airPressureRollDegrees;
     private float airPressureSwayDegrees;
+    private float fullSalvoVisualTurnProgress;
+    private float fullSalvoVisualReturnProgress;
     private int fullSalvoVisualSalvoId;
     private bool fullSalvoFrontViewActive;
+    private bool fullSalvoVisualReturnAnimating;
 
     public float CurrentDistance { get; private set; }
     public Vector3 CurrentWorldVelocity { get; private set; }
     public float DebugStrafeSpeed => strafeSpeed;
     public float DebugAltitudeSpeed => altitudeSpeed;
     public float DebugForwardSpeed => forwardSpeed;
+    public bool DebugInputEnabled => inputEnabled;
     public float DebugMovementSpeedMultiplier => ResolveMovementSpeedMultiplier();
     public float DebugEffectiveStrafeSpeed => strafeSpeed * ResolveMovementSpeedMultiplier();
     public float DebugEffectiveAltitudeSpeed => altitudeSpeed * ResolveMovementSpeedMultiplier();
     public float DebugMaxVisualTiltAngle => maxVisualTiltAngle;
     public float DebugVisualTiltDuration => visualTiltDuration;
+    public float DebugFullSalvoVisualTurnDuration => fullSalvoVisualTurnDuration;
     public float DebugFullSalvoVisualRestoreDelay => fullSalvoVisualRestoreDelay;
+    public float DebugFullSalvoVisualReturnDuration => fullSalvoVisualReturnDuration;
+    public Quaternion DebugCurrentVisualDisplayRotation => ResolveCurrentVisualDisplayRotation();
+    public bool IsFullSalvoVisualTurning => fullSalvoVisualTurnRoutine != null;
+    public float FullSalvoVisualTurnProgress => fullSalvoVisualTurnProgress;
+    public bool IsFullSalvoVisualReturning => fullSalvoVisualReturnAnimating;
+    public float FullSalvoVisualReturnProgress => fullSalvoVisualReturnProgress;
     public bool IsFullSalvoFrontViewActive => fullSalvoFrontViewActive;
     public int FullSalvoVisualSalvoId => fullSalvoVisualSalvoId;
     public bool IsAirPressureRotationActive =>
@@ -112,6 +134,7 @@ public class PlayerOrbitController : MonoBehaviour
         playerVisualOverlayRenderer != null &&
         playerVisualOverlayRenderer.IsConfigured;
     public PlayerVisualOverlayRenderer OriginalVisualOverlayRenderer => playerVisualOverlayRenderer;
+    public Camera DebugMovementProjectionCamera => ResolveMovementProjectionCamera();
     public Rect DebugMovementViewportRect => GetEffectiveMovementViewportRect();
     public bool IsMovementViewportInitializedForDisplay => movementViewportInitializedForDisplay;
     public Vector2Int InitializedGameplayPixelSize => initializedGameplayPixelSize;
@@ -142,13 +165,6 @@ public class PlayerOrbitController : MonoBehaviour
 
     private void LateUpdate()
     {
-        if (lookTarget == null && orbitCenter == null)
-        {
-            UpdateVisualTilt(Vector2.zero);
-            UpdateWorldVelocity();
-            return;
-        }
-
         if (inputEnabled)
         {
             UpdateInput();
@@ -188,6 +204,12 @@ public class PlayerOrbitController : MonoBehaviour
             lockOnChargingMovementSpeedMultiplier,
             0.01f,
             1f);
+        fullSalvoVisualTurnDuration = Mathf.Max(0.01f, fullSalvoVisualTurnDuration);
+        fullSalvoVisualRestoreDelay = Mathf.Max(0f, fullSalvoVisualRestoreDelay);
+        if (fullSalvoVisualReturnDuration <= 0.01f || fullSalvoVisualReturnDuration > 3f)
+        {
+            fullSalvoVisualReturnDuration = DefaultFullSalvoVisualReturnDuration;
+        }
         if (string.IsNullOrWhiteSpace(playerVisualLayerName))
         {
             playerVisualLayerName = "PlayerVisual";
@@ -204,6 +226,10 @@ public class PlayerOrbitController : MonoBehaviour
         UnsubscribeLockOnController();
         ResetFullSalvoVisualImmediate();
         EnsureRuntimeDefaults();
+        // Configure starts a new battle session. A previous victory/defeat may
+        // have disabled movement on this component, so do not carry that lock
+        // into the newly configured session.
+        inputEnabled = true;
         orbitCenter = center;
         lookTarget = targetToLookAt;
         movementBounds = bounds;
@@ -256,9 +282,84 @@ public class PlayerOrbitController : MonoBehaviour
             fullSalvoVisualRestoreRoutine = null;
         }
 
+        fullSalvoVisualReturnAnimating = false;
+        fullSalvoVisualReturnProgress = 0f;
+        StopFullSalvoVisualTurn();
+
         fullSalvoVisualSalvoId = salvoId;
         fullSalvoFrontViewActive = true;
-        SetCinematicVisualFacingCamera();
+        StartFullSalvoVisualTurn();
+    }
+
+    private void StartFullSalvoVisualTurn()
+    {
+        EnsureVisualTargetsReady();
+        Quaternion startRotation = ResolveCurrentVisualDisplayRotation();
+        if (!cinematicVisualOverrideActive)
+        {
+            cinematicReturnDisplayRotation = startRotation;
+        }
+
+        Quaternion targetRotation = ResolveCameraFacingDisplayRotation();
+        cinematicVisualOverrideActive = true;
+        cinematicVisualDisplayRotation = startRotation;
+        currentVisualTilt = Vector2.zero;
+        fullSalvoVisualTurnProgress = 0f;
+        ApplyCinematicVisualPose();
+
+        float duration = Mathf.Max(0.01f, fullSalvoVisualTurnDuration);
+        fullSalvoVisualTurnRoutine = StartCoroutine(
+            AnimateFullSalvoVisualTurn(startRotation, targetRotation, duration));
+    }
+
+    private IEnumerator AnimateFullSalvoVisualTurn(
+        Quaternion startRotation,
+        Quaternion targetRotation,
+        float duration)
+    {
+        float elapsed = 0f;
+        while (elapsed < duration)
+        {
+            elapsed += Time.deltaTime;
+            fullSalvoVisualTurnProgress = Mathf.Clamp01(elapsed / duration);
+            cinematicVisualDisplayRotation = EvaluateFullSalvoVisualTurnRotation(
+                startRotation,
+                targetRotation,
+                elapsed,
+                duration);
+            currentVisualTilt = Vector2.zero;
+            ApplyCinematicVisualPose();
+            yield return null;
+        }
+
+        cinematicVisualDisplayRotation = targetRotation;
+        fullSalvoVisualTurnProgress = 1f;
+        ApplyCinematicVisualPose();
+        fullSalvoVisualTurnRoutine = null;
+    }
+
+    private static Quaternion EvaluateFullSalvoVisualTurnRotation(
+        Quaternion startRotation,
+        Quaternion targetRotation,
+        float elapsed,
+        float duration)
+    {
+        float normalizedTime = duration <= 0.001f
+            ? 1f
+            : Mathf.Clamp01(elapsed / duration);
+        float easedTime = Mathf.SmoothStep(0f, 1f, normalizedTime);
+        return Quaternion.Slerp(startRotation, targetRotation, easedTime);
+    }
+
+    private void StopFullSalvoVisualTurn()
+    {
+        if (fullSalvoVisualTurnRoutine == null)
+        {
+            return;
+        }
+
+        StopCoroutine(fullSalvoVisualTurnRoutine);
+        fullSalvoVisualTurnRoutine = null;
     }
 
     private void HandleLockOnSalvoFinished(int salvoId, bool canceled)
@@ -290,21 +391,69 @@ public class PlayerOrbitController : MonoBehaviour
             yield return new WaitForSeconds(delay);
         }
 
-        fullSalvoVisualRestoreRoutine = null;
+        StopFullSalvoVisualTurn();
+        Quaternion startRotation = ResolveCurrentVisualDisplayRotation();
+        Quaternion targetRotation = cinematicReturnDisplayRotation;
+        float duration = Mathf.Max(0.01f, fullSalvoVisualReturnDuration);
+        float elapsed = 0f;
+        // The full-salvo action has already finished. Keep only the display override
+        // alive while it eases back so no gameplay-facing salvo state is extended.
+        fullSalvoVisualTurnProgress = 0f;
         fullSalvoVisualSalvoId = 0;
         fullSalvoFrontViewActive = false;
+        fullSalvoVisualReturnAnimating = true;
+        fullSalvoVisualReturnProgress = 0f;
+
+        while (elapsed < duration)
+        {
+            elapsed += Time.deltaTime;
+            fullSalvoVisualReturnProgress = Mathf.Clamp01(elapsed / duration);
+            cinematicVisualDisplayRotation = EvaluateFullSalvoVisualReturnRotation(
+                startRotation,
+                targetRotation,
+                elapsed,
+                duration);
+            currentVisualTilt = Vector2.zero;
+            ApplyCinematicVisualPose();
+            yield return null;
+        }
+
+        cinematicVisualDisplayRotation = targetRotation;
+        fullSalvoVisualReturnProgress = 1f;
+        ApplyCinematicVisualPose();
+        fullSalvoVisualReturnAnimating = false;
+        fullSalvoVisualRestoreRoutine = null;
         ClearCinematicVisualOverride();
+    }
+
+    private static Quaternion EvaluateFullSalvoVisualReturnRotation(
+        Quaternion startRotation,
+        Quaternion targetRotation,
+        float elapsed,
+        float duration)
+    {
+        float normalizedTime = duration <= 0.001f
+            ? 1f
+            : Mathf.Clamp01(elapsed / duration);
+        float easedTime = Mathf.SmoothStep(0f, 1f, normalizedTime);
+        return Quaternion.Slerp(startRotation, targetRotation, easedTime);
     }
 
     private void ResetFullSalvoVisualImmediate()
     {
+        bool shouldClearVisualOverride =
+            fullSalvoFrontViewActive || fullSalvoVisualReturnAnimating;
+        StopFullSalvoVisualTurn();
+
         if (fullSalvoVisualRestoreRoutine != null)
         {
             StopCoroutine(fullSalvoVisualRestoreRoutine);
             fullSalvoVisualRestoreRoutine = null;
         }
 
-        bool shouldClearVisualOverride = fullSalvoFrontViewActive;
+        fullSalvoVisualTurnProgress = 0f;
+        fullSalvoVisualReturnProgress = 0f;
+        fullSalvoVisualReturnAnimating = false;
         fullSalvoVisualSalvoId = 0;
         fullSalvoFrontViewActive = false;
         if (shouldClearVisualOverride)
@@ -887,7 +1036,8 @@ public class PlayerOrbitController : MonoBehaviour
 
         if (TryResolveCameraPlane())
         {
-            Vector3 viewportPoint = movementCamera.WorldToViewportPoint(worldPosition);
+            Camera projectionCamera = ResolveMovementProjectionCamera();
+            Vector3 viewportPoint = projectionCamera.WorldToViewportPoint(worldPosition);
             if (!hasCameraPlane)
             {
                 CaptureCameraPlane(viewportPoint);
@@ -897,7 +1047,21 @@ public class PlayerOrbitController : MonoBehaviour
                 Mathf.Clamp(viewportPoint.x, movementViewportRect.xMin, movementViewportRect.xMax),
                 Mathf.Clamp(viewportPoint.y, movementViewportRect.yMin, movementViewportRect.yMax));
 
-            return movementCamera.ViewportToWorldPoint(
+            // Do not round-trip an already valid point through camera projection.
+            // A temporary projection shake can otherwise feed tiny conversion
+            // differences back into the gameplay transform every frame, making the
+            // helicopter and its hurtbox move together with the screen shake.
+            bool viewportWasClamped =
+                Mathf.Abs(viewportPosition.x - viewportPoint.x) > 0.000001f ||
+                Mathf.Abs(viewportPosition.y - viewportPoint.y) > 0.000001f;
+            bool depthNeedsCorrection =
+                Mathf.Abs(viewportPoint.z - cameraPlaneDepth) > 0.0001f;
+            if (!viewportWasClamped && !depthNeedsCorrection)
+            {
+                return worldPosition;
+            }
+
+            return projectionCamera.ViewportToWorldPoint(
                 new Vector3(viewportPosition.x, viewportPosition.y, cameraPlaneDepth));
         }
 
@@ -917,7 +1081,8 @@ public class PlayerOrbitController : MonoBehaviour
             return false;
         }
 
-        CaptureCameraPlane(movementCamera.WorldToViewportPoint(worldPosition));
+        Camera projectionCamera = ResolveMovementProjectionCamera();
+        CaptureCameraPlane(projectionCamera.WorldToViewportPoint(worldPosition));
         return true;
     }
 
@@ -929,15 +1094,28 @@ public class PlayerOrbitController : MonoBehaviour
             return false;
         }
 
-        Vector3 referenceViewportPoint = movementCamera.WorldToViewportPoint(referenceWorldPosition);
+        Camera projectionCamera = ResolveMovementProjectionCamera();
+        Vector3 referenceViewportPoint = projectionCamera.WorldToViewportPoint(referenceWorldPosition);
         CaptureCameraPlane(new Vector3(
             initialViewportPosition.x,
             initialViewportPosition.y,
             referenceViewportPoint.z));
 
-        initialWorldPosition = movementCamera.ViewportToWorldPoint(
+        initialWorldPosition = projectionCamera.ViewportToWorldPoint(
             new Vector3(viewportPosition.x, viewportPosition.y, cameraPlaneDepth));
         return true;
+    }
+
+    private Camera ResolveMovementProjectionCamera()
+    {
+        if (playerVisualOverlayRenderer != null &&
+            playerVisualOverlayRenderer.UsesStableOverlayProjectionDuringCameraShake &&
+            playerVisualOverlayRenderer.OverlayCamera != null)
+        {
+            return playerVisualOverlayRenderer.OverlayCamera;
+        }
+
+        return movementCamera;
     }
 
     private void CaptureCameraPlane(Vector3 viewportPoint)
@@ -1185,8 +1363,16 @@ public class PlayerOrbitController : MonoBehaviour
             upDirection = Vector3.up;
         }
 
-        return Quaternion.LookRotation(facingDirection.normalized, upDirection.normalized) *
-               Quaternion.Euler(cinematicFrontViewEulerOffset);
+        Quaternion previousCameraFacingRotation =
+            Quaternion.LookRotation(facingDirection.normalized, upDirection.normalized) *
+            Quaternion.Euler(cinematicFrontViewEulerOffset);
+
+        // Full lock-on salvos use the exact opposite of the former camera-facing pose.
+        // Rotating the display pose leaves the movement anchor and hurtbox untouched.
+        return Quaternion.AngleAxis(
+                   FullSalvoCameraFacingReversalDegrees,
+                   upDirection.normalized) *
+               previousCameraFacingRotation;
     }
 
     private Quaternion ResolveTargetFacingDisplayRotation(Vector3 worldTarget)
@@ -1291,9 +1477,19 @@ public class PlayerOrbitController : MonoBehaviour
             visualTiltDuration = 0.18f;
         }
 
+        if (fullSalvoVisualTurnDuration <= 0.01f || fullSalvoVisualTurnDuration > 3f)
+        {
+            fullSalvoVisualTurnDuration = DefaultFullSalvoVisualTurnDuration;
+        }
+
         if (fullSalvoVisualRestoreDelay <= 0f || fullSalvoVisualRestoreDelay > 10f)
         {
             fullSalvoVisualRestoreDelay = DefaultFullSalvoVisualRestoreDelay;
+        }
+
+        if (fullSalvoVisualReturnDuration <= 0.01f || fullSalvoVisualReturnDuration > 3f)
+        {
+            fullSalvoVisualReturnDuration = DefaultFullSalvoVisualReturnDuration;
         }
     }
 

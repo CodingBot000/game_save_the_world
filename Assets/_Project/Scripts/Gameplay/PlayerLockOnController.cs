@@ -38,12 +38,14 @@ public sealed class LockOnReleaseIntent
     internal LockOnReleaseIntent(
         int chargeStage,
         int successfulLockCount,
+        int salvoProfileLockCount,
         SalvoTargetSnapshot[] targetSnapshots,
         LockOnInputSource inputSource,
         int randomSeed)
     {
         ChargeStage = chargeStage;
         SuccessfulLockCount = successfulLockCount;
+        SalvoProfileLockCount = salvoProfileLockCount;
         TargetSnapshots = targetSnapshots ?? Array.Empty<SalvoTargetSnapshot>();
         InputSource = inputSource;
         RandomSeed = randomSeed;
@@ -51,6 +53,9 @@ public sealed class LockOnReleaseIntent
 
     public int ChargeStage { get; }
     public int SuccessfulLockCount { get; }
+    public int SalvoProfileLockCount { get; }
+    public bool UsesPromotedSalvoProfile =>
+        SalvoProfileLockCount != SuccessfulLockCount;
     public IReadOnlyList<SalvoTargetSnapshot> TargetSnapshots { get; }
     public LockOnInputSource InputSource { get; }
     public int RandomSeed { get; }
@@ -70,6 +75,17 @@ public sealed class PlayerLockOnController : MonoBehaviour
     private static readonly float[] DefaultTotalDamagesBySuccessfulLocks =
         { 9f, 20f, 35f, 60f, 100f };
 
+    [Header("Temporary Test Override")]
+    [SerializeField, Tooltip(
+        "Temporary: a PC right-click immediately fills all five lock stages. " +
+        "Mobile LOCK ON keeps the normal timed charge flow.")]
+    private bool forceFullChargeOnMouseRightForTesting = false;
+    [SerializeField, Tooltip(
+        "Temporary: releases with three, four, or five actual locks use the " +
+        "five-lock missile, damage, invincibility, Sidewinder, and visual profile. " +
+        "Disabled by default so only an actual five-lock release uses the full-salvo profile.")]
+    private bool promoteThreeOrMoreLocksToFullSalvoForTesting = false;
+
     [SerializeField, Tooltip(
         "Cumulative thresholds derived from per-stage durations 1 / 1.5 / 2 / 2.5 / 3 seconds.")]
     private float[] stageChargeTimes =
@@ -84,6 +100,10 @@ public sealed class PlayerLockOnController : MonoBehaviour
     [SerializeField, Min(1)] private int missilesPerVolley = 4;
     [SerializeField, Min(0.01f)] private float salvoLaunchDuration = 0.6f;
     [SerializeField, Min(0f)] private float lockReuseWaitDuration = 5f;
+    [SerializeField, Min(0.01f), Tooltip(
+        "Stage-5 invincibility and launch presentation end when the two mounted Sidewinders detach.")]
+    private float fullSalvoMountedSidewinderIgnitionDuration =
+        MountedSidewinderCosmeticController.DefaultIgnitionDuration;
 
     private readonly List<BossLockOnTarget> lockedTargets = new();
     private readonly List<BossLockOnTarget> candidateBuffer = new();
@@ -95,6 +115,7 @@ public sealed class PlayerLockOnController : MonoBehaviour
     private BossLockOnTargetProvider targetProvider;
     private PlayerMissileSalvoLauncher salvoLauncher;
     private LockOnCombatFeedback combatFeedback;
+    private MountedSidewinderCosmeticController mountedSidewinderCosmeticController;
     private HUDPresenter hudPresenter;
     private LockOnCombatState state = LockOnCombatState.Ready;
     private LockOnInputSource activeInputSource;
@@ -109,6 +130,10 @@ public sealed class PlayerLockOnController : MonoBehaviour
     private int currentLockOnSalvoId;
     private int currentLockOnMissilesFired;
     private bool ownsSalvoInvincibility;
+    private int activeFullSalvoPresentationId;
+    private float fullSalvoPresentationRemaining;
+    private bool fullSalvoPresentationCompleted;
+    private bool fullSalvoLauncherCompleted;
     private BossLockOnTarget currentChargingTarget;
 
     public LockOnCombatState State => state;
@@ -131,10 +156,19 @@ public sealed class PlayerLockOnController : MonoBehaviour
     public LockOnReleaseIntent LastReleaseIntent { get; private set; }
     public bool IsCharging => state == LockOnCombatState.Charging;
     public bool HasValidTargets => targetProvider != null && targetProvider.HasValidTargets;
+    public bool ForceFullChargeOnMouseRightForTesting =>
+        forceFullChargeOnMouseRightForTesting;
+    public bool PromoteThreeOrMoreLocksToFullSalvoForTesting =>
+        promoteThreeOrMoreLocksToFullSalvoForTesting;
     public bool IsLockInputAvailable =>
         state == LockOnCombatState.Ready && CanStartLock();
     public float LockReuseWaitDuration => lockReuseWaitDuration;
     public float SalvoLaunchDuration => salvoLaunchDuration;
+    public float FullSalvoMountedSidewinderIgnitionDuration =>
+        fullSalvoMountedSidewinderIgnitionDuration;
+    public float FullSalvoPresentationRemaining =>
+        Mathf.Max(0f, fullSalvoPresentationRemaining);
+    public bool IsFullSalvoPresentationActive => activeFullSalvoPresentationId > 0;
     public int CurrentLockOnSalvoId => currentLockOnSalvoId;
     public int LastStartedSalvoId { get; private set; }
     public int LastRequestedMissileCount { get; private set; }
@@ -146,6 +180,8 @@ public sealed class PlayerLockOnController : MonoBehaviour
     public string LastSalvoFailureStatus { get; private set; } = string.Empty;
     public string LastSalvoFailureReason { get; private set; } = string.Empty;
     public LockOnCombatFeedback CombatFeedback => combatFeedback;
+    public MountedSidewinderCosmeticController MountedSidewinderCosmeticController =>
+        mountedSidewinderCosmeticController;
 
     public event Action<bool> OnLockAvailabilityChanged;
     public event Action<LockOnInputSource> OnLockStart;
@@ -178,7 +214,9 @@ public sealed class PlayerLockOnController : MonoBehaviour
         UnsubscribeProvider();
         UnsubscribeSalvoLauncher();
         UnsubscribePlayerCombat();
+        UnsubscribeMountedSidewinders();
         EndOwnedSalvoInvincibility();
+        ClearFullSalvoPresentation();
         currentLockOnSalvoId = 0;
         battleController = battle;
         playerCombatController = playerCombat;
@@ -191,7 +229,18 @@ public sealed class PlayerLockOnController : MonoBehaviour
         salvoLauncher.Configure(battleController, playerCombatController);
         combatFeedback ??= GetComponent<LockOnCombatFeedback>() ??
                            gameObject.AddComponent<LockOnCombatFeedback>();
-        combatFeedback.Configure(this, Camera.main);
+        combatFeedback.Configure(this, playerCombatController, Camera.main);
+        if (playerCombatController != null)
+        {
+            mountedSidewinderCosmeticController =
+                playerCombatController.GetComponent<MountedSidewinderCosmeticController>() ??
+                playerCombatController.gameObject.AddComponent<MountedSidewinderCosmeticController>();
+            mountedSidewinderCosmeticController.Configure(
+                this,
+                playerCombatController,
+                playerCombatController.GetComponent<PlayerOrbitController>());
+            SubscribeMountedSidewinders();
+        }
         EnsureStageConfiguration();
         EnsureSalvoConfiguration();
         ResetChargeData();
@@ -211,6 +260,8 @@ public sealed class PlayerLockOnController : MonoBehaviour
         {
             return;
         }
+
+        TickFullSalvoPresentation(Time.deltaTime);
 
         if (state == LockOnCombatState.Charging)
         {
@@ -283,8 +334,31 @@ public sealed class PlayerLockOnController : MonoBehaviour
         SetState(LockOnCombatState.Charging);
         RefreshLockAssignments();
         OnLockStart?.Invoke(source);
+        if (ShouldApplyMouseRightFullChargeOverride(source))
+        {
+            AdvanceCharge(FullChargeDuration);
+        }
+
         PublishAvailability(force: true);
         return true;
+    }
+
+    private bool ShouldApplyMouseRightFullChargeOverride(LockOnInputSource source)
+    {
+        return forceFullChargeOnMouseRightForTesting &&
+               source == LockOnInputSource.MouseRight;
+    }
+
+    private int ResolveSalvoProfileLockCount(int successfulLockCount)
+    {
+        if (promoteThreeOrMoreLocksToFullSalvoForTesting &&
+            successfulLockCount >= 3 &&
+            successfulLockCount <= MaxLockStage)
+        {
+            return MaxLockStage;
+        }
+
+        return successfulLockCount;
     }
 
     public bool TryReleaseCharging(LockOnInputSource source)
@@ -328,6 +402,7 @@ public sealed class PlayerLockOnController : MonoBehaviour
         LastReleaseIntent = new LockOnReleaseIntent(
             chargeStage,
             SuccessfulLockCount,
+            ResolveSalvoProfileLockCount(SuccessfulLockCount),
             snapshotBuffer.ToArray(),
             source,
             chargeSessionSeed);
@@ -422,7 +497,7 @@ public sealed class PlayerLockOnController : MonoBehaviour
         }
 
         if (!LockOnSalvoRules.TryCalculate(
-                intent.SuccessfulLockCount,
+                intent.SalvoProfileLockCount,
                 missileCountsBySuccessfulLocks,
                 totalDamagesBySuccessfulLocks,
                 out LockOnSalvoStageCalculation calculation,
@@ -444,7 +519,7 @@ public sealed class PlayerLockOnController : MonoBehaviour
             salvoLaunchDuration,
             intent.RandomSeed,
             SalvoMissileProfileSnapshot.Capture(playerCombatController),
-            intent.SuccessfulLockCount);
+            intent.SalvoProfileLockCount);
 
         SalvoStartResult prepareResult = salvoLauncher.TryPrepareSalvo(
             request,
@@ -475,7 +550,7 @@ public sealed class PlayerLockOnController : MonoBehaviour
         }
 
         ownsSalvoInvincibility = true;
-        bool isFullSalvo = intent.SuccessfulLockCount == MaxLockStage;
+        bool isFullSalvo = intent.SalvoProfileLockCount == MaxLockStage;
         if (isFullSalvo)
         {
             // Visual listeners must run before StartPreparedSalvo because its coroutine
@@ -486,7 +561,7 @@ public sealed class PlayerLockOnController : MonoBehaviour
         SalvoCommitResult commitResult = salvoLauncher.StartPreparedSalvo(handle);
         if (!commitResult.IsStarted)
         {
-            playerCombatController.EndSalvoInvincibility();
+            EndOwnedSalvoInvincibility();
             if (isFullSalvo)
             {
                 OnLockOnSalvoFinished?.Invoke(handle.SalvoId, true);
@@ -499,6 +574,11 @@ public sealed class PlayerLockOnController : MonoBehaviour
                 calculation.MissileCount,
                 commitResult.SalvoId);
             return false;
+        }
+
+        if (isFullSalvo)
+        {
+            BeginFullSalvoPresentation(handle.SalvoId);
         }
 
         if (!ConfirmReleaseAccepted(lockReuseWaitDuration))
@@ -848,8 +928,20 @@ public sealed class PlayerLockOnController : MonoBehaviour
             return;
         }
 
+        if (activeFullSalvoPresentationId == salvoId &&
+            !fullSalvoPresentationCompleted)
+        {
+            fullSalvoLauncherCompleted = true;
+            return;
+        }
+
         EndOwnedSalvoInvincibility();
-        OnLockOnSalvoFinished?.Invoke(salvoId, false);
+        if (!fullSalvoPresentationCompleted || activeFullSalvoPresentationId != salvoId)
+        {
+            OnLockOnSalvoFinished?.Invoke(salvoId, false);
+        }
+
+        ClearFullSalvoPresentation();
         currentLockOnSalvoId = 0;
     }
 
@@ -862,7 +954,12 @@ public sealed class PlayerLockOnController : MonoBehaviour
 
         bool canceledBeforeFirstMissile = currentLockOnMissilesFired == 0;
         EndOwnedSalvoInvincibility();
-        OnLockOnSalvoFinished?.Invoke(salvoId, true);
+        if (!fullSalvoPresentationCompleted || activeFullSalvoPresentationId != salvoId)
+        {
+            OnLockOnSalvoFinished?.Invoke(salvoId, true);
+        }
+
+        ClearFullSalvoPresentation();
         currentLockOnSalvoId = 0;
         if (canceledBeforeFirstMissile && state == LockOnCombatState.ReuseWait)
         {
@@ -890,6 +987,78 @@ public sealed class PlayerLockOnController : MonoBehaviour
 
         ownsSalvoInvincibility = false;
         playerCombatController?.EndSalvoInvincibility();
+    }
+
+    private void BeginFullSalvoPresentation(int salvoId)
+    {
+        activeFullSalvoPresentationId = salvoId;
+        float expectedDetachmentDelay = mountedSidewinderCosmeticController != null
+            ? mountedSidewinderCosmeticController.ExpectedDetachmentDelay
+            : fullSalvoMountedSidewinderIgnitionDuration;
+        // The actual Sidewinder-detached event completes this phase. This extra
+        // margin is only a safety fallback if a cosmetic binding disappears.
+        fullSalvoPresentationRemaining = Mathf.Max(
+            0.01f,
+            expectedDetachmentDelay + 0.5f);
+        fullSalvoPresentationCompleted = false;
+        fullSalvoLauncherCompleted = false;
+    }
+
+    private void HandleMountedSidewindersDetached(int salvoId)
+    {
+        CompleteFullSalvoPresentation(salvoId);
+    }
+
+    private void TickFullSalvoPresentation(float deltaTime)
+    {
+        if (activeFullSalvoPresentationId <= 0 || fullSalvoPresentationCompleted ||
+            activeFullSalvoPresentationId != currentLockOnSalvoId)
+        {
+            return;
+        }
+
+        fullSalvoPresentationRemaining = Mathf.Max(
+            0f,
+            fullSalvoPresentationRemaining - Mathf.Max(0f, deltaTime));
+        if (fullSalvoPresentationRemaining > 0f)
+        {
+            return;
+        }
+
+        CompleteFullSalvoPresentation(activeFullSalvoPresentationId);
+    }
+
+    private void CompleteFullSalvoPresentation(int salvoId)
+    {
+        if (salvoId <= 0 || salvoId != activeFullSalvoPresentationId ||
+            fullSalvoPresentationCompleted)
+        {
+            return;
+        }
+
+        int completedSalvoId = activeFullSalvoPresentationId;
+        fullSalvoPresentationRemaining = 0f;
+        fullSalvoPresentationCompleted = true;
+        EndOwnedSalvoInvincibility();
+        OnLockOnSalvoFinished?.Invoke(completedSalvoId, false);
+        if (fullSalvoLauncherCompleted)
+        {
+            ClearFullSalvoPresentation();
+            currentLockOnSalvoId = 0;
+        }
+    }
+
+    public void AdvanceFullSalvoPresentationForDebug(float deltaSeconds)
+    {
+        TickFullSalvoPresentation(Mathf.Max(0f, deltaSeconds));
+    }
+
+    private void ClearFullSalvoPresentation()
+    {
+        activeFullSalvoPresentationId = 0;
+        fullSalvoPresentationRemaining = 0f;
+        fullSalvoPresentationCompleted = false;
+        fullSalvoLauncherCompleted = false;
     }
 
     private void SubscribeSalvoLauncher()
@@ -949,6 +1118,28 @@ public sealed class PlayerLockOnController : MonoBehaviour
         }
     }
 
+    private void SubscribeMountedSidewinders()
+    {
+        if (mountedSidewinderCosmeticController == null)
+        {
+            return;
+        }
+
+        mountedSidewinderCosmeticController.MountedSidewindersDetached -=
+            HandleMountedSidewindersDetached;
+        mountedSidewinderCosmeticController.MountedSidewindersDetached +=
+            HandleMountedSidewindersDetached;
+    }
+
+    private void UnsubscribeMountedSidewinders()
+    {
+        if (mountedSidewinderCosmeticController != null)
+        {
+            mountedSidewinderCosmeticController.MountedSidewindersDetached -=
+                HandleMountedSidewindersDetached;
+        }
+    }
+
     private void EnsureStageConfiguration()
     {
         if (stageChargeTimes == null || stageChargeTimes.Length != DefaultStageChargeTimes.Length ||
@@ -997,6 +1188,9 @@ public sealed class PlayerLockOnController : MonoBehaviour
         missilesPerVolley = Mathf.Max(1, missilesPerVolley);
         salvoLaunchDuration = Mathf.Max(0.01f, salvoLaunchDuration);
         lockReuseWaitDuration = Mathf.Max(0f, lockReuseWaitDuration);
+        fullSalvoMountedSidewinderIgnitionDuration = Mathf.Max(
+            0.01f,
+            fullSalvoMountedSidewinderIgnitionDuration);
     }
 
     private static bool HasValidMissileCounts(int[] values)
@@ -1045,7 +1239,10 @@ public sealed class PlayerLockOnController : MonoBehaviour
         UnsubscribeProvider();
         UnsubscribeSalvoLauncher();
         UnsubscribePlayerCombat();
+        UnsubscribeMountedSidewinders();
         EndOwnedSalvoInvincibility();
+        mountedSidewinderCosmeticController?.CancelActiveSequence();
+        ClearFullSalvoPresentation();
         currentLockOnSalvoId = 0;
     }
 
@@ -1056,6 +1253,7 @@ public sealed class PlayerLockOnController : MonoBehaviour
             SubscribeProvider();
             SubscribeSalvoLauncher();
             SubscribePlayerCombat();
+            SubscribeMountedSidewinders();
             PublishAvailability(force: true);
         }
     }
@@ -1065,7 +1263,10 @@ public sealed class PlayerLockOnController : MonoBehaviour
         UnsubscribeProvider();
         UnsubscribeSalvoLauncher();
         UnsubscribePlayerCombat();
+        UnsubscribeMountedSidewinders();
         EndOwnedSalvoInvincibility();
+        mountedSidewinderCosmeticController?.CancelActiveSequence();
+        ClearFullSalvoPresentation();
     }
 
     private void OnValidate()

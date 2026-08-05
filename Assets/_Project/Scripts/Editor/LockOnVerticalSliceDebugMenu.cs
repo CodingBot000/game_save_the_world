@@ -469,17 +469,23 @@ public static class LockOnVerticalSliceDebugMenu
             run.LockOn.GetCumulativeChargeTimeForStage(run.NextStage) + 0.01f);
         bool released = run.LockOn.TryReleaseCharging(LockOnInputSource.Debug);
         float expectedBudget = ExpectedTotalDamages[stageIndex];
+        LockOnCombatFeedback feedback = run.LockOn.CombatFeedback;
+        bool expectedShake = run.NextStage == ExpectedMissiles.Length;
+        bool shakeActive = feedback != null && feedback.IsProjectionShakeActive;
+        bool shakeStateValid = feedback != null && shakeActive == expectedShake;
         bool immediateValid = began && released &&
                               run.LockOn.LastRequestedMissileCount == ExpectedMissiles[stageIndex] &&
                               Mathf.Approximately(run.LockOn.LastBaseDamageBudget, expectedBudget) &&
                               run.LockOn.LastFirstMissileWasInvincible &&
                               run.Combat.IsSalvoInvincible &&
+                              shakeStateValid &&
                               run.LockOn.State == LockOnCombatState.ReuseWait &&
                               (run.Hud == null || !run.Hud.IsShootErrorVisible);
         run.AllStageChecksPassed &= immediateValid;
         run.StageLog.Append(
             $" S{run.NextStage}:start={immediateValid}" +
-            $"({run.LockOn.LastRequestedMissileCount}/{ExpectedMissiles[stageIndex]})");
+            $"({run.LockOn.LastRequestedMissileCount}/{ExpectedMissiles[stageIndex]}," +
+            $"shake={shakeActive}/{expectedShake})");
         if (!released)
         {
             FinishFullRun(false, $"Stage{run.NextStage}ReleaseRejected");

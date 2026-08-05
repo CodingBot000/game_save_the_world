@@ -1162,7 +1162,7 @@ public class PlayerCombatController : MonoBehaviour
         gunFireLoopSource.loop = true;
         gunFireLoopSource.clip = gunFireLoopClip;
         RuntimeAudioOutputGuard.PrimeClip(gunFireLoopClip);
-        RuntimeAudioOutputGuard.ConfigureAlwaysAudible2D(gunFireLoopSource, gunFireLoopVolume);
+        RuntimeAudioOutputGuard.ConfigureSoundEffect2D(gunFireLoopSource, gunFireLoopVolume);
     }
 
     private static void RestoreRuntimeAudioOutput()

@@ -563,7 +563,10 @@ public sealed class PlayerMissileSalvoLauncher : MonoBehaviour
                 profile.Lifetime,
                 request.DamagePerMissile * target.DamageMultiplier,
                 profile.HitRadius,
-                profile.VisualTemplate,
+                // The pooled 1-5 stage barrage deliberately uses the lightweight
+                // black cylinder/cone shell. The two real mounted Sidewinders are
+                // handled by MountedSidewinderCosmeticController at stage 5 only.
+                null,
                 profile.SmokeTemplate,
                 profile.ImpactEffectTemplate,
                 profile.VisualTexture,
