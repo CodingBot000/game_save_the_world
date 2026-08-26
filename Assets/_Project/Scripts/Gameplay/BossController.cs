@@ -21,6 +21,7 @@ public class BossController : MonoBehaviour
     private Color[] rendererBaseColors;
     private Quaternion facingRotationOffset = Quaternion.identity;
     private bool cinematicPaused;
+    private KaijuBossAnimationDriver animationDriver;
 
     public event Action Died;
 
@@ -55,6 +56,7 @@ public class BossController : MonoBehaviour
 
     private void Awake()
     {
+        animationDriver = GetComponentInChildren<KaijuBossAnimationDriver>(true);
         ResolveAimPoint();
         ResolveDamageHurtboxes();
         currentHealth = maxHealth;
@@ -71,7 +73,8 @@ public class BossController : MonoBehaviour
             return;
         }
 
-        float bobOffset = Mathf.Sin(Time.time * idleBobSpeed) * idleBobAmplitude;
+        // Authored Kaiju poses already contain idle/jump/death motion.
+        float bobOffset = animationDriver != null ? 0f : Mathf.Sin(Time.time * idleBobSpeed) * idleBobAmplitude;
         transform.position = new Vector3(basePosition.x, basePosition.y + bobOffset, basePosition.z);
 
         pulseTimer = Mathf.Max(0f, pulseTimer - Time.deltaTime * 4f);
@@ -120,6 +123,7 @@ public class BossController : MonoBehaviour
     public void SetCinematicPaused(bool paused)
     {
         cinematicPaused = paused;
+        if (animationDriver != null) animationDriver.SetCinematicPaused(paused);
     }
 
     public void AdoptSceneRotation(Vector3 worldTarget)
@@ -146,6 +150,12 @@ public class BossController : MonoBehaviour
     {
         if (cinematicPaused)
         {
+            return;
+        }
+
+        if (animationDriver != null && animationDriver.isActiveAndEnabled)
+        {
+            animationDriver.TrackTarget(worldTarget);
             return;
         }
 

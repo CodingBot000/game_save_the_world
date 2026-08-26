@@ -9,20 +9,20 @@
 외부 `TitanSlayerNewAssets/FBX`의 동작별 FBX 12개에서 독립적인 `.anim` 파일을 추출한다.
 각 애니메이션마다 모델을 배치하지 않고, 단일 모델에 선택한 클립을 재생한다.
 
-이번 개발 범위:
+완료된 A~C 범위 (`aafbfa3` 커밋):
 
 - 리그 경로 호환성 확인 및 12개 `.anim` 추출.
 - `Assets/Scenes/animTestScene.unity` 전용 테스트 씬 제작.
 - Game 화면의 애니메이션 선택 버튼 12개와 재생 디버그 조작 제공.
 - 실제 모델 재생, 씬 참조 독립성, 기존 전투 에셋 비변경 검증.
 
-후속 개발 범위:
+D단계 범위 (A~C 커밋 후 추가 요청으로 진행):
 
 - 실제 전투용 Animator Controller, 상체 Mask와 Blend Tree 통합.
 - AI 상태 전이, 점프 회전 각도 제어, 발사체·빔·파편·피격·사망 로직 연결.
-- 위 동작에 필요한 Animation Event의 이름과 프레임 확정.
+- 위 동작에 필요한 Animation Event 연결 및 초기 프레임 지정. 최종 아트 타이밍은 후속 튜닝.
 
-이벤트가 없거나 게임 기능이 아직 구현되지 않은 것은 이번 클립 테스트의 실패 조건이 아니다.
+이벤트가 없거나 게임 기능이 아직 구현되지 않은 것은 A~C 클립 테스트의 실패 조건이 아니다.
 테스트 씬은 애니메이션만 재생하며 공격 이펙트나 데미지를 발생시키지 않는다.
 
 ## 2. 확인한 기존 구조
@@ -41,7 +41,8 @@
 “하나의 FBX 내부에 여러 애니메이션을 합치는 작업”이 아니다.
 
 외부 `TitanSlayerNewAssets/FBX/Kaiju.fbx`는 이번 씬 모델로 사용하지 않는다.
-기존 모델 Import Settings, 기존 `.anim`, `KaijuBoss.controller`, BattleArena는 변경하지 않는다.
+기존 모델 Import Settings, 기존 `Kaiju_Turn_*.anim`, `KaijuBoss.controller`는 계속 보존한다.
+A~C에서는 BattleArena를 변경하지 않았으며 D단계에서만 새 Controller와 이벤트 수신기를 연결한다.
 
 ## 3. 자산 위치와 선정 이유
 
@@ -50,9 +51,16 @@ game_save_the_world/
   Assets/
     Invader/Kaiju_001.fbx                       # 기존 모델 그대로
     Animation/Invader/Clips/Kaiju_*.anim        # 새 독립 클립 12개
+    Animation/Invader/KaijuCombat.controller   # D단계 전투용 2레이어
+    Animation/Invader/KaijuUpperBody.mask      # Generic 상체 Transform Mask
     Scenes/animTestScene.unity                 # 독립 테스트 씬
     _Project/Scripts/Debug/KaijuAnimationTester.cs
     Editor/KaijuAnimationTestBuilder.cs        # 추출/씬 생성/열기 메뉴
+    Editor/KaijuCombatAnimationBuilder.cs      # 전투 자산 생성/연결/검사
+    Editor/KaijuCombatAnimationVerification.cs # 격리 복제본 런타임 회귀 검사
+    _Project/Scripts/Gameplay/KaijuBossAnimationDriver.cs
+    _Project/Scripts/Gameplay/KaijuCombatStateRelay.cs
+    Materials/Invader/Kaiju_*_Combat.mat        # 기존 PNG + 전투 전용 URP/Lit
     Materials/Debug/KaijuAnimationTestGround.mat
     Materials/Debug/Kaiju_*_AnimationPreview.mat # 기존 PNG를 참조하는 테스트용 Lit Material 3개
   docs/kaiju-animation-integration-plan.md
@@ -89,9 +97,9 @@ game_save_the_world/
 버튼을 다시 누르면 0초부터 재생한다. 다른 클립을 선택할 때 본의 기준 포즈를 복구하여
 이전 클립의 비키프레임 본 포즈가 남지 않게 한다.
 
-이번에는 모든 클립을 **마스크 없이 원본 그대로** 검사한다.
+A~C 테스트 씬에서는 모든 클립을 **마스크 없이 원본 그대로** 검사한다.
 “향후 상체 적용”은 원본 FBX에 상체 본만 들어 있다는 뜻이 아니다.
-상체 Mask와 BasicIdle을 합성한 결과는 후속 전투 통합 단계에서 별도 검증한다.
+상체 Mask와 BasicIdle을 합성한 결과는 D단계에서 별도 검증한다.
 
 ## 5. 개발 순서
 
@@ -136,7 +144,7 @@ game_save_the_world/
 - 콘솔 및 화면 캡처로 렌더링과 UI 상태를 확인한다.
 - 기존 전투 에셋과 외부 원본이 변경되지 않았는지 확인한다.
 
-### 단계 D — 실제 게임 통합 (이번 구현 제외)
+### 단계 D — 실제 게임 통합 (추가 요청, 구현 및 검증 완료)
 
 1. 기존 보스 Animator 호출과 Attack1/Attack2 트리거의 호환 방식을 결정한다.
 2. Base Layer: BasicIdle, Beam 2종, Tail, JumpTurnR, Death를 연결한다.
@@ -183,7 +191,7 @@ game_save_the_world/
 [Manual 업데이트 모드](https://docs.unity3d.com/6000.0/Documentation/ScriptReference/Playables.DirectorUpdateMode.html),
 [BakeMesh 스케일 보정](https://docs.unity3d.com/6000.0/Documentation/ScriptReference/SkinnedMeshRenderer.BakeMesh.html).
 
-## 8. 구현 및 검증 결과
+## 8. A~C 구현 및 검증 결과
 
 ### 추출 결과
 
@@ -242,3 +250,113 @@ game_save_the_world/
   원본 `TitanSlayerNewAssets/FBX`는 이번 작업에서 수정하지 않았다.
 - 개발계획서만 Git에 포함되도록 `.gitignore`의 기존 docs 제외 규칙에 좁은 예외를 추가했다.
   다른 로컬 docs 파일의 제외 정책은 유지했다.
+
+## 9. D단계 구현
+
+### 전투 연결 구조
+
+- BattleArena의 기존 Kaiju 모델 인스턴스에 `KaijuBossAnimationDriver`를 추가한다.
+  모델을 복제하거나 외부 FBX를 씬에 추가하지 않는다. 모델 위치/크기는 보존하고,
+  신규 Y-up 포즈에 맞춰 모델 로컬 회전을 identity로 정리한다.
+- 새 `KaijuCombat.controller`: Base에는 BasicIdle / BeamLeftToR / BeamRightToL / Tail / JumpTurnR / Death,
+  UpperBody에는 AimIdle / Firing의 1D Blend Tree를 둔다. 기존 Controller와 옛 클립은 롤백용으로 보존한다.
+- Mask는 `Root/Pelvis/Spine 01` 및 자식만 포함한다. Root/골반/다리/꼬리는 제외한다.
+  TargetAngle은 -45 / 0 / +45이며 전신 동작 중 UpperBody 가중치는 0이다.
+- 기존 `PlayQuickAttackAnimation` / `PlayHeavyAttackAnimation` 호출 API는 유지한다.
+  새 드라이버가 있으면 Quick은 조준 사격, Heavy는 기본 좌→우 빔 포즈를 사용하고,
+  명시적으로 연결한 빔/꼬리 패턴은 방향과 이벤트 타이밍을 지정한다.
+  드라이버가 없는 옛 씬에서는 기존 Attack1/Attack2 호출이 그대로 동작한다.
+  새 Controller에 직접 Attack1/Attack2를 보내는 경우도 `KaijuCombatStateRelay`로 상태와 이벤트를 연결한다.
+- `BossController.FaceTarget`는 새 드라이버가 있을 때 상체 추적과 점프 턴에 위임한다.
+  ±45도 밖의 타겟에 대해 공격 중이 아닐 때 45~90도 범위의 방향 보정 턴을 수행한다.
+  타겟을 지나치지 않도록 상대 각도보다 큰 회전은 제한한다.
+- JumpTurnR 클립은 Root 회전이 identity이며 골반 시작/끝 회전도 BasicIdle과 동일했다.
+  누적 회전은 보스 루트에서만 처리하고, 기존 매 프레임 FaceTarget 회전과 idle bob은 겹치지 않게 한다.
+  좌측 전용 클립은 없으므로 좌측에도 JumpTurnR 포즈 + 음의 루트 회전을 사용한다. 미러 클립을 새로 만든 것은 아니다.
+- 발사 위치는 기존 Head 아래의 씬 전용 `KaijuMouthSocket`이다. 꼬리 파편은 기존 Tail004를 사용한다.
+  발사점은 Inspector에서 조절 가능하며 원본 FBX는 변경하지 않는다.
+
+### 실제 패턴 매핑
+
+| 현재 전투 패턴 | 새 동작 / 발동 기준 | 유지하는 기존 기능 |
+| --- | --- | --- |
+| DebrisFragmentScatter | Tail → OnTailImpact 후 파편 배치 생성 | 파편 카탈로그, 산포, 피해, 카메라 흔들림. 임시 루트 점프는 새 드라이버 사용 시 생략 |
+| DebrisSalvo | 매 발사마다 Firing Blend Tree → OnFireProjectile | 조준 경고, 발사 수, 가속/크기 변화, 피해 |
+| AcceleratingSweepBeam | 방향에 맞는 BeamLeftToR / BeamRightToL → OnBeamStart | 경고, 느린/빠른 스윕, 기존 빔 판정 |
+| TrackingResidualBeam | Firing Blend Tree의 발사 포즈를 유지 | 추적 빔, 지속 피해 틱. 전용 추적 빔 클립이 없어 사용하는 임시 매핑 |
+| PressureSniperShot | 경고 후 Firing 이벤트로 발사 | 기존 압박 탄환 기능. 현재 저장된 4개 패턴 목록에는 없음 |
+
+기존 LegacyBulletHell 모드의 다른 패턴은 기존 시각화 호출/판정을 유지하며,
+개별 공격 연출의 정밀 동기화 대상으로 확대하지 않는다.
+
+### 이벤트 초기값 (30fps, 0초 기준)
+
+| 클립 | 이벤트 | 시간 / 프레임 |
+| --- | --- | --- |
+| Firing 3종 | OnFireProjectile / OnFiringEnd | 9 / 29프레임 |
+| Beam 2종 | OnBeamStart / OnBeamEnd / OnBeamRecovered | 20 / 68 / 79프레임 |
+| Tail | OnTailImpact / OnTailEnd | 48 / 89프레임 |
+| JumpTurnR | OnJumpTurnStart / OnJumpTurnEnd / OnJumpTurnRecovered | 5 / 32 / 36프레임 |
+
+이 시점은 원본 FBX에 있던 이벤트가 아니라 D단계에서 지정한 **초기 튜닝값**이다.
+Firing/Beam 준비 속도는 기존 패턴의 경고 시간에 맞춘다. 빔 동작 구간은 기존 활성 시간에 맞춘다.
+꼬리 공격은 실제 포즈를 보이기 위해 1배속의 48프레임까지 기다린다.
+혼합 중 여러 클립이 같은 이벤트를 보내도 하나의 공격 번호당 한 번만 발동한다.
+이벤트가 누락되면 시간 초과로 공격을 취소하며, 임의 시간으로 대신 발사하지 않는다.
+
+원본 커브를 복제하지 않고 추출한 `.anim` 7개에 이벤트만 추가한다.
+`animTestScene`은 계속 `fireEvents=false`이므로 버튼 테스트에서 전투/VFX가 실행되지 않는다.
+생성 메뉴를 다시 실행해도 기존 Controller/Mask/Material, 이미 있는 이벤트 시점은 덮어쓰지 않는다.
+이벤트 시점을 수동 변경할 때는 `KaijuBossAnimationDriver`의 대응 시간 상수도 함께 변경해야
+경고/동작 속도 계산이 일치한다.
+
+### 중단·사망·일시정지
+
+- 진행 중인 공격은 전투 종료/사망 시 취소하고 경고·빔 및 지속 피해 상태를 정리한다.
+- 사망 시 상체 가중치 0, Death 1회 재생 후 마지막 포즈 유지. 사망 후 새 공격 요청은 거절한다.
+- 시네마틱 일시정지 시 Animator/회전을 멈추고 기존 패턴 컨트롤러의 취소 정책을 따른다.
+- 이미 발사된 탄환의 기존 수명은 유지하지만, 사망 이후 새 탄환/후속 장식 탄환 생성은 막는다.
+- 현재 Unity/Metal에서 실패하는 Toon 셰이더는 수정하지 않는다. 전투용 Lit Material 3개만 추가/연결한다.
+  따라서 기존 Toon 룩의 재현은 이번 단계의 완료 조건이 아니며 별도 아트 작업이다.
+
+### 검증 방법
+
+메뉴 `Tools > TitanDestroyer > Kaiju Combat`:
+
+1. `Create combat assets and bind BattleArena`: BattleArena를 단독으로 열어 적용한다.
+   미저장 변경이 있으면 중단한다. 기존 환경 컴포넌트가 테스트 씬 카메라/조명을 참조하지 않도록 씬을 격리한다.
+2. `Verify combat assets`: 2개 레이어/12개 독립 클립/상체 마스크/이벤트 수신기/Death 종료 정책 검사.
+3. `Verify runtime poses and events (Play Mode)`: 실제 씬 보스의 격리 복제본에서
+   조준 5각도, 이벤트 중복, 하체 마스크, 빔 양방향, 꼬리, 좌우 턴, 유지 사격,
+   취소/일시정지/사망 포즈를 검사하고 복제본을 삭제한다. 실제 보스 체력/상태는 바꾸지 않는다.
+
+BattleArena에서 실제 패턴 순환 및 피해/VFX 검증은 위 포즈 검사와 별도로 수행한다.
+
+### D단계 검증 기록
+
+- Unity Play Mode 격리 복제본 검사 통과: 조준 각도 -45/-22.5/0/+22.5/+45도,
+  혼합 중 발사 이벤트 1회, 상체 Mask의 하체 비간섭, 전신 빔 2종, 꼬리 타격/복귀,
+  +60/-75도 점프 턴의 준비·공중·착지 구간, 추적 빔 포즈 유지,
+  취소/일시정지/재개, 사망 이후 발사 거절 및 마지막 포즈 유지.
+- 최종 Controller에서 `Animator.SetTrigger("Attack1")` / `SetTrigger("Attack2")` 직접 호출도
+  이벤트 1회 발생 후 대기로 복귀하는 것을 회귀 검사했다.
+- 전투 이벤트 추가 후 `animTestScene`의 12/12 버튼·포즈·반복/종료·재생 제어 검사를 다시 통과했다.
+  `fireEvents=false`, 전투 드라이버 0개로 단독 테스트와 전투 동작이 분리된 것을 확인했다.
+- 최종 스크립트 컴파일 및 전투 자산 재생성 검사를 통과했다. 반복 실행 후에도 기존 태양 광원
+  참조가 유지되고 BattleArena가 저장된 상태(`dirty=false`, Play 종료)임을 확인했다.
+- BattleArena에서 실제 패턴 순환을 관찰했다. `BossDebrisFragmentRuntime`,
+  `BossDebrisSalvoRuntime`, `BossAcceleratingSweepBeam`, `BossTrackingResidualBeam` 생성을 확인했다.
+  좌→우/우→좌 전신 빔 상태도 모두 확인했다. 추적 빔 활성 체력 조건 검사를 위해
+  Play Mode에서만 보스 체력을 50%로 낮췄으며, 테스트 종료 시 되돌렸다.
+- 실제 `BossAcceleratingSweepBeam` 발사 중 보스에게 치명 피해를 주었다.
+  이후 `IsDead=true`, 상태 `Death`, 빔 오브젝트 0개, `IsBattleActive=false`,
+  `BossAttackController.enabled=false` 및 사망 마지막 포즈 유지를 확인했다.
+- 전투 카메라 캡처에서 Kaiju의 텍스처/정립 자세와 빔을 확인했다.
+  기존 헬기의 Toon 셰이더 오류로 헬기는 분홍색으로 표시된다. 이는 남은 기존 문제이며
+  헬기 머티리얼이나 프로젝트 전체 셰이더 패키지는 이번 작업에서 수정하지 않았다.
+- 카메라/도시/헬기 등 BattleArena의 다른 직렬화 오브젝트는 바꾸지 않았다.
+  씬 변경은 기존 Kaiju 인스턴스의 자세/Animator/머티리얼과 신규 드라이버/입 소켓에 한정된다.
+  생성 도구는 기존 환경 컴포넌트의 OnValidate가 태양 광원 참조를 바꾸는 부작용도 막아,
+  저장되어 있던 RenderSettings.sun을 유지한다.
+- 공격 발사 시점과 상태 연결 검증을 수행한 것이며, 각 패턴의 피해량/난도 재밸런싱이나
+  좌측 점프 전용 아트, 사망 카메라 연출, 꼬리 지면 접촉 위치의 최종 아트 승인을 뜻하지 않는다.

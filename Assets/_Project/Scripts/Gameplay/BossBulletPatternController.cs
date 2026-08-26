@@ -126,11 +126,14 @@ public class BossBulletPatternController : MonoBehaviour
     private Transform activeDebrisJumpTransform;
     private float activeDebrisJumpBaseY;
     private bool hasActiveDebrisJump;
+    private KaijuBossAnimationDriver AnimationDriver => attackController != null ? attackController.AnimationDriver : null;
     private Coroutine activeDebrisCameraShakeRoutine;
     private Transform activeDebrisCameraShakeTransform;
     private Vector3 activeDebrisCameraShakeBaseLocalPosition;
 
     public float DebugStartupDelay => startupDelay;
+    public bool IsPatternRunning => activePatternRoutine != null;
+    public int ActiveTelegraphCount => runtimeTelegraphs.Count;
     public float DebugAimedBurstShotInterval => aimedBurstShotInterval;
     public float DebugWarningLineThickness => warningLineThickness;
     public BossBulletPatternSet DebugPatternSet => activePatternSet;
@@ -178,7 +181,9 @@ public class BossBulletPatternController : MonoBehaviour
 
         attackController = attack;
         battleController = battle;
+        if (bossController != null) bossController.Died -= HandleBossDied;
         bossController = boss;
+        if (bossController != null) bossController.Died += HandleBossDied;
         playerCombatController = player;
         playerOrbitController = playerOrbit != null ? playerOrbit : FindAnyObjectByType<PlayerOrbitController>();
         CacheDebrisFragmentFirePoints();
@@ -415,7 +420,9 @@ public class BossBulletPatternController : MonoBehaviour
     {
         if (!CanRunPatterns())
         {
-            if (activePatternRoutine != null && preserveActiveTelegraphUntilPatternEnds)
+            if (activePatternRoutine != null && preserveActiveTelegraphUntilPatternEnds &&
+                bossController != null && bossController.IsAlive &&
+                battleController != null && battleController.IsBattleActive && !cinematicPaused)
             {
                 return;
             }
@@ -429,6 +436,8 @@ public class BossBulletPatternController : MonoBehaviour
         {
             return;
         }
+
+        if (AnimationDriver != null && AnimationDriver.IsBusy) return;
 
         attackCooldownRemaining -= Time.deltaTime;
         if (attackCooldownRemaining > 0f)
@@ -444,6 +453,7 @@ public class BossBulletPatternController : MonoBehaviour
         }
 
         attackController.NotifyGameplayAttackStarted();
+        if (AnimationDriver != null) AnimationDriver.BeginPattern();
         activePatternRoutine = StartCoroutine(ExecutePatternRoutine(pattern));
     }
 
@@ -760,6 +770,12 @@ public class BossBulletPatternController : MonoBehaviour
             yield return patternRoutine.Current;
         }
 
+        if (AnimationDriver != null)
+        {
+            yield return AnimationDriver.WaitForRecovery();
+            AnimationDriver.EndPattern();
+        }
+
         attackCooldownRemaining = ResolveCooldown(pattern.cooldownMultiplier);
         preserveActiveTelegraphUntilPatternEnds = false;
         activePatternRoutine = null;
@@ -1070,7 +1086,8 @@ public class BossBulletPatternController : MonoBehaviour
         float projectileDamage = ResolvePrimaryDamage(pattern);
         float warningThickness = Mathf.Max(0.01f, warningLineThickness);
 
-        attackController.PlayHeavyAttackAnimation();
+        if (AnimationDriver == null) attackController.PlayHeavyAttackAnimation();
+        int fireTicket = AnimationDriver != null ? AnimationDriver.BeginFiring(shotTelegraphDuration) : -1;
 
         Vector3 firstOrigin = attackController.CurrentFireOrigin;
         Vector3 firstTarget = ResolvePlayerSizedRandomAimPoint(firstOrigin, pattern);
@@ -1091,6 +1108,12 @@ public class BossBulletPatternController : MonoBehaviour
 
         for (int shotIndex = 0; shotIndex < shotCount; shotIndex++)
         {
+            if (AnimationDriver != null)
+            {
+                if (shotIndex > 0) fireTicket = AnimationDriver.BeginFiring(Mathf.Max(0.05f, shotInterval));
+                yield return AnimationDriver.WaitForRelease(fireTicket);
+                if (!AnimationDriver.WasReleased(fireTicket) || !CanRunPatterns()) yield break;
+            }
             Vector3 origin = attackController.CurrentFireOrigin;
             Vector3 target = shotIndex == 0 ? firstTarget : ResolvePlayerSizedRandomAimPoint(origin, pattern);
             Vector3 shotDirection = ResolveSafeDirection(target - origin);
@@ -1123,7 +1146,7 @@ public class BossBulletPatternController : MonoBehaviour
                     acceleration);
             }
 
-            if (shotIndex + 1 < shotCount)
+            if (AnimationDriver == null && shotIndex + 1 < shotCount)
             {
                 yield return new WaitForSeconds(shotInterval);
             }
@@ -1147,6 +1170,13 @@ public class BossBulletPatternController : MonoBehaviour
             Mathf.Max(0.05f, pattern.telegraphDuration),
             Mathf.Max(0.04f, pattern.flashingDuration));
         DestroyTelegraph(warning);
+
+        if (AnimationDriver != null)
+        {
+            int fireTicket = AnimationDriver.BeginFiring();
+            yield return AnimationDriver.WaitForRelease(fireTicket);
+            if (!AnimationDriver.WasReleased(fireTicket) || !CanRunPatterns()) yield break;
+        }
 
         Vector3 origin = attackController.CurrentFireOrigin;
         Vector3 shotDirection = ResolveSafeDirection(lockedTarget - origin);
@@ -1191,10 +1221,11 @@ public class BossBulletPatternController : MonoBehaviour
             yield break;
         }
 
-        Transform selectedFirePoint = ResolveDebrisFragmentFirePoint();
+        Transform selectedFirePoint = AnimationDriver != null && AnimationDriver.TailImpact != null
+            ? AnimationDriver.TailImpact : ResolveDebrisFragmentFirePoint();
         Vector3 warningOrigin = ResolveDebrisFragmentFireOrigin(selectedFirePoint);
         Vector3 warningTarget = playerCombatController != null ? playerCombatController.HitPoint : attackController.CurrentPlayerHitPoint;
-        bool useStompWindup = debrisFragmentStompCount > 0 &&
+        bool useStompWindup = AnimationDriver == null && debrisFragmentStompCount > 0 &&
                               debrisFragmentStompDuration > 0f &&
                               debrisFragmentJumpHeightRatio > 0f;
         GameObject warning = null;
@@ -1209,7 +1240,18 @@ public class BossBulletPatternController : MonoBehaviour
                 scaleThickness: false);
         }
 
-        if (useStompWindup)
+        if (AnimationDriver != null)
+        {
+            int tailTicket = AnimationDriver.BeginTail();
+            yield return AnimationDriver.WaitForRelease(tailTicket);
+            if (!AnimationDriver.WasReleased(tailTicket) || !CanRunPatterns())
+            {
+                DestroyTelegraph(warning);
+                yield break;
+            }
+            TriggerDebrisFragmentStompShake();
+        }
+        else if (useStompWindup)
         {
             IEnumerator stompWindup = PerformDebrisFragmentStompWindup();
             while (stompWindup.MoveNext())
@@ -1287,7 +1329,10 @@ public class BossBulletPatternController : MonoBehaviour
             endDirection = screenEndDirection;
         }
 
-        attackController.PlayHeavyAttackAnimation();
+        int beamTicket = AnimationDriver != null
+            ? AnimationDriver.BeginBeam(leftToRight, pattern.telegraphDuration,
+                Mathf.Max(0.05f, pattern.slowDuration) + Mathf.Max(0.05f, pattern.fastDuration)) : -1;
+        if (AnimationDriver == null) attackController.PlayHeavyAttackAnimation();
         GameObject directionWarning = CreateBeamTelegraph(
             "BossAcceleratingSweepDirectionWarning",
             origin,
@@ -1312,6 +1357,12 @@ public class BossBulletPatternController : MonoBehaviour
         }
 
         DestroyTelegraph(directionWarning);
+
+        if (AnimationDriver != null)
+        {
+            yield return AnimationDriver.WaitForRelease(beamTicket);
+            if (!AnimationDriver.WasReleased(beamTicket) || !CanRunPatterns()) yield break;
+        }
 
         GameObject beam = CreateBeamTelegraph(
             "BossAcceleratingSweepBeam",
@@ -1346,7 +1397,9 @@ public class BossBulletPatternController : MonoBehaviour
         float width = Mathf.Max(0.1f, ScaleAttackSize(pattern.warningWidth));
         float chargeRadius = Mathf.Max(0.45f, width * 0.95f);
 
-        attackController.PlayHeavyAttackAnimation();
+        // No dedicated tracking-beam clip was delivered: hold the aimed firing pose during the beam.
+        int beamTicket = AnimationDriver != null ? AnimationDriver.BeginFiring(pattern.fixedDuration, true) : -1;
+        if (AnimationDriver == null) attackController.PlayHeavyAttackAnimation();
         GameObject chargeWarning = CreateTelegraphPrimitive(
             "BossTrackingResidualMouthCharge",
             PrimitiveType.Sphere,
@@ -1369,6 +1422,12 @@ public class BossBulletPatternController : MonoBehaviour
         }
 
         DestroyTelegraph(chargeWarning);
+
+        if (AnimationDriver != null)
+        {
+            yield return AnimationDriver.WaitForRelease(beamTicket);
+            if (!AnimationDriver.WasReleased(beamTicket) || !CanRunPatterns()) yield break;
+        }
 
         GameObject beam = CreateBeamTelegraph(
             "BossTrackingResidualBeam",
@@ -1410,6 +1469,7 @@ public class BossBulletPatternController : MonoBehaviour
         {
             UnregisterContinuousDamageTickState(damageTickState);
             DestroyTelegraph(beam);
+            if (AnimationDriver != null) AnimationDriver.ReleaseSustainedFiring();
         }
     }
 
@@ -2549,8 +2609,22 @@ public class BossBulletPatternController : MonoBehaviour
 
         StopCoroutine(activePatternRoutine);
         activePatternRoutine = null;
+        if (AnimationDriver != null) AnimationDriver.CancelAction();
         preserveActiveTelegraphUntilPatternEnds = false;
         UnregisterAllContinuousDamageTickStates();
+    }
+
+    private void HandleBossDied()
+    {
+        // A beam may otherwise outlive BattleController disabling BossAttackController.
+        CancelActivePattern();
+        CleanupTelegraphs();
+        UnregisterAllContinuousDamageTickStates();
+    }
+
+    private void OnDestroy()
+    {
+        if (bossController != null) bossController.Died -= HandleBossDied;
     }
 
     private float ResolveCooldown(float patternCooldownMultiplier)

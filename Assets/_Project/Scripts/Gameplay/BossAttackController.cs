@@ -50,6 +50,8 @@ public class BossAttackController : MonoBehaviour
 
     public event System.Action GameplayAttackStarted;
 
+    public KaijuBossAnimationDriver AnimationDriver { get; private set; }
+
     public bool CanAttack =>
         !cinematicPaused &&
         battleController != null &&
@@ -64,6 +66,7 @@ public class BossAttackController : MonoBehaviour
     {
         bulletPatternController ??= GetComponent<BossBulletPatternController>();
         ResolveAnimator();
+        AnimationDriver = GetComponentInChildren<KaijuBossAnimationDriver>(true);
     }
 
     private void Update()
@@ -112,6 +115,10 @@ public class BossAttackController : MonoBehaviour
         playerCombatController = player;
         projectileTemplate = projectileTemplateSource;
         ResolveAnimator();
+        AnimationDriver = GetComponentInChildren<KaijuBossAnimationDriver>(true);
+
+        if (AnimationDriver != null && AnimationDriver.Mouth != null)
+            firePoint = AnimationDriver.Mouth;
 
         if (firePoint == null && bossController != null)
         {
@@ -135,6 +142,11 @@ public class BossAttackController : MonoBehaviour
 
         cinematicPaused = paused;
         ResolveAnimator();
+        if (AnimationDriver != null)
+        {
+            AnimationDriver.SetCinematicPaused(paused);
+            return;
+        }
         if (bossAnimator == null)
         {
             return;
@@ -184,6 +196,11 @@ public class BossAttackController : MonoBehaviour
 
     public void PlayQuickAttackAnimation()
     {
+        if (AnimationDriver != null)
+        {
+            if (!AnimationDriver.IsBusy) AnimationDriver.BeginFiring();
+            return;
+        }
         PlayAttackAnimation(
             ResolveTriggerName(quickAttackTrigger, DefaultQuickAttackTrigger),
             ResolveTriggerName(heavyAttackTrigger, DefaultHeavyAttackTrigger));
@@ -191,6 +208,14 @@ public class BossAttackController : MonoBehaviour
 
     public void PlayHeavyAttackAnimation()
     {
+        if (AnimationDriver != null)
+        {
+            // Explicit beam/tail patterns supply their own direction and telegraph timing.
+            if (!AnimationDriver.IsBusy) AnimationDriver.BeginBeam(true,
+                KaijuBossAnimationDriver.BeamCueTime,
+                KaijuBossAnimationDriver.BeamEndTime - KaijuBossAnimationDriver.BeamCueTime);
+            return;
+        }
         PlayAttackAnimation(
             ResolveTriggerName(heavyAttackTrigger, DefaultHeavyAttackTrigger),
             ResolveTriggerName(quickAttackTrigger, DefaultQuickAttackTrigger));
@@ -205,7 +230,8 @@ public class BossAttackController : MonoBehaviour
         float scaleMultiplier = 1f,
         bool spawnCosmeticBurst = true)
     {
-        if (projectileTemplate == null || battleController == null)
+        if (projectileTemplate == null || battleController == null ||
+            cinematicPaused || (bossController != null && !bossController.IsAlive))
         {
             return null;
         }
@@ -332,6 +358,8 @@ public class BossAttackController : MonoBehaviour
             {
                 yield return new WaitForSeconds(interval);
             }
+
+            if (!CanAttack) yield break;
 
             SpawnCosmeticProjectile(
                 origin,
