@@ -41,4 +41,5 @@ sysinfo.txt
 Thumbs.db
 
 # Local notes
-/docs/
+/docs/*
+!/docs/kaiju-animation-integration-plan.md
