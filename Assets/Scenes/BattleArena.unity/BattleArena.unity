@@ -37,7 +37,7 @@ RenderSettings:
   m_ReflectionBounces: 1
   m_ReflectionIntensity: 1
   m_CustomReflection: {fileID: 0}
-  m_Sun: {fileID: 1701597945}
+  m_Sun: {fileID: 1754691787}
   m_UseRadianceAmbientProbe: 0
 --- !u!157 &3
 LightmapSettings:
@@ -10543,6 +10543,10 @@ PrefabInstance:
       propertyPath: initialTheme
       value: 0
       objectReference: {fileID: 0}
+    - target: {fileID: 1534385662829862886, guid: 76eeb158c2c084b119bf8c58c508f4c4, type: 3}
+      propertyPath: directionalLight
+      value:
+      objectReference: {fileID: 1754691787}
     - target: {fileID: 1534385662829862886, guid: 76eeb158c2c084b119bf8c58c508f4c4, type: 3}
       propertyPath: rotationReference
       value: 

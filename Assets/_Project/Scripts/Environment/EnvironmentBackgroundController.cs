@@ -244,17 +244,9 @@ public class EnvironmentBackgroundController : MonoBehaviour
             arenaCamera = Camera.main;
         }
 
-        if (directionalLight == null)
+        if (directionalLight == null || directionalLight.gameObject.scene != gameObject.scene)
         {
-            Light[] sceneLights = FindObjectsByType<Light>(FindObjectsInactive.Exclude, FindObjectsSortMode.None);
-            for (int i = 0; i < sceneLights.Length; i++)
-            {
-                if (sceneLights[i] != null && sceneLights[i].type == LightType.Directional)
-                {
-                    directionalLight = sceneLights[i];
-                    break;
-                }
-            }
+            directionalLight = FindSceneDirectionalLight();
         }
 
         if (rotationReference == null)
@@ -267,6 +259,50 @@ public class EnvironmentBackgroundController : MonoBehaviour
             BossController bossController = FindAnyObjectByType<BossController>();
             rotationPivot = bossController != null ? bossController.transform : null;
         }
+    }
+
+    private Light FindSceneDirectionalLight()
+    {
+        if (!gameObject.scene.IsValid() || !gameObject.scene.isLoaded)
+        {
+            return null;
+        }
+
+        Light selected = null;
+        Light sun = RenderSettings.sun;
+        foreach (GameObject root in gameObject.scene.GetRootGameObjects())
+        {
+            foreach (Light candidate in root.GetComponentsInChildren<Light>())
+            {
+                if (!candidate.isActiveAndEnabled || candidate.type != LightType.Directional)
+                {
+                    continue;
+                }
+
+                if (selected != null)
+                {
+                    // A shadowless fill light must not displace the environment sun.
+                    bool candidateCastsShadows = candidate.shadows != LightShadows.None;
+                    bool selectedCastsShadows = selected.shadows != LightShadows.None;
+                    if (candidateCastsShadows != selectedCastsShadows)
+                    {
+                        if (!candidateCastsShadows)
+                        {
+                            continue;
+                        }
+                    }
+                    else if (selected == sun ||
+                             (candidate != sun && candidate.intensity <= selected.intensity))
+                    {
+                        continue;
+                    }
+                }
+
+                selected = candidate;
+            }
+        }
+
+        return selected;
     }
 
     private EnvironmentThemeData GetTheme(EnvironmentThemeType themeType)
