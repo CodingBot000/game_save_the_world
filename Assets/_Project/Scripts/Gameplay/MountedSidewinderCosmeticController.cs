@@ -157,8 +157,8 @@ public sealed class MountedSidewinderCosmeticController : MonoBehaviour
         IsWaitingForVisualTurn = true;
         float preIgnitionElapsed = 0f;
 
-        // OnFullSalvoStarting listeners do not have a guaranteed order. Waiting one
-        // frame lets PlayerOrbitController begin its turn before this sequence checks it.
+        // The shared lock-on turn starts before OnFullSalvoStarting. Preserve the
+        // one-frame lead-in before checking its progress and beginning ignition.
         yield return null;
         while (ShouldWaitForVisualTurn())
         {

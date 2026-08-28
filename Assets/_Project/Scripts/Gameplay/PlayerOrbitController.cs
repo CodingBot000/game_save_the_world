@@ -49,15 +49,15 @@ public class PlayerOrbitController : MonoBehaviour
     [SerializeField] private float maxVisualTiltAngle = 12f;
     [SerializeField] private float visualTiltDuration = 0.18f;
     [SerializeField] private Vector3 cinematicRearViewEulerOffset = Vector3.zero;
-    [Tooltip("Additional model-space tuning applied after the fixed 180-degree full-salvo camera-facing reversal.")]
+    [Tooltip("Additional model-space tuning applied after the fixed 180-degree lock-on camera-facing reversal.")]
     [SerializeField] private Vector3 cinematicFrontViewEulerOffset = Vector3.zero;
-    [Tooltip("Seconds used to ease the visible helicopter from its current pose into the full-salvo pose.")]
+    [Tooltip("Seconds used to ease the visible helicopter into the front-facing pose for every lock-on salvo.")]
     [SerializeField, Min(0.01f)]
     private float fullSalvoVisualTurnDuration = DefaultFullSalvoVisualTurnDuration;
-    [Tooltip("Keeps the helicopter in its reversed full-salvo pose for this long after launching finishes.")]
+    [Tooltip("Keeps the helicopter in its front-facing lock-on pose for this long after launching finishes.")]
     [SerializeField, Min(0f)]
     private float fullSalvoVisualRestoreDelay = DefaultFullSalvoVisualRestoreDelay;
-    [Tooltip("Seconds used to ease the visible helicopter from the full-salvo pose back to its normal side pose.")]
+    [Tooltip("Seconds used to ease the visible helicopter from the lock-on pose back to its normal side pose.")]
     [SerializeField, Min(0.01f)]
     private float fullSalvoVisualReturnDuration = DefaultFullSalvoVisualReturnDuration;
 
@@ -252,9 +252,9 @@ public class PlayerOrbitController : MonoBehaviour
             return;
         }
 
-        playerLockOnController.OnFullSalvoStarting -= HandleFullSalvoStarting;
+        playerLockOnController.OnLockOnSalvoStarting -= HandleLockOnSalvoStarting;
         playerLockOnController.OnLockOnSalvoFinished -= HandleLockOnSalvoFinished;
-        playerLockOnController.OnFullSalvoStarting += HandleFullSalvoStarting;
+        playerLockOnController.OnLockOnSalvoStarting += HandleLockOnSalvoStarting;
         playerLockOnController.OnLockOnSalvoFinished += HandleLockOnSalvoFinished;
     }
 
@@ -265,11 +265,11 @@ public class PlayerOrbitController : MonoBehaviour
             return;
         }
 
-        playerLockOnController.OnFullSalvoStarting -= HandleFullSalvoStarting;
+        playerLockOnController.OnLockOnSalvoStarting -= HandleLockOnSalvoStarting;
         playerLockOnController.OnLockOnSalvoFinished -= HandleLockOnSalvoFinished;
     }
 
-    private void HandleFullSalvoStarting(int salvoId)
+    private void HandleLockOnSalvoStarting(int salvoId)
     {
         if (salvoId <= 0)
         {
@@ -396,7 +396,7 @@ public class PlayerOrbitController : MonoBehaviour
         Quaternion targetRotation = cinematicReturnDisplayRotation;
         float duration = Mathf.Max(0.01f, fullSalvoVisualReturnDuration);
         float elapsed = 0f;
-        // The full-salvo action has already finished. Keep only the display override
+        // The lock-on salvo has already finished. Keep only the display override
         // alive while it eases back so no gameplay-facing salvo state is extended.
         fullSalvoVisualTurnProgress = 0f;
         fullSalvoVisualSalvoId = 0;
