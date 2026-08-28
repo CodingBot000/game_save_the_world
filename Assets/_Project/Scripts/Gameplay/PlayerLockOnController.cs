@@ -189,6 +189,7 @@ public sealed class PlayerLockOnController : MonoBehaviour
     public event Action<BossLockOnTarget, int> OnLockTargetAdded;
     public event Action<LockOnCancelReason> OnLockCanceled;
     public event Action<LockOnReleaseIntent> OnLockRelease;
+    public event Action<int> OnLockOnSalvoStarting;
     public event Action<int> OnFullSalvoStarting;
     public event Action<int, bool> OnLockOnSalvoFinished;
     public event Action<string, string> OnSalvoPrepareFailed;
@@ -551,10 +552,11 @@ public sealed class PlayerLockOnController : MonoBehaviour
 
         ownsSalvoInvincibility = true;
         bool isFullSalvo = intent.SalvoProfileLockCount == MaxLockStage;
+        // Start the shared front-facing presentation before the first synchronous
+        // missile wave. Full-salvo listeners (including Sidewinders) stay stage-5 only.
+        OnLockOnSalvoStarting?.Invoke(handle.SalvoId);
         if (isFullSalvo)
         {
-            // Visual listeners must run before StartPreparedSalvo because its coroutine
-            // launches the first missile wave synchronously before returning.
             OnFullSalvoStarting?.Invoke(handle.SalvoId);
         }
 
@@ -562,7 +564,8 @@ public sealed class PlayerLockOnController : MonoBehaviour
         if (!commitResult.IsStarted)
         {
             EndOwnedSalvoInvincibility();
-            if (isFullSalvo)
+            // A launcher cancellation may already have delivered the finish event.
+            if (currentLockOnSalvoId == handle.SalvoId)
             {
                 OnLockOnSalvoFinished?.Invoke(handle.SalvoId, true);
             }
