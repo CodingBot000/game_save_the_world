@@ -74,6 +74,9 @@ public static class KaijuCombatAnimationBuilder
             mouth.SetParent(head, false);
             // Initial mouth offset is adjustable in the scene, not an edit to the source FBX.
             mouth.position = head.position + animator.transform.forward * animator.transform.lossyScale.x * 1.2f;
+            // The imported Head bone's +Z is not the mouth's outgoing axis.
+            // Only initialize NEW sockets; preserve subsequent scene calibration.
+            mouth.rotation = animator.transform.rotation;
         }
         KaijuBossAnimationDriver driver = animator.GetComponent<KaijuBossAnimationDriver>();
         if (driver == null) driver = Undo.AddComponent<KaijuBossAnimationDriver>(animator.gameObject);

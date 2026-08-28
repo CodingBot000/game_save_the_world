@@ -2,7 +2,7 @@ using System.Collections;
 using UnityEngine;
 
 /// <summary>Owns pose/timing only. Existing pattern controllers still own damage and projectiles.</summary>
-[DisallowMultipleComponent, RequireComponent(typeof(Animator))]
+[DefaultExecutionOrder(-100), DisallowMultipleComponent, RequireComponent(typeof(Animator))]
 public sealed class KaijuBossAnimationDriver : MonoBehaviour
 {
     public enum ActionKind { None, Firing, BeamLeftToRight, BeamRightToLeft, Tail, JumpTurn, Death }
@@ -35,6 +35,18 @@ public sealed class KaijuBossAnimationDriver : MonoBehaviour
     private float nextTurnTime;
     private Quaternion turnFrom;
     private Quaternion turnTo;
+    private Transform sweepNeck1;
+    private Transform sweepNeck2;
+    private Transform sweepHead;
+    private Quaternion neck1Pose;
+    private Quaternion neck2Pose;
+    private Quaternion headPose;
+    private bool sweepPoseApplied;
+    private int sweepAimTicket = -1;
+    private Vector3 sweepAimDirection;
+    private float sweepAimWeight;
+    private float sweepRecoveryStarted = -1f;
+    private const float SweepRecoveryDuration = 0.25f;
 
     public ActionKind CurrentAction { get; private set; }
     public bool IsBusy => CurrentAction != ActionKind.None;
@@ -47,6 +59,83 @@ public sealed class KaijuBossAnimationDriver : MonoBehaviour
     public Transform Mouth => mouth;
     public Transform TailImpact => tailImpact;
     public Animator Animator => animator != null ? animator : GetComponent<Animator>();
+    public bool HasSweepAim => sweepAimTicket >= 0;
+    public float SweepAimError { get; private set; }
+    public float SweepCorrectionAngle { get; private set; }
+
+    // Restore BEFORE the Animator evaluates, including when its speed is zero.
+    // Never accumulate a procedural correction on the previous frame's correction.
+    private void Update() => RestoreSweepPose();
+
+    private void OnDisable() => ClearSweepAim();
+
+    public static bool SelectSweepClipLeftToRight(Vector3 start, Vector3 end)
+    {
+        // Authored LeftToR sweeps positive yaw. Screen left/right is reversed when
+        // the camera faces the monster; the angular path also handles legacy fallback.
+        return Vector3.SignedAngle(Vector3.ProjectOnPlane(start, Vector3.up),
+            Vector3.ProjectOnPlane(end, Vector3.up), Vector3.up) >= 0f;
+    }
+
+    public bool TryBeginSweepAim(int ticket)
+    {
+        if (!CanBegin() || !IsBeam() || ticket != sequence || mouth == null) return false;
+        sweepHead = transform.Find("Root/Pelvis/Spine 01/Spine 02/Neck_01/Neck_02/Head");
+        sweepNeck2 = sweepHead != null ? sweepHead.parent : null;
+        sweepNeck1 = sweepNeck2 != null ? sweepNeck2.parent : null;
+        if (sweepHead == null || sweepNeck1 == null || mouth.parent != sweepHead) return false;
+        sweepAimTicket = ticket;
+        sweepRecoveryStarted = -1f;
+        sweepAimWeight = 0f;
+        return true;
+    }
+
+    public bool TryApplySweepAim(int ticket, Vector3 direction, float weight)
+    {
+        if (!CanBegin() || !IsBeam() || ticket != sequence || ticket != sweepAimTicket ||
+            mouth == null || sweepHead == null || sweepNeck1 == null || sweepNeck2 == null ||
+            !float.IsFinite(weight) || !float.IsFinite(direction.sqrMagnitude) || direction.sqrMagnitude < 0.0001f) return false;
+        RestoreSweepPose();
+        neck1Pose = sweepNeck1.localRotation;
+        neck2Pose = sweepNeck2.localRotation;
+        headPose = sweepHead.localRotation;
+        sweepAimDirection = direction.normalized;
+        sweepAimWeight = Mathf.Clamp01(weight);
+        Quaternion correction = Quaternion.FromToRotation(mouth.forward, sweepAimDirection);
+        SweepCorrectionAngle = Vector3.Angle(mouth.forward, sweepAimDirection);
+        // All fractions rotate around the same world axis. Parent rotations carry
+        // their children, so 35% + 35% + 30% gives exactly the requested direction.
+        sweepNeck1.rotation = Quaternion.Slerp(Quaternion.identity, correction, 0.35f * sweepAimWeight) * sweepNeck1.rotation;
+        sweepNeck2.rotation = Quaternion.Slerp(Quaternion.identity, correction, 0.35f * sweepAimWeight) * sweepNeck2.rotation;
+        sweepHead.rotation = Quaternion.Slerp(Quaternion.identity, correction, 0.30f * sweepAimWeight) * sweepHead.rotation;
+        sweepPoseApplied = true;
+        SweepAimError = Vector3.Angle(mouth.forward, sweepAimDirection);
+        return true;
+    }
+
+    public void EndSweepAim(int ticket)
+    {
+        if (ticket < 0 || ticket != sweepAimTicket) return;
+        if (!IsBeam() || !CanBegin()) { ClearSweepAim(); return; }
+        sweepRecoveryStarted = Time.time;
+    }
+
+    private void RestoreSweepPose()
+    {
+        if (!sweepPoseApplied) return;
+        if (sweepNeck1 != null) sweepNeck1.localRotation = neck1Pose;
+        if (sweepNeck2 != null) sweepNeck2.localRotation = neck2Pose;
+        if (sweepHead != null) sweepHead.localRotation = headPose;
+        sweepPoseApplied = false;
+    }
+
+    private void ClearSweepAim()
+    {
+        RestoreSweepPose();
+        sweepAimTicket = -1;
+        sweepRecoveryStarted = -1f;
+        sweepAimWeight = 0f;
+    }
 
     private void Awake()
     {
@@ -127,6 +216,9 @@ public sealed class KaijuBossAnimationDriver : MonoBehaviour
         activeBeamDuration = Mathf.Max(0.05f, duration);
         Animator.SetFloat("ActionSpeed", BeamCueTime / Mathf.Max(0.05f, windup));
         PlayFullBody(leftToRight ? "BeamLeftToR" : "BeamRightToL");
+        // Enter the zero-time pose now, otherwise Animator.Play can consume an
+        // extra evaluation frame before advancing the authored windup clock.
+        Animator.Update(0f);
         return sequence;
     }
 
@@ -153,6 +245,7 @@ public sealed class KaijuBossAnimationDriver : MonoBehaviour
 
     private void Begin(ActionKind kind)
     {
+        ClearSweepAim();
         sequence++;
         released = false;
         sustainFiring = false;
@@ -224,6 +317,7 @@ public sealed class KaijuBossAnimationDriver : MonoBehaviour
 
     private void ReturnToIdle()
     {
+        ClearSweepAim();
         turning = false;
         sustainFiring = false;
         CurrentAction = ActionKind.None;
@@ -276,6 +370,12 @@ public sealed class KaijuBossAnimationDriver : MonoBehaviour
 
     private void LateUpdate()
     {
+        if (sweepRecoveryStarted >= 0f && !paused)
+        {
+            float recoveryT = Mathf.Clamp01((Time.time - sweepRecoveryStarted) / SweepRecoveryDuration);
+            if (recoveryT >= 1f) ClearSweepAim();
+            else TryApplySweepAim(sweepAimTicket, sweepAimDirection, 1f - Mathf.SmoothStep(0f, 1f, recoveryT));
+        }
         if (!turning || dead || paused || boss == null) return;
         float clipTime = Animator.GetCurrentAnimatorStateInfo(0).normalizedTime * (37f / 30f);
         float t = Mathf.InverseLerp(TurnStartTime, TurnEndTime, clipTime);
@@ -284,6 +384,7 @@ public sealed class KaijuBossAnimationDriver : MonoBehaviour
 
     private void HandleDeath()
     {
+        ClearSweepAim();
         dead = true;
         paused = false;
         turning = false;

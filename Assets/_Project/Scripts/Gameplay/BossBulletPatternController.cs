@@ -73,6 +73,7 @@ public sealed class BossBulletPatternDefinition
     [Min(0.05f)] public float approachFlightDuration = 1f;
 }
 
+[DefaultExecutionOrder(300)]
 public class BossBulletPatternController : MonoBehaviour
 {
     private const string DebrisFragmentCatalogResourcePath = "VFX/MonsterDebrisFragmentCatalog";
@@ -130,6 +131,84 @@ public class BossBulletPatternController : MonoBehaviour
     private Coroutine activeDebrisCameraShakeRoutine;
     private Transform activeDebrisCameraShakeTransform;
     private Vector3 activeDebrisCameraShakeBaseLocalPosition;
+    private GameObject sweepVisual;
+    private Vector3 sweepDirection;
+    private float sweepWidth;
+    private float sweepLength;
+    private float sweepDamage;
+    private float sweepPoseWeight;
+    private int sweepTicket = -1;
+    private int lastSweepFrame = -1;
+    private bool? debugNextSweepLeftToRight;
+
+    public readonly struct SweepFrame
+    {
+        public readonly int Frame;
+        public readonly int AttackId;
+        public readonly Vector3 Origin;
+        public readonly Vector3 Direction;
+        public readonly float Width;
+        public readonly float Length;
+        public readonly float Damage;
+        public SweepFrame(int frame, int attackId, Vector3 origin, Vector3 direction, float width, float length, float damage)
+        { Frame = frame; AttackId = attackId; Origin = origin; Direction = direction; Width = width; Length = length; Damage = damage; }
+    }
+
+    public SweepFrame LastSweepFrame { get; private set; }
+    public bool HasSweepFrame => sweepVisual != null;
+    public float LastSweepProgress { get; private set; }
+    public event System.Action<SweepFrame> SweepFrameApplied;
+
+    // The Animator has evaluated and BattleController has completed its late update.
+    // Correct the actual bones, then read ONE mouth pose for both VFX and collision.
+    private void LateUpdate()
+    {
+        if (sweepVisual == null || lastSweepFrame == Time.frameCount) return;
+        if (!CanRunPatterns()) { CancelActivePattern(); CleanupTelegraphs(); return; }
+        if (AnimationDriver != null && !AnimationDriver.TryApplySweepAim(sweepTicket, sweepDirection, sweepPoseWeight))
+        {
+            Debug.LogWarning("Kaiju sweep pose unavailable; cancelling beam without damage.", this);
+            CancelActivePattern();
+            CleanupTelegraphs();
+            return;
+        }
+        lastSweepFrame = Time.frameCount;
+        LastSweepFrame = new SweepFrame(lastSweepFrame, sweepTicket, attackController.CurrentFireOrigin,
+            sweepDirection, sweepWidth, sweepLength, sweepDamage);
+        SweepFrame frame = LastSweepFrame;
+        UpdateBeamTelegraph(sweepVisual, frame.Origin, frame.Direction, frame.Width, frame.Length);
+        if (frame.Damage > 0f && Time.deltaTime > 0f)
+            TryApplyLineHazardDamage(frame.Origin, frame.Origin + frame.Direction * frame.Length, frame.Width * 0.5f, frame.Damage);
+        SweepFrameApplied?.Invoke(frame);
+    }
+
+    private void QueueSweepFrame(GameObject visual, Vector3 direction, float width, float length, float damage, float poseWeight)
+    {
+        sweepVisual = visual;
+        sweepDirection = ResolveSafeDirection(direction);
+        sweepWidth = width;
+        sweepLength = length;
+        sweepDamage = damage;
+        sweepPoseWeight = poseWeight;
+    }
+
+    private void ClearSweepFrame()
+    {
+        if (AnimationDriver != null) AnimationDriver.EndSweepAim(sweepTicket);
+        sweepVisual = null;
+        sweepTicket = -1;
+        sweepDamage = 0f;
+    }
+
+    public static float EvaluateSweepProgress(float elapsed, float slowDuration, float fastDuration, float slowProgress = 0.2f)
+    {
+        float slow = Mathf.Max(0.05f, slowDuration);
+        float fast = Mathf.Max(0.05f, fastDuration);
+        float split = Mathf.Clamp(slowProgress, 0.05f, 0.95f);
+        if (elapsed < slow) return Mathf.Lerp(0f, split, Mathf.Clamp01(elapsed / slow));
+        float t = Mathf.Clamp01((elapsed - slow) / fast);
+        return Mathf.Lerp(split, 1f, 1f - Mathf.Pow(1f - t, 3f));
+    }
 
     public float DebugStartupDelay => startupDelay;
     public bool IsPatternRunning => activePatternRoutine != null;
@@ -402,6 +481,21 @@ public class BossBulletPatternController : MonoBehaviour
         }
 
         return false;
+    }
+
+    public bool TryRunSweepForDebug(bool leftToRight)
+    {
+        if (!Application.isPlaying || activePatternRoutine != null || !CanRunPatterns() ||
+            (AnimationDriver != null && AnimationDriver.IsBusy)) return false;
+        debugNextSweepLeftToRight = leftToRight;
+        if (AnimationDriver != null) AnimationDriver.BeginPattern();
+        bool started = TryRunPatternForDebug(BossBulletPatternType.AcceleratingSweepBeam);
+        if (!started)
+        {
+            debugNextSweepLeftToRight = null;
+            if (AnimationDriver != null) AnimationDriver.EndPattern();
+        }
+        return started;
     }
 
     private BossBulletPatternDefinition GetPatternForDebug(int patternIndex)
@@ -1318,7 +1412,8 @@ public class BossBulletPatternController : MonoBehaviour
         float radius = Mathf.Max(1f, ScaleAttackSize(pattern.hazardRadius));
         float width = Mathf.Max(0.1f, ScaleAttackSize(pattern.warningWidth));
         float halfSweepAngle = Mathf.Max(0f, pattern.spreadAngle) * 0.5f;
-        bool leftToRight = Random.value >= 0.5f;
+        bool leftToRight = debugNextSweepLeftToRight ?? (Random.value >= 0.5f);
+        debugNextSweepLeftToRight = null;
         float startAngle = leftToRight ? -halfSweepAngle : halfSweepAngle;
         float endAngle = leftToRight ? halfSweepAngle : -halfSweepAngle;
         Vector3 startDirection = ResolveSafeDirection(Quaternion.AngleAxis(startAngle, Vector3.up) * centerDirection);
@@ -1330,62 +1425,68 @@ public class BossBulletPatternController : MonoBehaviour
         }
 
         int beamTicket = AnimationDriver != null
-            ? AnimationDriver.BeginBeam(leftToRight, pattern.telegraphDuration,
+            ? AnimationDriver.BeginBeam(KaijuBossAnimationDriver.SelectSweepClipLeftToRight(startDirection, endDirection), pattern.telegraphDuration,
                 Mathf.Max(0.05f, pattern.slowDuration) + Mathf.Max(0.05f, pattern.fastDuration)) : -1;
-        if (AnimationDriver == null) attackController.PlayHeavyAttackAnimation();
-        GameObject directionWarning = CreateBeamTelegraph(
-            "BossAcceleratingSweepDirectionWarning",
-            origin,
-            startDirection,
-            Mathf.Max(warningLineThickness, width * 0.32f),
-            radius,
-            new Color(1f, 0.58f, 0.08f, 0.38f));
-
-        float chargeElapsed = 0f;
-        float chargeDuration = Mathf.Max(0.05f, pattern.telegraphDuration);
-        while (chargeElapsed < chargeDuration)
+        if (AnimationDriver != null && !AnimationDriver.TryBeginSweepAim(beamTicket))
         {
-            UpdateBeamTelegraph(
-                directionWarning,
-                attackController.CurrentFireOrigin,
+            AnimationDriver.CancelAction();
+            Debug.LogWarning("Kaiju sweep requires its calibrated mouth and neck bones. Attack cancelled.", this);
+            yield break;
+        }
+        sweepTicket = beamTicket;
+        if (AnimationDriver == null) attackController.PlayHeavyAttackAnimation();
+        GameObject directionWarning = null;
+        GameObject beam = null;
+        try
+        {
+            directionWarning = CreateBeamTelegraph(
+                "BossAcceleratingSweepDirectionWarning",
+                origin,
                 startDirection,
                 Mathf.Max(warningLineThickness, width * 0.32f),
-                radius);
+                radius,
+                new Color(1f, 0.58f, 0.08f, 0.38f));
 
-            chargeElapsed += Time.deltaTime;
-            yield return null;
+            float chargeElapsed = 0f;
+            float chargeDuration = Mathf.Max(0.05f, pattern.telegraphDuration);
+            while (chargeElapsed + 0.000001f < chargeDuration)
+            {
+                QueueSweepFrame(directionWarning, startDirection,
+                    Mathf.Max(warningLineThickness, width * 0.32f), radius, 0f,
+                    Mathf.SmoothStep(0f, 1f, chargeElapsed / chargeDuration));
+                chargeElapsed += Time.deltaTime;
+                yield return null;
+            }
+
+            QueueSweepFrame(directionWarning, startDirection,
+                Mathf.Max(warningLineThickness, width * 0.32f), radius, 0f, 1f);
+            if (AnimationDriver != null)
+            {
+                // Flatten the cue wait: yielding an already-finished nested
+                // iterator otherwise adds another frame to the telegraph.
+                IEnumerator release = AnimationDriver.WaitForRelease(beamTicket);
+                while (release.MoveNext()) yield return release.Current;
+                if (!AnimationDriver.WasReleased(beamTicket) || !CanRunPatterns()) yield break;
+            }
+
+            DestroyTelegraph(directionWarning);
+            directionWarning = null;
+            beam = CreateBeamTelegraph("BossAcceleratingSweepBeam", attackController.CurrentFireOrigin,
+                startDirection, width, radius, new Color(1f, 0.08f, 0.03f, 0.72f));
+
+            preserveActiveTelegraphUntilPatternEnds = true;
+            IEnumerator sweep = SweepAcceleratingBeamPhase(beam, startDirection, endDirection,
+                Mathf.Max(0.05f, pattern.slowDuration), Mathf.Max(0.05f, pattern.fastDuration),
+                0.2f, width, radius, ResolvePrimaryDamage(pattern));
+            while (sweep.MoveNext()) yield return sweep.Current;
         }
-
-        DestroyTelegraph(directionWarning);
-
-        if (AnimationDriver != null)
+        finally
         {
-            yield return AnimationDriver.WaitForRelease(beamTicket);
-            if (!AnimationDriver.WasReleased(beamTicket) || !CanRunPatterns()) yield break;
+            ClearSweepFrame();
+            preserveActiveTelegraphUntilPatternEnds = false;
+            DestroyTelegraph(directionWarning);
+            DestroyTelegraph(beam);
         }
-
-        GameObject beam = CreateBeamTelegraph(
-            "BossAcceleratingSweepBeam",
-            attackController.CurrentFireOrigin,
-            startDirection,
-            width,
-            radius,
-            new Color(1f, 0.08f, 0.03f, 0.72f));
-
-        preserveActiveTelegraphUntilPatternEnds = true;
-        yield return SweepAcceleratingBeamPhase(
-            beam,
-            startDirection,
-            endDirection,
-            Mathf.Max(0.05f, pattern.slowDuration),
-            Mathf.Max(0.05f, pattern.fastDuration),
-            0.2f,
-            width,
-            radius,
-            ResolvePrimaryDamage(pattern));
-        preserveActiveTelegraphUntilPatternEnds = false;
-
-        DestroyTelegraph(beam);
     }
 
     private IEnumerator ExecuteTrackingResidualBeam(BossBulletPatternDefinition pattern)
@@ -1508,13 +1609,10 @@ public class BossBulletPatternController : MonoBehaviour
 
         while (elapsed < totalDuration)
         {
-            float progress;
+            float progress = EvaluateSweepProgress(elapsed, clampedSlowDuration, clampedFastDuration, clampedSlowProgress);
+            LastSweepProgress = progress;
             float currentWidth = width;
-            if (elapsed < clampedSlowDuration)
-            {
-                progress = Mathf.Lerp(0f, clampedSlowProgress, Mathf.Clamp01(elapsed / clampedSlowDuration));
-            }
-            else
+            if (elapsed >= clampedSlowDuration)
             {
                 if (!fastVisualApplied)
                 {
@@ -1523,26 +1621,20 @@ public class BossBulletPatternController : MonoBehaviour
                 }
 
                 float fastT = Mathf.Clamp01((elapsed - clampedSlowDuration) / clampedFastDuration);
-                float fastProgress = 1f - Mathf.Pow(1f - fastT, 3f);
-                progress = Mathf.Lerp(clampedSlowProgress, 1f, fastProgress);
                 currentWidth = width * Mathf.Lerp(1.08f, 1.18f, fastT);
             }
 
-            Vector3 origin = attackController.CurrentFireOrigin;
             Vector3 direction = ResolveSafeDirection(Vector3.Slerp(startDirection, endDirection, progress));
-
-            UpdateBeamTelegraph(beam, origin, direction, currentWidth, radius);
-            TryApplyLineHazardDamage(origin, origin + direction * radius, currentWidth * 0.5f, damage);
+            QueueSweepFrame(beam, direction, currentWidth, radius, damage, 1f);
 
             elapsed += Time.deltaTime;
             yield return null;
         }
 
-        Vector3 finalOrigin = attackController.CurrentFireOrigin;
         Vector3 finalDirection = ResolveSafeDirection(endDirection);
         float finalWidth = width * 1.18f;
-        UpdateBeamTelegraph(beam, finalOrigin, finalDirection, finalWidth, radius);
-        TryApplyLineHazardDamage(finalOrigin, finalOrigin + finalDirection * radius, finalWidth * 0.5f, damage);
+        LastSweepProgress = 1f;
+        QueueSweepFrame(beam, finalDirection, finalWidth, radius, damage, 1f);
         yield return null;
     }
 
@@ -2599,6 +2691,8 @@ public class BossBulletPatternController : MonoBehaviour
 
     private void CancelActivePattern()
     {
+        ClearSweepFrame();
+        debugNextSweepLeftToRight = null;
         ResetActiveDebrisJump();
         CancelDebrisFragmentCameraShake();
 

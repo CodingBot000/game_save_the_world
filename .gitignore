@@ -40,6 +40,11 @@ sysinfo.txt
 .DS_Store
 Thumbs.db
 
-# Local notes
+# Share Markdown documentation at every depth, plus its referenced diagram.
 /docs/*
-!/docs/kaiju-animation-integration-plan.md
+!/docs/**/
+!/docs/**/*.md
+!/docs/refact_attack_plan/projectu_lockon_state_flow.png
+
+# Machine-local MCP configuration contains credentials.
+/.codex/config.toml

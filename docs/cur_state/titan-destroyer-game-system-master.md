@@ -3,8 +3,10 @@ title: Titan Destroyer 게임 시스템 중심 문서
 document_id: TD-GAME-SYSTEM-SSOT
 document_type: game-system-ssot
 status: live
-version: "1.0.30"
-last_verified: "2026-08-05"
+version: "1.0.33"
+last_verified: "2026-08-29"
+last_verification_scope: "가속 횡단 빔·입 방향 동기화 구현. EditMode 105/105 및 최종 집중 19/19, 실제 전투 44조합/1396 활성 프레임, 중단·사망·포즈 회귀. 다른 영역의 기존 규칙 검증 이력은 유지."
+partial_review_baseline: "git cbf7180 + 2026-08-29 가속 횡단 빔 동기화 작업 트리"
 implementation_baseline: "git f9ba772 + 2026-08-05 audio/HUD, normal timed right-click with original 1-to-5 salvo profiles restored, actual five-lock-only Sidewinder/full-salvo presentation, smooth 0.3-second visual return, temporary x8 world-only camera shake, slow-to-fast cosmetic flight, stable player visual/anchor, battle-session movement input reset and target-independent movement working tree"
 unity_version: 6000.4.0f1
 authoritative_scope:
@@ -567,7 +569,7 @@ Armor가 120 흡수 → Armor 0, 잔여 피해 30
 | 항목 | 현재값 |
 | --- | ---: |
 | 좌/우 방향 | 매 사용 시 무작위 |
-| 횡단 각도 | 92도 |
+| 횡단 각도 | 직렬화값 92도는 화면 방향 계산 실패 시 폴백. 정상 화면 경로의 실제 각도는 가변 |
 | 경고 시간 | 0.8초 |
 | 느린 구간 | 전체 각도의 첫 20%, 0.3초 |
 | 빠른 구간 | 나머지 80%, 0.2초 |
@@ -579,6 +581,14 @@ Armor가 120 흡수 → Armor 0, 잔여 피해 30
 | 패턴 후 쿨다운 배율 | 1.2 |
 
 빔 접촉 중 매 프레임 일반 피해를 시도하지만 플레이어의 일반 피격 무적 1초가 적용된다. 현재 빔 횡단은 총 0.5초이므로 한 번의 접촉에서 통상 18 피해가 들어가는 구조다.
+
+현재 코드는 카메라와 플레이어가 유효하면 플레이어의 화면 높이·깊이에서 viewport X `-0.08/1.08` 지점을 구하고, 준비 시작 시 계산한 두 방향 사이를 횡단한다. 92도를 항상 실제 횡단 각도로 해석하지 않는다. 이 화면 경로·진행률·피해 값은 이번 방향 동기화에서도 보존했다.
+
+**구현됨 / 2026-08-29:** `KaijuMouthSocket`의 +Z를 실제 입 출사축에 맞추고, 시작/끝 방향의 Y축 부호 각도로 좌우 클립을 선택한다. 현재 정면 카메라에서는 화면 좌→우에 `BeamRightToL`, 화면 우→좌에 `BeamLeftToR`을 사용한다. Animator 평가 뒤 Neck_01/Neck_02/Head에 35%/35%/30% 보정을 적용하며 보스 루트·다리·hurtbox를 회전시키지 않는다. 보정 후 입 위치와 같은 방향을 `SweepFrame` 하나로 VFX와 일반 피해 판정에 전달한다. 직전 보정은 다음 Animator 평가 전에 복구해 누적 회전을 막는다.
+
+준비 중에는 보정 가중치를 올리고, 활성 중에는 완전히 정렬하며, 정상 종료 후 최대 0.25초에 걸쳐 보정을 해제한다. 새 공격·취소·비활성화·사망은 즉시 해제한다. 시네마틱 일시정지는 기존처럼 진행 중인 패턴을 취소한다. `OnBeamStart`가 발사를 승인하고 누락된 이벤트로 임의 발사하지 않는다. 드라이버가 있는데 필수 소켓/본이 없으면 해당 횡단 공격을 안전하게 취소한다.
+
+[개발계획서 §12](../kaiju-sweep-beam-alignment-development-plan.md#12-구현-및-검증-결과--2026-08-29)에 실제 구현·검증 범위를 기록했다. 44개 실제 전투 조합의 최대 입/빔 각도 오차는 0.13706°, 빔 근단과 입 위치의 최대 거리는 0.000013 월드 단위였다. 모바일 실기기 및 모든 자세의 최종 아트 승인은 별도다.
 
 ### 7.4 추적 잔류 빔 — Tracking Residual Beam
 
@@ -653,6 +663,7 @@ Armor가 120 흡수 → Armor 0, 잔여 피해 30
 | 보스 체력/피격 | `Assets/_Project/Scripts/Gameplay/BossController.cs` | `Assets/_Project/Scripts/Gameplay/BattleController.cs`, 현재 씬의 hurtbox/aim point |
 | 보스 공통 공격값 | `Assets/_Project/Scripts/Gameplay/BossAttackController.cs` | 현재 씬 |
 | 보스 패턴 | `Assets/_Project/Scripts/Gameplay/BossBulletPatternController.cs` | 현재 씬의 `activePatternSet`, `kaijuHeavyThreatSequence` |
+| 횡단 빔 입/방향 정렬 | `Assets/_Project/Scripts/Gameplay/KaijuBossAnimationDriver.cs` | `BossBulletPatternController.SweepFrame`, BattleArena의 `KaijuMouthSocket`, `Assets/Editor/KaijuCombatAnimationVerification.cs`, `Assets/_Project/Tests/EditMode/KaijuSweepBeamAlignmentTests.cs` |
 | 난이도/스테이지 선택 | `Assets/_Project/Scripts/Core/StageSelectionState.cs` | 스테이지 선택 씬과 `Assets/_Project/Scripts/Gameplay/BattleController.cs` |
 | 씬 BGM/전역 음악 상태 | `Assets/_Project/Scripts/Audio/GlobalMusicSettings.cs`, `Assets/_Project/Scripts/Audio/GlobalMusicSource.cs` | `Assets/Scenes/MainMenu.unity/MainMenu.unity`, `Assets/Scenes/BattleArena.unity/BattleArena.unity`, 두 BGM 에셋, `Assets/_Project/Scripts/UI/MenuPresenter.cs`, `Assets/_Project/Scripts/UI/HUDPresenter.cs` |
 | 전역 효과음 상태 | `Assets/_Project/Scripts/Audio/GlobalSoundSettings.cs`, `Assets/_Project/Scripts/Audio/RuntimeAudioOutputGuard.cs` | `Assets/_Project/Scripts/Gameplay/PlayerCombatController.cs`, `Assets/_Project/Scripts/Gameplay/LockOnCombatFeedback.cs`, `Assets/_Project/Scripts/UI/HUDPresenter.cs` |
@@ -704,6 +715,31 @@ Armor가 120 흡수 → Armor 0, 잔여 피해 30
 - 현재 씬이 미커밋 상태라면 사용자 변경을 보존하고 충돌 없이 문서 또는 별도 파일을 수정한다.
 
 ## 13. 검증 메모
+
+### 2026-08-29 — 전체 변경사항 공유 전 문서 경로 점검
+
+- 사용자가 요청한 전체 변경사항·docs Markdown 공유를 준비하면서 `AGENTS.md`와 문서 인덱스를 실제 중심 문서 경로인 `docs/cur_state/titan-destroyer-game-system-master.md`로 통일했다. 중심 문서는 이동하거나 복제하지 않았다.
+- `docs` 아래 Markdown 14개와 참조 다이어그램의 추적 정책을 정리했다. 비밀키가 담긴 `.codex/config.toml`은 로컬에 보존하고 Git에서 제외한다. 생성 로그·캐시도 기존 제외 정책을 유지한다.
+- 문서 링크·변경 범위·자격증명 패턴을 점검했다. 게임 코드·전투 수치를 추가로 바꾸지 않았으며 아래 구현 검증 결과를 유지한다.
+
+### 2026-08-29 — 가속 횡단 빔·입 방향 동기화 구현
+
+- 기준점: `cbf7180` + 이번 작업 트리, Unity `6000.4.0f1`, Coplay로 연결한 실제 BattleArena.
+- `BossBulletPatternController`, `KaijuBossAnimationDriver`, 전투 자산 생성/검증 도구를 수정하고 입 소켓 회전만 씬에 반영했다. FBX/클립/머티리얼/조명/카메라/전투 수치는 보존했다. 드라이버 Update(-100) → Animator → BattleController LateUpdate(200) → 패턴 LateUpdate(300) 순서에서 실제 본을 보정하고 공통 프레임을 소비한다.
+- 수정 전 대표 런타임 샘플의 출사축/빔 최대 오차 96.375°. 수정 후 실제 전투 44조합·1396 활성 프레임에서 최대 0.13706°, 빔 근단/입 위치 차이 최대 0.000013 월드 단위, 진행률 오차 최대 0.000066이었다. 모든 조합에서 플레이어 깊이 평면의 화면 양 끝 피복과 정상 종료 후 잔여 0을 확인했다.
+- 44조합: 양방향의 30/60/120 게임 프레임 간격 검사 6개, 화면비 16:9/19.5:9/4:3의 중앙·좌우·상하 검사 30개, 16:9 네 모서리 8개. 프레임 간격은 `Time.captureDeltaTime`으로 고정했으며 실기기 성능 벤치마크가 아니다.
+- 전체 EditMode 105/105 통과, 최종 집중 검사 19/19 재통과. 신규 실제 리그 30개 포즈 조합에서 루트/발 비간섭·비누적·복구·취소된 공격 번호/잘못된 입력 거부를 확인했다. 기존 5각도 Firing·Mask·Attack1/Attack2·양방향 빔·꼬리·점프 턴·유지 사격·취소/일시정지/사망 포즈 검증도 재통과했다.
+- 준비/활성 중 시네마틱 취소, 활성 중 컴포넌트 비활성화, 별도의 실제 활성 빔 중 보스 치명 피해 검사에서 빔/경고/조준 세션이 모두 정리됐다. 마지막 사망 검사는 전투를 종료시키므로 확인 후 Play Mode를 종료했다.
+- 원본·보정 후 입 근접 메시 및 실제 Game View 시작/중간/끝을 캡처했다. 실제 접촉에서 Armor 120→102도 확인했다. 기록은 로컬 `Logs/KaijuSweepAlignment/`와 [개발계획서 §12](../kaiju-sweep-beam-alignment-development-plan.md)에 보존했다.
+- MCP 콘솔 도구의 기존 reflection 오류와 테스트 작업 상태 갱신 누락은 `Editor.log` 및 실제 TestResults XML로 대체 확인했다. 미검증: 모바일 실기기, 모든 회전 자세의 아트 승인, 비활성 레거시 패턴 재활성화. 다른 시스템의 과거 문서 내용을 일괄 재검증한 것은 아니다.
+
+### 2026-08-29 — 가속 횡단 빔 동기화 개발계획 (부분 정적 검토)
+
+- 기준점: `cbf7180`과 기존 사용자 작업 트리. 새 계획서 작성 및 관련 문서 불일치 기록만 수행했다.
+- 확인 소스: `BossAttackController.cs`, `BossBulletPatternController.cs`의 횡단/화면 방향/피해/취소 경로, `KaijuBossAnimationDriver.cs`, `KaijuCombatAnimationBuilder.cs`, `KaijuCombatAnimationVerification.cs`, `BattleArena` 입 소켓·횡단 빔 직렬화값, Kaiju 통합 이력 문서.
+- 92도 폴백과 화면 좌우 방향 계산의 차이, 빔 방향과 입 애니메이션의 독립, VFX와 피해 판정의 공통 방향 소비를 정적으로 확인했다. 로컬 회전 identity만으로 입 소켓 축이 잘못됐다고 확정하지 않는다.
+- [동기화 개발계획서](../kaiju-sweep-beam-alignment-development-plan.md)에 패턴 보존형 보정안과 재현·검증·중단 정책을 기록했다. 계획은 아직 미구현이다.
+- 게임 코드·씬·애니메이션·전투 수치 변경 없음. Unity 컴파일 및 EditMode/PlayMode 재실행, 실제 각도·입 위치 오차 측정은 수행하지 않았다. 상단 검증일은 이 범위에만 해당하며 다른 시스템의 기존 구현 기준점과 검증 이력은 유지했다.
 
 ### 2026-08-05 — 5락 발사 후 측면 자세 복귀 보간
 
@@ -936,6 +972,9 @@ Armor가 120 흡수 → Armor 0, 잔여 피해 30
 
 | 날짜 | 버전 | 변경 내용 | 검증 |
 | --- | --- | --- | --- |
+| 2026-08-29 | 1.0.33 | AGENTS·인덱스의 중심 문서 경로 불일치 해결, docs Markdown 공유 및 로컬 인증 설정 제외 기록 | 경로·링크·Git 범위·자격증명 패턴 점검. 게임 코드 추가 변경 없음 |
+| 2026-08-29 | 1.0.32 | 횡단 빔 경로를 보존한 입 소켓 축/실제 목·머리 보정, 클립 방향 선택, 공통 VFX·피해 프레임, 회복/중단 동기화 구현 | EditMode 105/105, 최종 집중 19/19, 실제 전투 44조합/1396 프레임 최대 각도 오차 0.13706°, 중단·사망·포즈 회귀 |
+| 2026-08-29 | 1.0.31 | 가속 횡단 빔 92도 폴백/화면 경로 구분, 입 방향 동기화 미연결·문서 경로 불일치 기록, 개발계획 연결 | 관련 코드·씬 정적 교차검증만. 게임 변경·신규 실행 테스트 없음 |
 | 2026-08-05 | 1.0.30 | 정상 5락 발사 완료 후 기존 1초 목표 자세 유지는 보존하고, 평상시 우측 측면 자세로 돌아가는 보이는 외형에만 0.3초 시간 기반 `Slerp`·`SmoothStep` 보간 추가. 취소 경로는 즉시 복귀 유지 | BattleArena 실제 5락 복귀 중간 프레임·최종 각도 오차 0도와 기존 30발/Sidewinder/무적/진동/헬기 고정 `verified=True`, EditMode 78/78 |
 | 2026-08-05 | 1.0.29 | 공통 락 릴리즈에서 화면 진동을 제거하고 성공한 실제 5락 풀살보 이벤트에서만 시작하도록 분리. 1~4락 발사·피해·무적은 유지 | BattleArena 1~5락 진동 `False/False/False/False/True`, 실제 5락 피드백 `verified=True`, EditMode 77/77 |
 | 2026-08-05 | 1.0.28 | 임시 3·4락의 5락 실행 프로필 승격을 기본 OFF로 복구. 원본 `3락=15발/35`, `4락=20발/60`, `5락=30발/100`을 다시 적용하고 헬기 회전·장착 Sidewinder 등 풀살보 연출은 실제 5락에서만 실행 | BattleArena 1~5단계 `5/10/15/20/30발` 통합 진단 및 실제 5락 피드백 `verified=True`, 전체 컴파일, EditMode 77/77 |
