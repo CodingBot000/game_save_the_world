@@ -367,6 +367,37 @@ Transform:
   m_CorrespondingSourceObject: {fileID: 6281135013482428816, guid: 4670ece494c53fb438923b97052be13f, type: 3}
   m_PrefabInstance: {fileID: 68504481}
   m_PrefabAsset: {fileID: 0}
+--- !u!1 &68966249
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 68966250}
+  m_Layer: 0
+  m_Name: AirRoot
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &68966250
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 68966249}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 1287457929}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1001 &78917382
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -2584,6 +2615,7 @@ MonoBehaviour:
   allyPlaceholder: {fileID: 1101672398}
   backgroundRoot: {fileID: 0}
   backgroundHost: {fileID: 0}
+  backgroundAllyArmy: {fileID: 1287457930}
   stageVisualRoot: {fileID: 0}
   environmentThemeDebugPanel: {fileID: 0}
   playerMoveGuide: {fileID: 0}
@@ -7406,6 +7438,37 @@ Transform:
   m_CorrespondingSourceObject: {fileID: 3274013462900115817, guid: 3e57682455dfb48438e1607efedf31cd, type: 3}
   m_PrefabInstance: {fileID: 1174389485}
   m_PrefabAsset: {fileID: 0}
+--- !u!1 &1177362675
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 1177362676}
+  m_Layer: 0
+  m_Name: CosmeticVfxRoot
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &1177362676
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1177362675}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 1287457929}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1001 &1183682573
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -7771,6 +7834,106 @@ Transform:
   - {fileID: 1536287734}
   m_Father: {fileID: 6560114023265309585}
   m_LocalEulerAnglesHint: {x: 0, y: 4.389, z: -3.882}
+--- !u!1 &1287457928
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 1287457929}
+  - component: {fileID: 1287457930}
+  m_Layer: 0
+  m_Name: AmbientAllyArmyRoot
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &1287457929
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1287457928}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children:
+  - {fileID: 68966250}
+  - {fileID: 1177362676}
+  m_Father: {fileID: 1453801792}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &1287457930
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1287457928}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 19abba339fa004bccb66acec67e4880b, type: 3}
+  m_Name:
+  m_EditorClassIdentifier: Assembly-CSharp::BackgroundAllyArmyController
+  chopperPrefab: {fileID: 1740125208647148971, guid: 7830668a91037408e9fb3abbb1e04d61, type: 3}
+  tracerMaterial: {fileID: 2100000, guid: 073e2d624a44141d9b44a64a3a939f84, type: 2}
+  airRoot: {fileID: 68966250}
+  cosmeticVfxRoot: {fileID: 1177362676}
+  authoredConfigurationVersion: 9
+  soloCount: 1
+  formationSize: 3
+  visualScale: 0.9
+  orbitRadiusX: 11
+  orbitRadiusY: 5
+  orbitVerticalOffset: 5.5
+  depthBehindBoss: -2
+  orbitPeriodSeconds: 28
+  formationTrailDistance: 1.5
+  formationLateralDistance: 0.85
+  formationFollowSmoothTime: 0.28
+  maximumBankDegrees: 8
+  maximumPitchDegrees: 7
+  rotationResponse: 5.5
+  verticalNoiseAmplitude: 0.22
+  lateralNoiseAmplitude: 0.12
+  noiseFrequency: 0.18
+  mainRotorDegreesPerSecond: 720
+  tailRotorDegreesPerSecond: 1080
+  enableCosmeticAttacks: 1
+  attackIntervalSeconds: {x: 9, y: 16}
+  attackAttemptChance: 0.38
+  approachDurationSeconds: {x: 0.8, y: 1.2}
+  attackRunDurationSeconds: {x: 1, y: 1.5}
+  breakAwayDurationSeconds: {x: 1.5, y: 2.5}
+  rejoinDurationSeconds: 1.8
+  attackMotionSpeedScale: 0.5
+  minimumShotsPerRun: 2
+  maximumShotsPerRun: 4
+  randomSeed: 20260829
+  tracerPoolSize: 12
+  tracerLifetime: 0.18
+  tracerStartWidth: 0.09
+  tracerEndWidth: 0.025
+  tracerStartColor: {r: 1, g: 0.72, b: 0.22, a: 0.95}
+  tracerEndColor: {r: 1, g: 0.42, b: 0.08, a: 0.14}
+  enablePatrolGatling: 1
+  gatlingBurstDurationSeconds: {x: 0.55, y: 0.9}
+  gatlingCooldownSeconds: {x: 1.25, y: 2.2}
+  gatlingShotIntervalSeconds: {x: 0.075, y: 0.11}
+  muzzleFlashDurationSeconds: 0.045
+  enableRandomCrashes: 1
+  crashIntervalSeconds: {x: 20, y: 34}
+  crashDurationSeconds: {x: 3.2, y: 4.5}
+  crashRespawnDelaySeconds: {x: 4, y: 7}
+  crashForwardSpeed: {x: 0.6, y: 1.2}
+  crashInitialDownSpeed: {x: 0.5, y: 1}
+  crashGravity: 2.4
+  crashSpinDegreesPerSecond: {x: 240, y: 420}
 --- !u!1 &1322313177
 GameObject:
   m_ObjectHideFlags: 0
@@ -8610,6 +8773,7 @@ Transform:
   - {fileID: 1076383841}
   - {fileID: 1526553545}
   - {fileID: 880000002}
+  - {fileID: 1287457929}
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1001 &1461473373

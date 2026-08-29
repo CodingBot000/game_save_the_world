@@ -1,0 +1,56 @@
+{
+  "version": 1,
+  "asset_id": "small_chopper_bg_optimized_500",
+  "operation": "background_game_asset_optimization",
+  "source_model": "/Users/switch/Downloads/arms/small_chopper.fbx",
+  "master_copy": "/Users/switch/Downloads/arms_optimized/MASTER/small_chopper_master.glb",
+  "source_object": "Mesh_0",
+  "output_object": "SmallChopper_BG_Optimized_500",
+  "visual_reference": "source_model",
+  "uv_strategy": "preserve_existing_uv",
+  "geometry": {
+    "source_triangles": 58000,
+    "target_triangles": 500,
+    "output_triangles": 500,
+    "output_fbx_vertices": 243,
+    "output_glb_vertices": 783,
+    "method": [
+      "merge_coincident_vertices_1e-6",
+      "remove_degenerate_geometry_1e-10",
+      "collapse_decimate_to_target",
+      "triangulate_collapses"
+    ]
+  },
+  "materials": {
+    "material_slots": 1,
+    "emission_texture_removed": true,
+    "emission_value": 0.0
+  },
+  "textures": {
+    "base_color": [256, 256],
+    "normal": [128, 128],
+    "roughness": [128, 128],
+    "metallic": [128, 128],
+    "unity_metallic_smoothness": [128, 128]
+  },
+  "compression": {
+    "glb_draco": false,
+    "glb_meshopt": false,
+    "reason": "Keep broad importer compatibility; this Unity project currently uses FBX assets and has no glTF loader package."
+  },
+  "outputs": {
+    "fbx": "/Users/switch/Downloads/arms_optimized/EXPORT/500/small_chopper_bg_optimized_500.fbx",
+    "glb": "/Users/switch/Downloads/arms_optimized/EXPORT/500/small_chopper_bg_optimized_500.glb",
+    "blend": "/Users/switch/Downloads/arms_optimized/BLEND/small_chopper_bg_optimized_500.blend"
+  },
+  "validation": {
+    "reopened_fbx": true,
+    "reopened_glb": true,
+    "fbx_triangles": 500,
+    "glb_triangles": 500,
+    "views": ["side", "oblique", "top"],
+    "comparison": "/Users/switch/Downloads/arms_optimized/VALIDATION/final_500_master_comparison.png",
+    "game_scale_comparison": "/Users/switch/Downloads/arms_optimized/VALIDATION/final_500_master_comparison_game_scale.png",
+    "verified_on": "2026-08-29"
+  }
+}

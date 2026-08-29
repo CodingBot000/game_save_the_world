@@ -3,6 +3,7 @@
     "rootNamespace": "",
     "references": [
         "TitanDestroyer.MissileStrike",
+        "TitanDestroyer.BackgroundAllyArmy",
         "Unity.InputSystem"
     ],
     "includePlatforms": [

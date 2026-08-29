@@ -3,11 +3,11 @@ title: Titan Destroyer 게임 시스템 중심 문서
 document_id: TD-GAME-SYSTEM-SSOT
 document_type: game-system-ssot
 status: live
-version: "1.0.33"
-last_verified: "2026-08-29"
-last_verification_scope: "가속 횡단 빔·입 방향 동기화 구현. EditMode 105/105 및 최종 집중 19/19, 실제 전투 44조합/1396 활성 프레임, 중단·사망·포즈 회귀. 다른 영역의 기존 규칙 검증 이력은 유지."
-partial_review_baseline: "git cbf7180 + 2026-08-29 가속 횡단 빔 동기화 작업 트리"
-implementation_baseline: "git f9ba772 + 2026-08-05 audio/HUD, normal timed right-click with original 1-to-5 salvo profiles restored, actual five-lock-only Sidewinder/full-salvo presentation, smooth 0.3-second visual return, temporary x8 world-only camera shake, slow-to-fast cosmetic flight, stable player visual/anchor, battle-session movement input reset and target-independent movement working tree"
+version: "1.0.36"
+last_verified: "2026-08-30"
+last_verification_scope: "배경 아군 헬기 전방축 반전, 공격 기동 속도 0.5배, 순찰 개틀링 버스트, 한 대씩 연기·자회전 추락 구현. 집중 EditMode 7/7, 실제 이동/기수 최소 내적 0.911, 개틀링 167회, 트레이서 3발, 추락 2.367m·368.07°·연기 및 보스/플레이어/락온 불변식 통과. 직전 전체 110/110 유지; 신규 전체 MCP 작업은 95/112 상태 갱신 손실로 미확정. 탱크·모바일은 미구현/미검증."
+partial_review_baseline: "git a6554a7 + 2026-08-29 Background Ally Army 공중 구현 작업 트리"
+implementation_baseline: "git a6554a7 + 2026-08-29 Background Ally Army 공중 Phase 0~2 작업 트리. 기존 전투·오디오·HUD·락온·횡단 빔 구현 이력 보존"
 unity_version: 6000.4.0f1
 authoritative_scope:
   - game_flow
@@ -20,6 +20,7 @@ authoritative_scope:
   - scene_music
   - global_sound
   - main_menu_presentation
+  - combat_background_allies
 ---
 
 # Titan Destroyer 게임 시스템 중심 문서
@@ -71,6 +72,7 @@ authoritative_scope:
 | 약점 개방 | 타깃과 배율은 있으나 실제 전투에서 개방시키는 흐름은 디버그에만 연결 | 프로토타입/디버그 |
 | 씬 BGM | MainMenu `BGM_title.wav`, BattleArena `BGM_battle_01.ogg`, 무한 반복, 앱 시작 기본 OFF, 전역 static 상태로 모든 등록 BGM 일괄 ON/OFF | 구현됨 |
 | 전역 효과음 | 기관총과 락온 단계·릴리즈·부스트 등 BGM 외 AudioSource, 앱 시작 기본 OFF, 전역 static 상태와 BattleArena `SOUND ON/OFF` 버튼으로 일괄 제어 | 구현됨 |
+| 전투 배경 아군 | 500 tris 헬기 단독기 1대 + 3대 편대가 보스 주변을 순찰하고 가끔 피해 없는 트레이서 공격을 연출. 탱크 종대·포격은 후속 단계 | 공중 구현됨 / 지상 계획 |
 
 현재 플레이어에게 유효한 공격 선택지는 아래 두 가지뿐이다.
 
@@ -148,6 +150,33 @@ MainSky → MainCloud → MainBackground → MainHellicopter → Muffler → Mai
 
 - `Muffler`는 `MainCharacter` 바로 뒤에 배치한다. 따라서 머플러 애니메이션이 캐릭터 몸과 머리카락보다 앞을 덮지 않는다.
 - 머플러 프레임 애니메이션과 12 FPS 재생 속도는 그대로 유지하며, 이번 변경은 형제 순서만 바꾼다.
+
+### 2.6 전투 배경 아군 공중 부대
+
+상태: **구현됨**
+
+BattleArena의 `BattleArenaRoot/AmbientAllyArmyRoot` 아래에서 순수 시각 연출용 공중 아군 부대를 생성한다.
+
+| 항목 | 현재 기준 |
+| --- | --- |
+| 기본 구성 | 단독기 1대 + 편대장/좌우 편대원 3대, 총 4대 |
+| 모델 | `BackgroundChopper_500.prefab`, 1대당 500 tris |
+| 순찰 | Base 카메라 right/up/forward 기준 X 11m / Y 5m 타원, Up +5.5m, 깊이 -2m, 28초 주기 |
+| 편대 | 1.5m 후행, 좌우 0.85m, 0.28초 SmoothDamp, 최대 8° 뱅크 |
+| 자세 | 이동 경로의 상하 변화는 유지하되 기수는 월드 수평을 기준으로 계산. 최대 피치 7°로 제한 |
+| 모델 전방 | VisualRoot Y=-90°로 기수와 런타임 +Z 이동 방향을 일치시킴 |
+| 로터 | 단일 메시 위에 Main/Tail 블러 평면을 추가하고 관리자에서 회전 |
+| 가짜 공격 | 9~16초 간격, 38% 시도, 한 번에 한 그룹, 2~4발 트레이서. 공격 기동 속도 배율 0.5 |
+| 순찰 개틀링 | 기체별 0.55~0.9초 버스트, 0.075~0.11초 화염 간격, 1.25~2.2초 쿨타임 |
+| 랜덤 추락 | 20~34초 간격, 동시에 1대, 연기·중력·240~420°/s 자회전, 4~7초 후 재보충 |
+| VFX 풀 | LineRenderer 12개 고정 풀, 트레이서 수명 0.18초 |
+| 렌더 비용 정책 | shared Mesh/Material, GPU Instancing, 헬기 그림자 Off, Collider/Rigidbody 없음 |
+
+가짜 공격은 `BattleController.TryHitBoss`, 실제 `ProjectileController`, 피해 숫자, 보스 피격 틴트, 최근 공격 타깃 기록을 사용하지 않는다. 런타임 격리 검증에서 공격 전후 보스 HP 2000, 플레이어 Hull/Armor 100/120, 락온 유효 타깃 5개가 유지됐다.
+
+전투가 비활성화되거나 보스가 사망하면 새 가짜 공격을 시작하지 않고 활성 트레이서를 정리하며 순찰만 유지한다. 배경 헬기는 PlayerVisual 오버레이 레이어에 넣지 않고 Base 카메라 월드 연출로 표시한다.
+
+지상 탱크는 **계획** 상태다. 여러 탱크가 합쳐진 `small_tanks` 원본을 개별 차량으로 분리·최적화한 뒤 StageVisualRoot 로컬 경로와 공용 가짜 공격 슬롯에 연결한다. 세부 단계는 [Background Ally Army 개발계획서](../background-ally-army-development-plan.md)를 따른다.
 
 ## 3. 플레이어 조작과 이동
 
@@ -716,6 +745,36 @@ Armor가 120 흡수 → Armor 0, 잔여 피해 30
 
 ## 13. 검증 메모
 
+### 2026-08-30 — 배경 아군 방향·속도·개틀링·추락 연출
+
+- FBX 모델 자식의 Y 회전을 `+90° → -90°`로 반전해 보이는 기수와 런타임 루트 +Z를 일치시켰다. Muzzle은 +Z 앞머리 앵커를 유지한다.
+- 기수 목표는 이론 경로 접선보다 실제 프레임 이동 벡터를 우선하고, 이동/기수 정렬이 0.25 미만일 때만 회전 응답을 높인다. 최종 실제 최소 내적은 0.911이고 최대 Up 편차는 10.053°였다.
+- 공격 Approach/AttackRun/BreakAway/Rejoin 시간에 현재 `attackMotionSpeedScale=0.5`의 역수를 적용해 기존 갑작스러운 기동 속도를 절반으로 줄였다.
+- 각 활성 헬기는 0.55~0.9초 개틀링 버스트, 0.075~0.11초 화염 간격, 1.25~2.2초 쿨타임을 독립적으로 사용한다. 총구에는 Collider 없는 additive Cross-Quad 2장을 사용한다.
+- 전역 추락 디렉터는 20~34초마다 한 대만 선택한다. 추락 기체는 World smoke, 중력 2.4, 240~420°/s 자회전을 사용하고 화면 이탈 뒤 4~7초 후 궤도에 재보충한다.
+- 실제 격리 실행에서 개틀링 화염 167회, 피해 없는 트레이서 3발, 추락 1회·1초 하강 2.367m·누적 회전 368.07°·연기 재생을 확인했다. 보스 HP 2000, 플레이어 100/120, 락온 타깃 5는 유지됐다.
+- 집중 EditMode 7/7 통과. 직전 전체 110/110은 유지된다. 신규 전체 MCP 작업은 실패 0으로 95/112까지 진행한 뒤 도구 작업 상태 갱신을 잃어 최종 결과는 미확정이다.
+
+### 2026-08-30 — 배경 아군 헬기 수직 자세·후진 외형 보정
+
+- 원인: 공중 그룹의 카메라 평면 타원 접선 전체를 `LookRotation` 전방으로 사용해 상승·하강 성분이 큰 구간에서 동체 피치가 과도해졌다.
+- 이동 궤도와 공격 위치는 바꾸지 않고, 실제 기수 방향은 월드 Up에 수평 투영한 진행 방향으로 계산한다. 수직 이동은 최대 7° 피치로만 표현하고 기존 최대 8° 뱅크를 유지한다.
+- 순수 수학에 `EvaluateConstrainedFlightRotation`을 추가하고 수직 이동·급경사 이동에서도 수평 전방과 fallback 전방이 유지되는 테스트 2개를 추가했다. 집중 EditMode 7/7 통과.
+- 실제 BattleArena 가짜 공격 전체에서 4대의 자세를 매 프레임 추적했다. 10,910개 샘플의 최대 `unit.up` 편차는 9.889°, 수평 실제 이동과 기수 전방의 최소 내적은 0.608로 모두 양수였다. 꼬리를 아래로 세우는 수직 자세와 뒤로 비행하는 프레임이 검출되지 않았다.
+- 공격은 트레이서 3발 후 정상 복귀했고 보스 HP 2000, 플레이어 Hull/Armor 100/120, 락온 유효 타깃 5를 유지했다.
+- 직전 전체 EditMode 110/110은 유지된다. 이번 변경 뒤 시작한 전체 MCP 작업은 실패 0 상태로 99/112까지 진행한 뒤 도구 작업 상태 갱신을 잃어 최종 결과가 미확정이므로 새 전체 통과로 기록하지 않는다.
+
+### 2026-08-29 — Background Ally Army 공중 Phase 0~2 구현
+
+- Git 기준점: `a6554a7` + 공중 배경 아군 작업 트리.
+- 500 tris FBX와 256/128 텍스처를 프로젝트 전용 아트 경로에 반입하고 URP shared Material, 로터 블러, 트레이서 Material, `BackgroundChopper_500.prefab`을 Builder로 생성했다.
+- BattleArena에 `AmbientAllyArmyRoot/AirRoot/CosmeticVfxRoot`를 추가하고 `BattleController.ConfigureBackground()`에서 보스·Base 카메라·StageVisualRoot를 전달한다.
+- 실제 1280×720 카메라에서 단독기 1대와 V자 편대 3대가 생성됐으며 로터 포함 투영 크기는 약 59~73×43~50px였다. 순찰 중심은 보스 위쪽 하늘로 이동하고 공격 때 보스 높이로 진입한다.
+- 강제 가짜 공격에서 트레이서 3발을 발사한 뒤 공격 슬롯 0, 활성 트레이서 0으로 복귀했다. Collider/Rigidbody는 0개이고 모든 기체가 500 tris Mesh와 instancing Material을 공유했다.
+- 공격 전후 보스 HP 2000, 플레이어 Hull/Armor 100/120, 락온 유효 타깃 5개가 유지됐다.
+- 신규 순수 수학 집중 EditMode 5/5와 전체 EditMode 110/110을 통과했다. 격리/합성 캡처와 보고서는 로컬 `Logs/BackgroundAllyArmy/`에 남겼다.
+- Unity MCP 원격 세션이 연결되지 않아 Unity 6000.4.0f1 배치 모드의 Builder, Test Runner, 비동기 Play Mode 검증으로 대체했다. 모바일 실기기, 10분 Profiler soak, 탱크 단계는 아직 미검증/미구현이다.
+
 ### 2026-08-29 — 전체 변경사항 공유 전 문서 경로 점검
 
 - 사용자가 요청한 전체 변경사항·docs Markdown 공유를 준비하면서 `AGENTS.md`와 문서 인덱스를 실제 중심 문서 경로인 `docs/cur_state/titan-destroyer-game-system-master.md`로 통일했다. 중심 문서는 이동하거나 복제하지 않았다.
@@ -972,6 +1031,9 @@ Armor가 120 흡수 → Armor 0, 잔여 피해 30
 
 | 날짜 | 버전 | 변경 내용 | 검증 |
 | --- | --- | --- | --- |
+| 2026-08-30 | 1.0.36 | 배경 헬기 모델 전방 반전, 공격 기동 속도 0.5배, 독립 개틀링 총구 화염, 한 대씩 연기·자회전 추락 및 재보충 추가 | 집중 7/7, 이동/기수 최소 내적 0.911, 개틀링 167회, 트레이서 3발, 추락 2.367m·368.07°·연기, 전투 불변식 통과. 신규 전체 작업은 95/112 상태 갱신 손실로 미확정 |
+| 2026-08-30 | 1.0.35 | 배경 아군 헬기 이동 경로와 자세를 분리해 월드 수평 전방, 최대 피치 7°·뱅크 8°로 제한. 수직 자세와 후진처럼 보이는 방향 전환 제거 | 집중 EditMode 7/7, 실제 10,910 샘플 최대 Up 편차 9.889°·이동/기수 최소 내적 0.608, 4대·3발·전투 불변식 통과. 신규 전체 작업은 99/112 상태 갱신 손실로 미확정 |
+| 2026-08-29 | 1.0.34 | Background Ally Army 공중 Phase 0~2: 500 tris 헬기 단독기 1대+3대 편대 순찰, 로터 블러, 단일 공격 슬롯과 피해 없는 트레이서 풀을 BattleArena에 연결. 탱크 단계는 계획 유지 | 신규 집중 5/5, 전체 EditMode 110/110, BattleArena 4대 생성·3발 공격·복귀, 보스 2000/플레이어 100·120/락온 5 불변식, Collider·Rigidbody 0 |
 | 2026-08-29 | 1.0.33 | AGENTS·인덱스의 중심 문서 경로 불일치 해결, docs Markdown 공유 및 로컬 인증 설정 제외 기록 | 경로·링크·Git 범위·자격증명 패턴 점검. 게임 코드 추가 변경 없음 |
 | 2026-08-29 | 1.0.32 | 횡단 빔 경로를 보존한 입 소켓 축/실제 목·머리 보정, 클립 방향 선택, 공통 VFX·피해 프레임, 회복/중단 동기화 구현 | EditMode 105/105, 최종 집중 19/19, 실제 전투 44조합/1396 프레임 최대 각도 오차 0.13706°, 중단·사망·포즈 회귀 |
 | 2026-08-29 | 1.0.31 | 가속 횡단 빔 92도 폴백/화면 경로 구분, 입 방향 동기화 미연결·문서 경로 불일치 기록, 개발계획 연결 | 관련 코드·씬 정적 교차검증만. 게임 변경·신규 실행 테스트 없음 |

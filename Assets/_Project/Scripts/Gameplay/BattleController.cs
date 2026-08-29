@@ -26,6 +26,7 @@ public class BattleController : MonoBehaviour
     [SerializeField] private GameObject allyPlaceholder;
     [SerializeField] private GameObject backgroundRoot;
     [SerializeField] private BattleBackgroundHost backgroundHost;
+    [SerializeField] private BackgroundAllyArmyController backgroundAllyArmy;
     [SerializeField] private Transform stageVisualRoot;
     [SerializeField] private EnvironmentThemeDebugPanel environmentThemeDebugPanel;
     [SerializeField] private PlayerMoveGuide playerMoveGuide;
@@ -42,6 +43,7 @@ public class BattleController : MonoBehaviour
     public BossTestState BossTestState => bossTestState;
     public BossLockOnTargetProvider BossLockOnTargetProvider => bossLockOnTargetProvider;
     public PlayerLockOnController PlayerLockOnController => playerLockOnController;
+    public BackgroundAllyArmyController BackgroundAllyArmy => backgroundAllyArmy;
 
     private void Awake()
     {
@@ -198,6 +200,7 @@ public class BattleController : MonoBehaviour
         allyPlaceholder ??= FindSceneObject("AllyPlaceholder");
         backgroundRoot ??= FindSceneObject("BackgroundRoot");
         backgroundHost ??= backgroundRoot != null ? backgroundRoot.GetComponent<BattleBackgroundHost>() : FindSceneComponent<BattleBackgroundHost>();
+        backgroundAllyArmy ??= FindSceneComponent<BackgroundAllyArmyController>();
         stageVisualRoot ??= FindSceneTransform("StageVisualRoot");
         environmentThemeDebugPanel ??= FindSceneComponent<EnvironmentThemeDebugPanel>();
         playerMoveGuide ??= FindSceneComponent<PlayerMoveGuide>();
@@ -443,14 +446,14 @@ public class BattleController : MonoBehaviour
 
     private void ConfigureBackground()
     {
-        if (backgroundHost == null)
+        if (backgroundHost != null)
         {
-            return;
+            // BattleController only provides the stage rotation source.
+            // The background host owns the concrete background implementation.
+            backgroundHost.BindStageRotationSource(stageVisualRoot);
         }
 
-        // BattleController only provides the stage rotation source.
-        // The background host owns the concrete background implementation.
-        backgroundHost.BindStageRotationSource(stageVisualRoot);
+        backgroundAllyArmy?.Configure(this, bossController, Camera.main, stageVisualRoot);
     }
 
     private void WireRuntime()
