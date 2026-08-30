@@ -118,6 +118,7 @@ public static class BackgroundGroundArmoredUnitsVerification
             {
                 VerifyCombatInvariants();
                 VerifyMovementAndGrounding();
+                VerifyTurretAiming();
                 Append(
                     $"PASS units={ground.SpawnedUnitCount} primary={ground.TotalPrimaryAttacks} shots={ground.TotalCosmeticShots} muzzleFlashes={ground.TotalMuzzleFlashes} " +
                     $"bossHp={boss.CurrentHealth:F1} player={player.CurrentHull:F1}/{player.CurrentArmor:F1} targets={targetProvider.ValidTargetCount}");
@@ -174,6 +175,7 @@ public static class BackgroundGroundArmoredUnitsVerification
         BackgroundGroundUnitView[] views = UnityEngine.Object.FindObjectsByType<BackgroundGroundUnitView>(FindObjectsInactive.Exclude);
         Require(ground.SpawnedUnitCount == 8, $"Expected 8 ground vehicles, got {ground.SpawnedUnitCount}.");
         Require(views.Length == 8, $"Expected 8 ground unit views, got {views.Length}.");
+        Require(views.All(view => Mathf.Abs(view.transform.localScale.x - 3f) < 0.001f), "Ground armored unit scale is not the requested 3.0.");
         int gatlingCount = views.Count(view => view.name.Contains("Gatling"));
         int mortarCount = views.Count(view => view.name.Contains("Mortar"));
         int tankCount = views.Length - gatlingCount - mortarCount;
@@ -195,13 +197,23 @@ public static class BackgroundGroundArmoredUnitsVerification
             int expected = views[i].name.Contains("Gatling") ? 779 : views[i].name.Contains("Mortar") ? 820 : 800;
             Require(triangles == expected, $"{views[i].name} expected {expected} tris, got {triangles}.");
 
+            Quaternion expectedVisualRotation = Quaternion.Euler(
+                views[i].name.Contains("Gatling")
+                    ? ground.GatlingVisualRotationOffsetEuler
+                    : views[i].name.Contains("Mortar")
+                        ? ground.MortarVisualRotationOffsetEuler
+                        : ground.TankVisualRotationOffsetEuler);
+            Require(
+                Quaternion.Angle(views[i].VisualRoot.localRotation, expectedVisualRotation) < 0.1f,
+                $"{views[i].name} did not preserve its authored visual rotation offset.");
+
             Vector3 local = ground.StageVisualRoot.InverseTransformPoint(views[i].transform.position);
             Require(local.y >= 0.08f && local.y <= 0.25f, $"{views[i].name} is not grounded in StageVisualRoot local space: y={local.y:F3}.");
             Vector3 muzzleDirection = (views[i].Muzzle.position - views[i].transform.position).normalized;
-            Require(Vector3.Dot(muzzleDirection, views[i].transform.forward) > 0.25f, $"{views[i].name} muzzle is not on the forward side.");
+            Require(Vector3.Dot(muzzleDirection, views[i].VisualRoot.forward) > 0.25f, $"{views[i].name} muzzle is not on the authored visual forward side.");
 
             Vector2 projected = CalculateProjectedSize(Camera.main, views[i].CachedRenderers);
-            Require(projected.x * 1280f >= 12f && projected.x * 1280f <= 110f,
+            Require(projected.x * 1280f >= 18f && projected.x * 1280f <= 165f,
                 $"{views[i].name} projected width is outside the background-unit range: {projected.x * 1280f:F1}px.");
             Append($"unit={views[i].name} stageLocal={local:F3} projected={projected.x * 1280f:F1}x{projected.y * 720f:F1}px tris={triangles}");
         }
@@ -234,6 +246,25 @@ public static class BackgroundGroundArmoredUnitsVerification
         Require(Mathf.Abs(player.CurrentHull - playerHull) < 0.001f, "Ground cosmetic attack changed player Hull.");
         Require(Mathf.Abs(player.CurrentArmor - playerArmor) < 0.001f, "Ground cosmetic attack changed player Armor.");
         Require(targetProvider.ValidTargetCount == targetCount, "Ground cosmetic attack changed lock-on target count.");
+    }
+
+    private static void VerifyTurretAiming()
+    {
+        BackgroundGroundUnitView[] views = UnityEngine.Object.FindObjectsByType<BackgroundGroundUnitView>(FindObjectsInactive.Exclude);
+        float maximumError = 0f;
+        for (int i = 0; i < views.Length; i++)
+        {
+            BackgroundGroundUnitView view = views[i];
+            Vector3 barrelDirection = view.Muzzle.position - view.WeaponPitch.position;
+            Vector3 targetDirection = boss.HitPoint - view.WeaponPitch.position;
+            Require(barrelDirection.sqrMagnitude > 0.000001f, $"{view.name} has no authored barrel direction.");
+            Require(targetDirection.sqrMagnitude > 0.000001f, $"{view.name} overlaps the boss aim point.");
+            float error = Vector3.Angle(barrelDirection, targetDirection);
+            maximumError = Mathf.Max(maximumError, error);
+            Append($"aim={view.name} error={error:F2}deg");
+        }
+
+        Require(maximumError <= 12f, $"Ground turret maximum aim error is too large: {maximumError:F2} degrees.");
     }
 
     private static Vector2 CalculateProjectedSize(Camera camera, Renderer[] renderers)

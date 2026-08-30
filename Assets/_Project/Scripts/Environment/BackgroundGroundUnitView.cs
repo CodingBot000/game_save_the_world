@@ -3,6 +3,9 @@ using UnityEngine;
 [DisallowMultipleComponent]
 public sealed class BackgroundGroundUnitView : MonoBehaviour
 {
+    private const float MaximumPitchUpDegrees = 80f;
+    private const float MaximumPitchDownDegrees = 35f;
+
     [SerializeField] private Transform visualRoot;
     [SerializeField] private Transform turretYaw;
     [SerializeField] private Transform weaponPitch;
@@ -13,6 +16,8 @@ public sealed class BackgroundGroundUnitView : MonoBehaviour
 
     private Quaternion turretRestRotation = Quaternion.identity;
     private Quaternion weaponRestRotation = Quaternion.identity;
+    private Vector3 turretRestAimDirectionInParent = Vector3.forward;
+    private Vector3 weaponRestAimDirectionInParent = Vector3.forward;
     private bool restPoseCaptured;
 
     public Transform VisualRoot => visualRoot != null ? visualRoot : transform;
@@ -76,33 +81,46 @@ public sealed class BackgroundGroundUnitView : MonoBehaviour
     public void AimAt(Vector3 worldTarget, float degreesPerSecond, float deltaTime)
     {
         CaptureRestPose();
-        if (turretYaw != null)
+        Vector3 worldUp = transform.up.sqrMagnitude > 0.000001f ? transform.up.normalized : Vector3.up;
+        float maximumStep = Mathf.Max(0f, degreesPerSecond) * Mathf.Max(0f, deltaTime);
+
+        if (turretYaw != null && turretYaw.parent != null)
         {
-            Vector3 localDirection = turretYaw.parent.InverseTransformDirection(worldTarget - turretYaw.position);
-            localDirection.y = 0f;
-            if (localDirection.sqrMagnitude > 0.000001f)
+            Transform yawParent = turretYaw.parent;
+            Vector3 yawAxisInParent = yawParent.InverseTransformDirection(worldUp).normalized;
+            Vector3 targetDirectionInParent = yawParent.InverseTransformDirection(worldTarget - turretYaw.position);
+            if (BackgroundGroundAimMath.TryCalculateYawRotation(
+                    turretRestRotation,
+                    turretRestAimDirectionInParent,
+                    yawAxisInParent,
+                    targetDirectionInParent,
+                    out Quaternion targetYaw))
             {
-                Quaternion yaw = Quaternion.LookRotation(localDirection.normalized, Vector3.up);
                 turretYaw.localRotation = Quaternion.RotateTowards(
                     turretYaw.localRotation,
-                    turretRestRotation * yaw,
-                    Mathf.Max(0f, degreesPerSecond) * Mathf.Max(0f, deltaTime));
+                    targetYaw,
+                    maximumStep);
             }
         }
 
-        if (weaponPitch != null)
+        if (weaponPitch != null && weaponPitch.parent != null)
         {
-            Vector3 localDirection = weaponPitch.parent.InverseTransformDirection(worldTarget - weaponPitch.position);
-            float planar = new Vector2(localDirection.x, localDirection.z).magnitude;
-            if (localDirection.sqrMagnitude > 0.000001f)
+            Transform pitchParent = weaponPitch.parent;
+            Vector3 upInParent = pitchParent.InverseTransformDirection(worldUp).normalized;
+            Vector3 targetDirectionInParent = pitchParent.InverseTransformDirection(worldTarget - weaponPitch.position);
+            if (BackgroundGroundAimMath.TryCalculatePitchRotation(
+                    weaponRestRotation,
+                    weaponRestAimDirectionInParent,
+                    upInParent,
+                    targetDirectionInParent,
+                    MaximumPitchUpDegrees,
+                    MaximumPitchDownDegrees,
+                    out Quaternion targetPitch))
             {
-                float pitch = -Mathf.Atan2(localDirection.y, Mathf.Max(0.0001f, planar)) * Mathf.Rad2Deg;
-                pitch = Mathf.Clamp(pitch, -35f, 18f);
-                Quaternion target = weaponRestRotation * Quaternion.Euler(pitch, 0f, 0f);
                 weaponPitch.localRotation = Quaternion.RotateTowards(
                     weaponPitch.localRotation,
-                    target,
-                    Mathf.Max(0f, degreesPerSecond) * Mathf.Max(0f, deltaTime));
+                    targetPitch,
+                    maximumStep);
             }
         }
     }
@@ -184,7 +202,41 @@ public sealed class BackgroundGroundUnitView : MonoBehaviour
 
         turretRestRotation = turretYaw != null ? turretYaw.localRotation : Quaternion.identity;
         weaponRestRotation = weaponPitch != null ? weaponPitch.localRotation : Quaternion.identity;
+        Vector3 authoredBarrelDirection = ResolveAuthoredBarrelDirection();
+        if (turretYaw != null && turretYaw.parent != null)
+        {
+            turretRestAimDirectionInParent = turretYaw.parent.InverseTransformDirection(authoredBarrelDirection).normalized;
+        }
+
+        if (weaponPitch != null && weaponPitch.parent != null)
+        {
+            weaponRestAimDirectionInParent = weaponPitch.parent.InverseTransformDirection(authoredBarrelDirection).normalized;
+        }
+
         restPoseCaptured = true;
+    }
+
+    private Vector3 ResolveAuthoredBarrelDirection()
+    {
+        if (muzzle != null && weaponPitch != null)
+        {
+            Vector3 direction = muzzle.position - weaponPitch.position;
+            if (direction.sqrMagnitude > 0.000001f)
+            {
+                return direction.normalized;
+            }
+        }
+
+        if (muzzle != null && turretYaw != null)
+        {
+            Vector3 direction = muzzle.position - turretYaw.position;
+            if (direction.sqrMagnitude > 0.000001f)
+            {
+                return direction.normalized;
+            }
+        }
+
+        return VisualRoot.forward;
     }
 
     private void CacheRenderers(bool force = false)

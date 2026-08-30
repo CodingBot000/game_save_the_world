@@ -29,6 +29,7 @@ public static class BackgroundGroundArmoredUnitsBuilder
     private const string BattleArenaRootName = "BattleArenaRoot";
     private const string ArmyRootName = "AmbientAllyArmyRoot";
     private const string GroundRootName = "GroundArmoredUnits";
+    private const string DirectionPreviewName = "GroundDirectionPreview";
 
     [MenuItem("Tools/Titan Destroyer/Rebuild Background Ground Armored Units")]
     public static void RebuildLoadedBattleArena()
@@ -54,6 +55,107 @@ public static class BackgroundGroundArmoredUnitsBuilder
         AssetDatabase.SaveAssets();
         AssetDatabase.Refresh();
         Debug.Log("Background ground armored unit assets and BattleArena scene bindings rebuilt.");
+    }
+
+    [MenuItem("Tools/Titan Destroyer/Frame Ground Direction Preview")]
+    public static void FrameGroundDirectionPreview()
+    {
+        Scene scene = SceneManager.GetActiveScene();
+        Transform preview = scene.IsValid() ? FindSceneTransform(scene, DirectionPreviewName) : null;
+        if (preview == null)
+        {
+            Debug.LogWarning("GroundDirectionPreview was not found. Rebuild Background Ground Armored Units first.");
+            return;
+        }
+
+        Selection.activeGameObject = preview.gameObject;
+        SceneView sceneView = SceneView.lastActiveSceneView;
+        if (sceneView != null)
+        {
+            sceneView.FrameSelected();
+            sceneView.Repaint();
+        }
+    }
+
+    [MenuItem("Tools/Titan Destroyer/Apply Ground Preview Rotations To Runtime")]
+    public static void ApplyGroundPreviewRotationsToRuntime()
+    {
+        if (Application.isPlaying)
+        {
+            Debug.LogWarning("Ground preview rotations can only be applied in Edit Mode.");
+            return;
+        }
+
+        Scene scene = SceneManager.GetActiveScene();
+        Transform preview = scene.IsValid() ? FindSceneTransform(scene, DirectionPreviewName) : null;
+        BackgroundGroundArmoredUnitsRuntime runtime = scene.IsValid()
+            ? FindSceneComponent<BackgroundGroundArmoredUnitsRuntime>(scene)
+            : null;
+        if (preview == null || runtime == null)
+        {
+            Debug.LogWarning("GroundDirectionPreview or BackgroundGroundArmoredUnitsRuntime was not found in the active scene.");
+            return;
+        }
+
+        GameObject tankPrefab = AssetDatabase.LoadAssetAtPath<GameObject>(TankPrefabPath);
+        GameObject gatlingPrefab = AssetDatabase.LoadAssetAtPath<GameObject>(GatlingPrefabPath);
+        GameObject mortarPrefab = AssetDatabase.LoadAssetAtPath<GameObject>(MortarPrefabPath);
+        Vector3 tankEuler = runtime.TankVisualRotationOffsetEuler;
+        Vector3 gatlingEuler = runtime.GatlingVisualRotationOffsetEuler;
+        Vector3 mortarEuler = runtime.MortarVisualRotationOffsetEuler;
+        bool foundTank = false;
+        bool foundGatling = false;
+        bool foundMortar = false;
+        int recognizedCount = 0;
+
+        BackgroundGroundUnitView[] previewVehicles = preview.GetComponentsInChildren<BackgroundGroundUnitView>(true);
+        for (int i = 0; i < previewVehicles.Length; i++)
+        {
+            BackgroundGroundUnitView view = previewVehicles[i];
+            GameObject originalSource = PrefabUtility.GetCorrespondingObjectFromOriginalSource(view.gameObject);
+            if (originalSource == tankPrefab || view.name.Contains("Tank"))
+            {
+                tankEuler = view.transform.localEulerAngles;
+                foundTank = true;
+                recognizedCount++;
+            }
+            else if (originalSource == gatlingPrefab || view.name.Contains("Gatling"))
+            {
+                gatlingEuler = view.transform.localEulerAngles;
+                foundGatling = true;
+                recognizedCount++;
+            }
+            else if (originalSource == mortarPrefab || view.name.Contains("Mortar"))
+            {
+                mortarEuler = view.transform.localEulerAngles;
+                foundMortar = true;
+                recognizedCount++;
+            }
+            else
+            {
+                Debug.LogWarning($"Skipped unrecognized ground preview object '{view.name}'.", view);
+            }
+        }
+
+        if (recognizedCount == 0)
+        {
+            Debug.LogWarning("No ground preview vehicles with BackgroundGroundUnitView were recognized.");
+            return;
+        }
+
+        Undo.RecordObject(runtime, "Apply Ground Preview Rotations To Runtime");
+        runtime.SetAuthoredVisualRotationOffsetsForEditor(tankEuler, gatlingEuler, mortarEuler);
+        EditorUtility.SetDirty(runtime);
+        EditorSceneManager.MarkSceneDirty(scene);
+        EditorSceneManager.SaveScene(scene);
+        AssetDatabase.SaveAssets();
+        Selection.activeGameObject = preview.gameObject;
+        Debug.Log(
+            $"Applied {recognizedCount} ground preview rotations to runtime. " +
+            $"Tank={(foundTank ? tankEuler : runtime.TankVisualRotationOffsetEuler)}, " +
+            $"Gatling={(foundGatling ? gatlingEuler : runtime.GatlingVisualRotationOffsetEuler)}, " +
+            $"Mortar={(foundMortar ? mortarEuler : runtime.MortarVisualRotationOffsetEuler)}.",
+            runtime);
     }
 
     public static void RebuildBattleArenaForBatch()
@@ -412,6 +514,15 @@ public static class BackgroundGroundArmoredUnitsBuilder
         EditorUtility.SetDirty(runtime);
         EditorUtility.SetDirty(budget);
 
+        Transform stageVisualRoot = FindSceneTransform(scene, "StageVisualRoot");
+        Transform directionPreview = BuildDirectionPreview(
+            stageVisualRoot,
+            AssetDatabase.LoadAssetAtPath<GameObject>(TankPrefabPath),
+            AssetDatabase.LoadAssetAtPath<GameObject>(GatlingPrefabPath),
+            AssetDatabase.LoadAssetAtPath<GameObject>(MortarPrefabPath),
+            AssetDatabase.LoadAssetAtPath<Material>(TracerMaterialPath),
+            runtime);
+
         BattleController battleController = FindSceneComponent<BattleController>(scene);
         if (battleController != null)
         {
@@ -425,14 +536,144 @@ public static class BackgroundGroundArmoredUnitsBuilder
 
             if (stageProperty != null)
             {
-                stageProperty.objectReferenceValue = FindSceneTransform(scene, "StageVisualRoot");
+                stageProperty.objectReferenceValue = stageVisualRoot;
             }
 
             serializedBattle.ApplyModifiedPropertiesWithoutUndo();
             EditorUtility.SetDirty(battleController);
         }
 
+        if (directionPreview != null && !Application.isBatchMode)
+        {
+            Selection.activeGameObject = directionPreview.gameObject;
+            SceneView sceneView = SceneView.lastActiveSceneView;
+            if (sceneView != null)
+            {
+                sceneView.FrameSelected();
+                sceneView.Repaint();
+            }
+        }
+
         return true;
+    }
+
+    private static Transform BuildDirectionPreview(
+        Transform stageVisualRoot,
+        GameObject tankPrefab,
+        GameObject gatlingPrefab,
+        GameObject mortarPrefab,
+        Material arrowMaterial,
+        BackgroundGroundArmoredUnitsRuntime runtime)
+    {
+        if (stageVisualRoot == null || tankPrefab == null || gatlingPrefab == null || mortarPrefab == null)
+        {
+            Debug.LogWarning("Ground direction preview was not built because StageVisualRoot or a vehicle prefab is missing.");
+            return null;
+        }
+
+        Transform existing = stageVisualRoot.Find(DirectionPreviewName);
+        if (existing != null)
+        {
+            Object.DestroyImmediate(existing.gameObject);
+        }
+
+        GameObject previewObject = new(DirectionPreviewName);
+        previewObject.tag = "EditorOnly";
+        Transform previewRoot = previewObject.transform;
+        previewRoot.SetParent(stageVisualRoot, false);
+        previewRoot.localPosition = new Vector3(0f, 0f, -3.5f);
+        previewRoot.localRotation = Quaternion.identity;
+        previewRoot.localScale = Vector3.one;
+
+        CreatePreviewVehicle(
+            previewRoot,
+            tankPrefab,
+            "Preview_Tank_FORWARD_+Z",
+            new Vector3(-4.5f, 0.2f, 0f),
+            Quaternion.Euler(runtime != null ? runtime.TankVisualRotationOffsetEuler : Vector3.zero),
+            "TANK");
+        CreatePreviewVehicle(
+            previewRoot,
+            gatlingPrefab,
+            "Preview_Gatling_FORWARD_+Z",
+            new Vector3(0f, 0.2f, 0f),
+            Quaternion.Euler(runtime != null ? runtime.GatlingVisualRotationOffsetEuler : Vector3.zero),
+            "GATLING");
+        CreatePreviewVehicle(
+            previewRoot,
+            mortarPrefab,
+            "Preview_Mortar_FORWARD_+Z",
+            new Vector3(4.5f, 0.2f, 0f),
+            Quaternion.Euler(runtime != null ? runtime.MortarVisualRotationOffsetEuler : Vector3.zero),
+            "MORTAR");
+        CreateForwardArrow(previewRoot, arrowMaterial);
+        EditorUtility.SetDirty(previewObject);
+        return previewRoot;
+    }
+
+    private static void CreatePreviewVehicle(
+        Transform parent,
+        GameObject prefab,
+        string name,
+        Vector3 localPosition,
+        Quaternion localRotation,
+        string label)
+    {
+        GameObject instance = PrefabUtility.InstantiatePrefab(prefab, parent) as GameObject;
+        if (instance == null)
+        {
+            instance = Object.Instantiate(prefab, parent);
+        }
+
+        instance.name = name;
+        instance.transform.SetLocalPositionAndRotation(localPosition, localRotation);
+        instance.transform.localScale = Vector3.one * 3f;
+
+        GameObject labelObject = new(label + "_LABEL");
+        labelObject.transform.SetParent(instance.transform, false);
+        labelObject.transform.localPosition = new Vector3(0f, 1.1f, 0f);
+        labelObject.transform.localRotation = Quaternion.Euler(90f, 0f, 0f);
+        TextMesh text = labelObject.AddComponent<TextMesh>();
+        text.text = label;
+        text.anchor = TextAnchor.MiddleCenter;
+        text.alignment = TextAlignment.Center;
+        text.fontSize = 64;
+        text.characterSize = 0.045f;
+        text.color = new Color(1f, 0.86f, 0.16f, 1f);
+    }
+
+    private static void CreateForwardArrow(Transform parent, Material material)
+    {
+        GameObject arrowObject = new("FORWARD_+Z_ARROW");
+        arrowObject.transform.SetParent(parent, false);
+        LineRenderer line = arrowObject.AddComponent<LineRenderer>();
+        line.sharedMaterial = material;
+        line.useWorldSpace = false;
+        line.positionCount = 5;
+        line.startWidth = 0.12f;
+        line.endWidth = 0.12f;
+        line.numCapVertices = 2;
+        line.shadowCastingMode = ShadowCastingMode.Off;
+        line.receiveShadows = false;
+        line.startColor = new Color(1f, 0.85f, 0.1f, 1f);
+        line.endColor = line.startColor;
+        line.SetPosition(0, new Vector3(0f, 0.65f, -4f));
+        line.SetPosition(1, new Vector3(0f, 0.65f, 4f));
+        line.SetPosition(2, new Vector3(-0.65f, 0.65f, 3.1f));
+        line.SetPosition(3, new Vector3(0f, 0.65f, 4f));
+        line.SetPosition(4, new Vector3(0.65f, 0.65f, 3.1f));
+
+        GameObject labelObject = new("FORWARD_+Z_LABEL");
+        labelObject.transform.SetParent(parent, false);
+        labelObject.transform.localPosition = new Vector3(0f, 0.7f, 4.6f);
+        labelObject.transform.localRotation = Quaternion.Euler(90f, 0f, 0f);
+        TextMesh text = labelObject.AddComponent<TextMesh>();
+        text.text = "FORWARD +Z";
+        text.anchor = TextAnchor.MiddleCenter;
+        text.alignment = TextAlignment.Center;
+        text.fontSize = 64;
+        text.characterSize = 0.055f;
+        text.color = new Color(1f, 0.85f, 0.1f, 1f);
     }
 
     private static Transform FindDescendant(Transform root, string name)

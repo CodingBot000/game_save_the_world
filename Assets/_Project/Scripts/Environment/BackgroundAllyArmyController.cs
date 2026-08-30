@@ -91,7 +91,7 @@ public sealed class BackgroundAllyArmyController : MonoBehaviour
     [Header("Air Composition")]
     [SerializeField, Range(1, 2)] private int soloCount = 1;
     [SerializeField, Range(2, 3)] private int formationSize = 3;
-    [SerializeField, Min(0.01f)] private float visualScale = 0.9f;
+    [SerializeField, Min(0.01f)] private float visualScale = 1.35f;
 
     [Header("Patrol Orbit")]
     [SerializeField, Min(0.1f)] private float orbitRadiusX = 11f;
@@ -293,7 +293,7 @@ public sealed class BackgroundAllyArmyController : MonoBehaviour
 
     public void ApplyAuthoredDefaultsForEditorIfNeeded()
     {
-        if (authoredConfigurationVersion >= 9)
+        if (authoredConfigurationVersion >= 10)
         {
             return;
         }
@@ -334,7 +334,12 @@ public sealed class BackgroundAllyArmyController : MonoBehaviour
 
         maximumPitchDegrees = Mathf.Clamp(maximumPitchDegrees, 0f, 7f);
         attackMotionSpeedScale = 0.5f;
-        authoredConfigurationVersion = 9;
+        if (authoredConfigurationVersion < 10 && Mathf.Abs(visualScale - 0.9f) <= 0.01f)
+        {
+            visualScale = 1.35f;
+        }
+
+        authoredConfigurationVersion = 10;
     }
 
     private void LateUpdate()

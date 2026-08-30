@@ -9,6 +9,7 @@ using Random = System.Random;
 [DefaultExecutionOrder(310)]
 public sealed class BackgroundGroundArmoredUnitsRuntime : MonoBehaviour
 {
+    private const string EditorDirectionPreviewName = "GroundDirectionPreview";
     private enum UnitKind
     {
         Tank,
@@ -42,7 +43,6 @@ public sealed class BackgroundGroundArmoredUnitsRuntime : MonoBehaviour
         public float BrakeAcceleration;
         public float RotationResponse;
         public float AimSpeed;
-        public float AimNoiseSeed;
         public float StateRemaining;
         public float FireDelay;
         public int ShotsRemaining;
@@ -124,7 +124,12 @@ public sealed class BackgroundGroundArmoredUnitsRuntime : MonoBehaviour
     [SerializeField] private bool enableGatlingCarrier = true;
     [SerializeField] private bool enableMortarCarrier = true;
     [SerializeField] private bool enableFormationMovement = true;
-    [SerializeField, Range(0.1f, 4f)] private float visualScale = 2f;
+    [SerializeField, Range(0.1f, 4f)] private float visualScale = 3f;
+
+    [Header("Authored Visual Rotation Offsets")]
+    [SerializeField] private Vector3 tankVisualRotationOffsetEuler;
+    [SerializeField] private Vector3 gatlingVisualRotationOffsetEuler;
+    [SerializeField] private Vector3 mortarVisualRotationOffsetEuler;
 
     [Header("Movement")]
     [SerializeField, Range(0.1f, 3f)] private float globalSpeedScale = 1f;
@@ -166,6 +171,9 @@ public sealed class BackgroundGroundArmoredUnitsRuntime : MonoBehaviour
     public int TotalMuzzleFlashes => totalMuzzleFlashes;
     public int TotalPrimaryAttacks => totalPrimaryAttacks;
     public Transform StageVisualRoot => stageVisualRoot;
+    public Vector3 TankVisualRotationOffsetEuler => tankVisualRotationOffsetEuler;
+    public Vector3 GatlingVisualRotationOffsetEuler => gatlingVisualRotationOffsetEuler;
+    public Vector3 MortarVisualRotationOffsetEuler => mortarVisualRotationOffsetEuler;
 
     public int VisibleMuzzleFlashCount
     {
@@ -220,6 +228,14 @@ public sealed class BackgroundGroundArmoredUnitsRuntime : MonoBehaviour
         stageVisualRoot = configuredStageVisualRoot != null
             ? configuredStageVisualRoot
             : FindSceneTransform("StageVisualRoot");
+        if (Application.isPlaying && stageVisualRoot != null)
+        {
+            Transform editorPreview = stageVisualRoot.Find(EditorDirectionPreviewName);
+            if (editorPreview != null)
+            {
+                editorPreview.gameObject.SetActive(false);
+            }
+        }
         combatBudget = GetComponentInParent<BackgroundCosmeticCombatBudget>();
 
         if (!enableGroundArmoredUnits || stageVisualRoot == null || bossController == null
@@ -272,16 +288,41 @@ public sealed class BackgroundGroundArmoredUnitsRuntime : MonoBehaviour
 
     public void ApplyAuthoredDefaultsForEditorIfNeeded()
     {
-        if (authoredConfigurationVersion >= 1)
+        if (authoredConfigurationVersion >= 3)
         {
             return;
         }
 
-        enableGroundArmoredUnits = true;
-        enableGroundCosmeticAttacks = true;
-        enableFormationMovement = true;
-        visualScale = 2f;
-        authoredConfigurationVersion = 1;
+        if (authoredConfigurationVersion < 2)
+        {
+            enableGroundArmoredUnits = true;
+            enableGroundCosmeticAttacks = true;
+            enableFormationMovement = true;
+            if (authoredConfigurationVersion == 0 || Mathf.Abs(visualScale - 2f) <= 0.01f)
+            {
+                visualScale = 3f;
+            }
+        }
+
+        if (authoredConfigurationVersion < 3)
+        {
+            tankVisualRotationOffsetEuler = Vector3.zero;
+            gatlingVisualRotationOffsetEuler = Vector3.zero;
+            mortarVisualRotationOffsetEuler = Vector3.zero;
+        }
+
+        authoredConfigurationVersion = 3;
+    }
+
+    public void SetAuthoredVisualRotationOffsetsForEditor(
+        Vector3 tankEuler,
+        Vector3 gatlingEuler,
+        Vector3 mortarEuler)
+    {
+        tankVisualRotationOffsetEuler = tankEuler;
+        gatlingVisualRotationOffsetEuler = gatlingEuler;
+        mortarVisualRotationOffsetEuler = mortarEuler;
+        authoredConfigurationVersion = Mathf.Max(authoredConfigurationVersion, 3);
     }
 
     private void LateUpdate()
@@ -292,13 +333,14 @@ public sealed class BackgroundGroundArmoredUnitsRuntime : MonoBehaviour
         }
 
         float deltaTime = Time.deltaTime;
-        bool combatActive = deltaTime > 0f && bossController.IsAlive
+        bool aimAtBoss = deltaTime > 0f && bossController.IsAlive;
+        bool combatActive = aimAtBoss
                             && (battleController == null || battleController.IsBattleActive);
         UpdatePrimaryDirector(deltaTime, enableGroundCosmeticAttacks && combatActive);
 
         for (int i = 0; i < units.Count; i++)
         {
-            UpdateUnit(i, deltaTime, combatActive);
+            UpdateUnit(i, deltaTime, combatActive, aimAtBoss);
         }
 
         UpdateVfx(deltaTime);
@@ -407,6 +449,8 @@ public sealed class BackgroundGroundArmoredUnitsRuntime : MonoBehaviour
             view = instance.AddComponent<BackgroundGroundUnitView>();
         }
 
+        view.VisualRoot.localRotation = GetAuthoredVisualRotationOffset(kind);
+
         float speed = kind switch
         {
             UnitKind.Tank => 1.45f,
@@ -431,10 +475,20 @@ public sealed class BackgroundGroundArmoredUnitsRuntime : MonoBehaviour
             BrakeAcceleration = kind == UnitKind.MortarCarrier ? 1.1f : 1.55f,
             RotationResponse = routeRotationResponse * NextFloat(0.85f, 1.12f),
             AimSpeed = kind == UnitKind.MortarCarrier ? 32f : kind == UnitKind.Tank ? 55f : 82f,
-            AimNoiseSeed = NextFloat(0f, 100f) + seedOffset * 2.17f,
             AmbientCooldown = NextFloat(ambientCooldownSeconds) + seedOffset * 0.17f,
         });
         return units.Count - 1;
+    }
+
+    private Quaternion GetAuthoredVisualRotationOffset(UnitKind kind)
+    {
+        Vector3 euler = kind switch
+        {
+            UnitKind.Tank => tankVisualRotationOffsetEuler,
+            UnitKind.GatlingCarrier => gatlingVisualRotationOffsetEuler,
+            _ => mortarVisualRotationOffsetEuler,
+        };
+        return Quaternion.Euler(euler);
     }
 
     private void SnapAllUnits()
@@ -445,7 +499,7 @@ public sealed class BackgroundGroundArmoredUnitsRuntime : MonoBehaviour
         }
     }
 
-    private void UpdateUnit(int index, float deltaTime, bool combatActive)
+    private void UpdateUnit(int index, float deltaTime, bool combatActive, bool aimAtBoss)
     {
         GroundUnit unit = units[index];
         UpdateMuzzleFlash(unit, deltaTime);
@@ -469,9 +523,9 @@ public sealed class BackgroundGroundArmoredUnitsRuntime : MonoBehaviour
         UpdateAmbientFire(unit, deltaTime, combatActive);
         UpdateUnitPose(index, deltaTime, false);
 
-        if (combatActive && unit.View != null)
+        if (aimAtBoss && unit.View != null)
         {
-            unit.View.AimAt(GetAimTarget(unit), unit.AimSpeed, deltaTime);
+            unit.View.AimAt(bossController.HitPoint, unit.AimSpeed, deltaTime);
         }
         else
         {
@@ -737,21 +791,6 @@ public sealed class BackgroundGroundArmoredUnitsRuntime : MonoBehaviour
         {
             ActivateExplosion(target, 0.62f, 0.34f);
         }
-    }
-
-    private Vector3 GetAimTarget(GroundUnit unit)
-    {
-        Vector3 target = bossController != null ? bossController.HitPoint : stageVisualRoot.position;
-        if (baseCamera != null)
-        {
-            float time = Time.time * 0.22f + unit.AimNoiseSeed;
-            target += baseCamera.transform.right * (Mathf.Sin(time) * 1.15f);
-            target += baseCamera.transform.up * (unit.Kind == UnitKind.MortarCarrier
-                ? 2.1f + Mathf.Sin(time * 0.71f) * 0.55f
-                : 0.25f + Mathf.Sin(time * 0.83f) * 0.5f);
-        }
-
-        return target;
     }
 
     private Vector3 GetShotTarget(UnitKind kind)

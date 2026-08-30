@@ -255,6 +255,7 @@ public static class BackgroundAllyArmyVerification
         BackgroundAllyUnitView[] views = UnityEngine.Object.FindObjectsByType<BackgroundAllyUnitView>(FindObjectsInactive.Exclude);
         Require(army.SpawnedAirUnitCount == 4, $"Expected 4 background choppers, got {army.SpawnedAirUnitCount}.");
         Require(views.Length == 4, $"Expected 4 background chopper views, got {views.Length}.");
+        Require(views.All(view => Mathf.Abs(view.transform.localScale.x - 1.35f) < 0.001f), "Background chopper scale is not the requested 1.35.");
         Require(army.ActiveCosmeticAttackCount == 0, "A cosmetic attack started before the forced verification run.");
         Require(Mathf.Abs(army.AttackMotionSpeedScale - 0.5f) < 0.001f, $"Attack motion speed scale is not 0.5: {army.AttackMotionSpeedScale:F3}.");
         Require(army.GetComponentsInChildren<Collider>(true).Length == 0, "Background ally army contains a Collider.");

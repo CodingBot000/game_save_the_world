@@ -196,4 +196,42 @@ public class BackgroundAllyArmyTests
             Object.DestroyImmediate(host);
         }
     }
+
+    [Test]
+    public void GroundTurretAimsUsingAuthoredBarrelAxisAfterVisualRotation()
+    {
+        Quaternion visualRotation = Quaternion.Euler(286.37036f, 37f, 0f);
+        Vector3 authoredBarrelDirection = new Vector3(-0.0038f, -0.6452f, 0.0086f).normalized;
+        Vector3 targetWorldDirection = new Vector3(9f, 8f, -6f).normalized;
+        Vector3 worldUp = Vector3.up;
+
+        Vector3 yawAxisInModel = Quaternion.Inverse(visualRotation) * worldUp;
+        Vector3 targetDirectionInModel = Quaternion.Inverse(visualRotation) * targetWorldDirection;
+        Assert.That(
+            BackgroundGroundAimMath.TryCalculateYawRotation(
+                Quaternion.identity,
+                authoredBarrelDirection,
+                yawAxisInModel,
+                targetDirectionInModel,
+                out Quaternion yawRotation),
+            Is.True);
+
+        Quaternion turretWorldRotation = visualRotation * yawRotation;
+        Vector3 upInTurret = Quaternion.Inverse(turretWorldRotation) * worldUp;
+        Vector3 targetDirectionInTurret = Quaternion.Inverse(turretWorldRotation) * targetWorldDirection;
+        Assert.That(
+            BackgroundGroundAimMath.TryCalculatePitchRotation(
+                Quaternion.identity,
+                authoredBarrelDirection,
+                upInTurret,
+                targetDirectionInTurret,
+                80f,
+                35f,
+                out Quaternion pitchRotation),
+            Is.True);
+
+        Vector3 finalBarrelDirection = turretWorldRotation * pitchRotation * authoredBarrelDirection;
+        Assert.That(Vector3.Angle(finalBarrelDirection, targetWorldDirection), Is.LessThan(0.1f));
+        Assert.That(Quaternion.Angle(yawRotation, Quaternion.identity), Is.GreaterThan(1f));
+    }
 }

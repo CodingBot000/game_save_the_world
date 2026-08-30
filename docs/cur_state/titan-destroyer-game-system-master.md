@@ -3,9 +3,9 @@ title: Titan Destroyer 게임 시스템 중심 문서
 document_id: TD-GAME-SYSTEM-SSOT
 document_type: game-system-ssot
 status: live
-version: "1.0.38"
-last_verified: "2026-08-30"
-last_verification_scope: "배경 지상 장갑차 3종 기본 8대의 간헐적 포구 화염을 보강. 단발 Ambient 종료 프레임의 즉시 소등을 제거하고 Muzzle 교차 Quad를 발사마다 0.075~0.19초 맥동시킨다. 배치 Play Mode에서 화염 ON→자동 OFF, 8대 이동·접지, 보스 2000·플레이어 100/120·락온 5 불변식 통과. 전체 EditMode 115/115. 7/10대·다화면비·10분 soak·모바일은 미검증."
+version: "1.0.43"
+last_verified: "2026-08-31"
+last_verification_scope: "지상 차량 FBX의 실제 포신 축(탱크 샘플 로컬 -Y)과 차량 월드 Up을 사용하도록 Yaw/Pitch 계산 수정. 고정 +Z/+Y 가정 제거, 높은 Boss AimPoint용 상향 80도 허용. 스크립트 진단 오류 0, 집중 EditMode 11/11, Play 실제 8대 포신-HitPoint 최대 오차 5.80도·나머지 0.00~0.03도, 이동·접지·사격·전투 불변식 PASS."
 partial_review_baseline: "git a6554a7 + 2026-08-29 Background Ally Army 공중 구현 작업 트리"
 implementation_baseline: "git a6554a7 + Background Ally Army 공중 구현 작업 트리 + 2026-08-30 지상 장갑차 기본 8대 프로토타입. 기존 전투·오디오·HUD·락온·횡단 빔 구현 이력 보존"
 unity_version: 6000.4.0f1
@@ -161,6 +161,7 @@ BattleArena의 `BattleArenaRoot/AmbientAllyArmyRoot` 아래에서 순수 시각 
 | --- | --- |
 | 기본 구성 | 단독기 1대 + 편대장/좌우 편대원 3대, 총 4대 |
 | 모델 | `BackgroundChopper_500.prefab`, 1대당 500 tris |
+| 크기 | `visualScale=1.35`, 이전 0.9의 정확히 1.5배. 1280×720 투영 폭 약 66.6~91.8px |
 | 순찰 | Base 카메라 right/up/forward 기준 X 11m / Y 5m 타원, Up +5.5m, 깊이 -2m, 28초 주기 |
 | 편대 | 1.5m 후행, 좌우 0.85m, 0.28초 SmoothDamp, 최대 8° 뱅크 |
 | 자세 | 이동 경로의 상하 변화는 유지하되 기수는 월드 수평을 기준으로 계산. 최대 피치 7°로 제한 |
@@ -185,14 +186,15 @@ BattleArena의 `BattleArenaRoot/AmbientAllyArmyRoot` 아래에서 순수 시각 
 | 항목 | 현재 기준 |
 | --- | --- |
 | 모델 | 탱크 800 tris / 개틀링 779 tris / 박격포 820 tris, 기본 8대 합계 6,397 tris |
-| 화면 크기 | 1280×720 배치 실행에서 폭 약 17.4~48.3px |
+| 화면 크기 | `visualScale=3.0`, 이전 2.0의 정확히 1.5배. 저장된 수동 회전 적용 후 1280×720 폭 약 53.2~96.9px |
 | 접지 | StageVisualRoot 로컬 Y 0.12~0.20, 런타임 Raycast 없음 |
-| 조준 | `TurretYawPivot`, `BarrelPitchPivot`, `Muzzle` 사용 |
+| 조준 | 차체와 분리된 `TurretYawPivot`·`BarrelPitchPivot`이 실제 `BarrelPitchPivot → Muzzle` 포신 축과 차량 월드 Up으로 Yaw/Pitch를 계산해 몬스터 생존 중 정확한 `HitPoint`를 추적. 상향 최대 80°, 흔들림 없음 |
 | 이동 | 폐회로 3개, 종대는 리더 거리에서 1.45/2.95m 후행 |
 | 공격 | 탱크·개틀링 이동 사격, 세 차종 감속·정차·조준·사격·회복·재가속, 0.075~0.19초 간헐적 포구 화염 |
 | 공용 예산 | 공중·지상 Primary 최대 1개, 지상 Ambient 최대 2개 |
 | VFX | 트레이서 16, 박격포 아크 6, 폭발 링 8 고정 풀; Muzzle 교차 Quad 화염은 발사마다 맥동 후 자동 소등 |
 | 물리/피해 | Collider·Rigidbody 0, 실제 Projectile·피해 API 호출 0 |
+| Editor 방향 프리뷰 | StageVisualRoot 아래 3종을 scale 3.0으로 배치하고 `FORWARD +Z` 표시. 메뉴 실행 시 모든 `BackgroundGroundUnitView`를 프리팹 원본으로 인식해 차종별 VisualRoot 회전 오프셋 저장. Play Mode 자동 숨김 |
 
 배치 Play Mode 격리 검증에서 기본 8대 생성·이동·접지와 강제 Primary 사격을 확인했다. 사격 전후 보스 HP 2000, 플레이어 Hull/Armor 100/120, 락온 유효 타깃 5가 유지됐다. 7대/10대 프리셋, 각 차종별 강제 공격 육안 승인, 공중·지상 동시 과밀도, 20:9/4:3, 10분 Profiler soak와 모바일 실기기는 아직 미검증이다. 세부 구현 상태는 [지상 장갑차 개발계획서](../background-ground-armored-units-development-plan.md)를 따른다.
 
@@ -764,6 +766,45 @@ Armor가 120 흡수 → Armor 0, 잔여 피해 30
 
 ## 13. 검증 메모
 
+### 2026-08-31 — 지상 차량 실제 포신 축 기반 몬스터 조준
+
+- 기존 계산은 포신 전방을 로컬 `+Z`, Yaw 축을 로컬 `+Y`로 가정했지만 실제 탱크 `Muzzle.localPosition`은 `(-0.0038, -0.6452, 0.0086)`으로 포신이 거의 로컬 `-Y` 방향이었다. 포탑 회전 수치는 변해도 잘못된 축으로 돌아 화면상 몬스터를 향하지 않는 원인이었다.
+- `BackgroundGroundAimMath`를 추가해 Prefab의 실제 `BarrelPitchPivot → Muzzle` 저작 방향과 차량 월드 Up을 각 피벗 부모 로컬 공간으로 변환하고, 두 벡터에서 Yaw/Pitch 회전축과 목표 회전을 계산한다.
+- 높은 `BossPlaceholder/AimPoint`를 향할 수 있도록 모델 기준 상향 Pitch 허용을 80°로 확대하고 하향 35°는 유지했다. 차체 경로 회전과 사용자 VisualRoot 회전 오프셋은 변경하지 않았다.
+- 기울어진 VisualRoot와 로컬 `-Y` 포신을 재현하는 신규 EditMode 테스트를 포함해 집중 11/11 통과. Play Mode 실제 8대의 `BarrelPitchPivot → Muzzle`과 `BarrelPitchPivot → Boss HitPoint` 각도 오차는 최대 5.80°였고 나머지 7대는 0.00~0.03°였다.
+- 실제 8대 이동·접지·강제 Primary 사격 후 보스 2000·플레이어 100/120·락온 5 불변식을 유지했다.
+
+### 2026-08-31 — 지상 차량 포탑의 정확한 몬스터 상시 추적
+
+- 차체 루트는 기존 StageVisualRoot 로컬 경로 +Z 이동과 회전만 담당한다. 포탑 좌우와 포신 상하는 각각 분리된 `TurretYawPivot`, `BarrelPitchPivot`만 움직인다.
+- 기존 `GetAimTarget`이 몬스터 `HitPoint`에 더하던 카메라 right 기준 ±1.15m 흔들림과 차종별 높이 오프셋을 제거했다.
+- 몬스터가 살아 있고 `deltaTime > 0`이면 공격 연출 활성 여부와 무관하게 정확한 `BossController.HitPoint`를 `AimAt` 목표로 사용한다. 몬스터 사망·시간 정지 시에는 기존 정면 자세로 복귀한다.
+- 스크립트 진단 오류 0, 집중 EditMode 10/10 통과. Play Mode에서 실제 8대의 이동·접지·포탑/포신 조준·강제 사격을 확인했고 보스 2000·플레이어 100/120·락온 5를 유지했다.
+
+### 2026-08-31 — 지상 차량 프리뷰 회전의 런타임 보존
+
+- `Tools/Titan Destroyer/Apply Ground Preview Rotations To Runtime` 메뉴가 `GroundDirectionPreview` 하위의 모든 `BackgroundGroundUnitView`를 한 번 탐색하고 프리팹 원본으로 탱크·개틀링·박격포를 식별한다.
+- 사용자가 조정한 회전은 탱크 Euler `(286.37036, 0, 0)`, 개틀링 `(276.5353, 180, 180)`, 박격포 `(283.49335, 0, 0)`이며 `BackgroundGroundArmoredUnitsRuntime` authored configuration v3에 저장했다.
+- 경로 루트 Transform은 기존 +Z 이동 방향과 접지를 유지하고, 저장 회전은 생성 시 차량 `VisualRoot.localRotation`에 한 번만 적용한다. 따라서 `LateUpdate`의 경로 회전이 수동 외형 회전을 덮어쓰지 않으며 매 프레임 탐색 비용도 없다.
+- Builder 재실행 시에도 저장된 차종별 회전 오프셋으로 프리뷰를 다시 만든다. 이번 작업에서는 사용자가 조정한 프리뷰 위치를 보존하기 위해 Builder 재생성은 실행하지 않았다.
+- 스크립트 진단 오류 0, 집중 EditMode 10/10 통과. Play Mode에서 프리뷰 제외 실제 8대 모두 저장 회전과 일치했고 투영 폭은 53.2~96.9px였다. 이동·접지·사격 후 보스 2000·플레이어 100/120·락온 5를 유지했다.
+
+### 2026-08-31 — 지상 장갑차 Editor 방향 프리뷰
+
+- `StageVisualRoot/GroundDirectionPreview`를 추가하고 탱크·개틀링·박격포를 local X `-4.5/0/4.5`, Y `0.2`, rotation identity, scale 3.0으로 배치했다.
+- 세 차량 이름과 바닥 TextMesh 라벨에 `FORWARD_+Z`를 명시하고, 노란 LineRenderer 화살표로 런타임 전방축을 표시한다.
+- 프리뷰 루트는 `EditorOnly` 태그이며 `BackgroundGroundArmoredUnitsRuntime.Configure`가 Play Mode에서 비활성화한다. 검증에서 `BackgroundGroundUnitView`는 프리뷰를 제외한 실제 8개만 검출됐다.
+- `Tools/Titan Destroyer/Frame Ground Direction Preview` 메뉴를 추가하고 현재 Unity Selection과 Scene View를 해당 루트로 프레이밍했다.
+- 실제 Play 검증에서 8대 이동·StageVisualRoot 접지·Primary 사격, 보스 2000·플레이어 100/120·락온 5 불변식을 유지했다.
+
+### 2026-08-31 — 배경 공중·지상 유닛 1.5배 확대
+
+- 배경 헬기 `visualScale`을 0.9에서 1.35로, 지상 장갑차 공통 `visualScale`을 2.0에서 3.0으로 변경했다.
+- 공중 authored configuration v10과 지상 v2 마이그레이션은 각각 기존 0.9/2.0 값에만 적용하므로 이후 수동 튜닝값은 Builder 재실행으로 덮어쓰지 않는다.
+- 공중 Play 검증에서 4대 모두 localScale 1.35, 투영 폭 66.6~91.8px였다. 개틀링 화염 167회, 트레이서 3발, 추락 1회, 이동/기수 최소 내적 0.903과 보스/플레이어/락온 불변식을 유지했다.
+- 지상 Play 검증에서 8대 모두 localScale 3.0, 투영 폭 21.2~66.1px, StageVisualRoot 로컬 Y 0.12~0.20 접지, Primary/Ambient 화염·사격과 전투 불변식을 유지했다.
+- 공중·지상 공용 집중 EditMode 10/10 통과. 직전 전체 115/115는 유지된다. 신규 전체 MCP 작업은 실패 0으로 92/115까지 진행한 뒤 Unity 포커스 중단으로 최종 상태가 미확정이다.
+
 ### 2026-08-30 — Background Ground Armored Units 기본 8대 프로토타입
 
 - 최적화 FBX 3종을 `BackgroundTank_800`, `BackgroundGatlingCarrier_800`, `BackgroundMortarCarrier_820` Prefab으로 만들고 공용 instancing Material을 적용했다. FBX 단위는 Unity Importer `globalScale=100`으로 보정했다.
@@ -1061,6 +1102,11 @@ Armor가 120 흡수 → Armor 0, 잔여 피해 30
 
 | 날짜 | 버전 | 변경 내용 | 검증 |
 | --- | --- | --- | --- |
+| 2026-08-31 | 1.0.43 | 지상 차량의 고정 +Z/+Y 조준 가정을 제거하고 실제 포신 축과 차량 월드 Up으로 Yaw/Pitch 계산. 높은 몬스터 AimPoint용 상향 80° 허용 | 스크립트 진단 오류 0, 집중 11/11, Play 8대 포신-HitPoint 최대 오차 5.80°·나머지 0.00~0.03°, 이동·접지·사격·전투 불변식 PASS |
+| 2026-08-31 | 1.0.42 | 지상 차량 차체 이동과 포탑/포신 조준을 분리 유지하면서 살아 있는 몬스터의 정확한 HitPoint를 상시 추적. 기존 조준 흔들림·높이 오프셋 제거 | 스크립트 진단 오류 0, 집중 10/10, Play 실제 8대 이동·접지·조준·사격 및 보스/플레이어/락온 불변식 PASS |
+| 2026-08-31 | 1.0.41 | 지상 방향 프리뷰의 모든 차량을 프리팹 원본으로 자동 인식해 수동 회전을 차종별 VisualRoot 오프셋으로 저장. 경로 Transform과 외형 보정을 분리하고 Builder 재생성에서도 유지 | 스크립트 진단 오류 0, 집중 10/10, Play 실제 8대 오프셋·이동·접지·사격 및 보스/플레이어/락온 불변식 PASS |
+| 2026-08-31 | 1.0.40 | 지상 차량 3종의 방향을 Edit Mode에서 직접 비교하는 EditorOnly 프리뷰, 차종 라벨, +Z 화살표, 선택/프레이밍 메뉴 추가 | 세 프리뷰 scale 3.0·rotation identity·+Z 정렬 확인, Play에서 프리뷰 숨김 후 실제 8대 이동·접지·사격·전투 불변식 PASS |
+| 2026-08-31 | 1.0.39 | 배경 헬기·지상 장갑차 크기를 각각 1.5배 확대. 공중 0.9→1.35, 지상 2.0→3.0과 안전한 씬 마이그레이션 추가 | 집중 10/10, 공중 4대 66.6~91.8px·지상 8대 21.2~66.1px, 이동·접지·공중/지상 공격·전투 불변식 PASS. 신규 전체 작업은 92/115 포커스 중단으로 미확정 |
 | 2026-08-30 | 1.0.38 | 지상 공격대 포구 화염 가시성 보강: 단발 Ambient 즉시 소등 수정, 교차 Quad 확대, 차종별 0.075~0.19초 크기·회전 펄스와 자동 소등 진단 추가 | 전체 EditMode 115/115, 배치 Play Mode 화염 ON→OFF·8대 이동·보스/플레이어/락온 불변식 PASS |
 | 2026-08-30 | 1.0.37 | Background Ground Armored Units 기본 8대: 최적화 차량 3종 Prefab, StageVisualRoot 로컬 경로 3개, 3대 종대+지원/독립 이동, 이동·정차 가짜 사격, 고정 VFX 풀, 공중·지상 공용 연출 예산을 BattleArena에 연결 | 집중 10/10, 전체 EditMode 115/115, 배치 Play Mode 8대·17.4~48.3px·접지 Y 0.12~0.20·보스/플레이어/락온 불변식 PASS |
 | 2026-08-30 | 1.0.36 | 배경 헬기 모델 전방 반전, 공격 기동 속도 0.5배, 독립 개틀링 총구 화염, 한 대씩 연기·자회전 추락 및 재보충 추가 | 집중 7/7, 이동/기수 최소 내적 0.911, 개틀링 167회, 트레이서 3발, 추락 2.367m·368.07°·연기, 전투 불변식 통과. 신규 전체 작업은 95/112 상태 갱신 손실로 미확정 |

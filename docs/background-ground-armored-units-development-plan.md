@@ -3,9 +3,9 @@ title: Background Ground Armored Units 개발계획서
 document_id: TD-BACKGROUND-GROUND-ARMORED-UNITS
 document_type: development-plan
 status: "프로토타입 구현(기본 8대 배치·배치 Play Mode 검증 완료)"
-version: "0.2.0"
+version: "0.2.5"
 created: "2026-08-30"
-last_reviewed: "2026-08-30"
+last_reviewed: "2026-08-31"
 implementation_baseline: "최적화 차량 3종, 기본 8대 StageVisualRoot 로컬 경로, 이동/정차 사격, 고정 VFX 풀, 공중·지상 공용 연출 예산을 BattleArena에 연결"
 unity_version: 6000.4.0f1
 related_documents:
@@ -57,7 +57,8 @@ BattleArena의 거대 몬스터 주변에 7~10대 규모의 지상 장갑차량�
 | 모델 구조 | `Body`, `TurretYawPivot`, `BarrelPitchPivot`, `Muzzle` 사용 가능 |
 | 텍스처 | 공용 Base Color 256, Normal 128, Metallic/Smoothness 128 |
 | Material | 차체 공용 instancing Material 1개 + 지상 VFX 3개 |
-| 화면 투영 | 1280×720 배치 실행에서 폭 약 17.4~48.3px |
+| 화면 투영 | `visualScale=3.0`(이전 2.0의 1.5배), 저장된 수동 회전 적용 후 1280×720 배치 실행에서 폭 약 53.2~96.9px |
+| Editor 방향 프리뷰 | `StageVisualRoot/GroundDirectionPreview`에 3종을 scale 3.0으로 배치. 프리팹 원본과 `BackgroundGroundUnitView`로 차량을 자동 인식해 수동 회전을 런타임 VisualRoot 오프셋으로 저장 |
 | 경로/접지 | StageVisualRoot 로컬 Y 0.12~0.20, 폐회로 3개 |
 | 물리 | Collider 0, Rigidbody 0 |
 | VFX 풀 | 직선 트레이서 16, 박격포 아크 6, 폭발 링 8; 고갈 시 생략 |
@@ -66,6 +67,16 @@ BattleArena의 거대 몬스터 주변에 7~10대 규모의 지상 장갑차량�
 | 자동 검증 | 집중 EditMode 10/10, 전체 EditMode 115/115, 배치 Play Mode PASS |
 
 남은 검증은 7대·10대 프리셋, 20:9/4:3 실제 화면 구성, 각 차종 강제 공격의 개별 시각 승인, 공중·지상 동시 연출 장시간 관찰, 10분 Profiler soak 및 모바일 실기기다.
+
+2026-08-31에는 지상 장갑차 공통 루트 스케일을 2.0에서 3.0으로 정확히 1.5배 확대했다. authored configuration v2 마이그레이션이 기존 2.0 씬 값에만 적용되며 Builder 재실행 뒤에도 3.0을 유지한다. 실제 Play 검증에서 8대 모두 localScale 3.0, 투영 폭 21.2~66.1px, StageVisualRoot 로컬 접지 Y 0.12~0.20, 이동·사격·전투 불변식이 유지됐다.
+
+같은 날 `StageVisualRoot/GroundDirectionPreview` Editor 전용 프리뷰를 추가했다. 탱크·개틀링·박격포를 나란히 배치하고 노란 `FORWARD +Z` 화살표와 라벨을 표시한다. 루트는 `EditorOnly` 태그이며 Play Mode에서 `BackgroundGroundArmoredUnitsRuntime`이 자동 비활성화한다. `Tools/Titan Destroyer/Frame Ground Direction Preview` 메뉴로 언제든 선택·프레이밍할 수 있다. 실제 Play 검증에서 프리뷰 3대는 런타임 수에 포함되지 않고 기존 8대만 생성됐다.
+
+`Tools/Titan Destroyer/Apply Ground Preview Rotations To Runtime` 메뉴는 프리뷰 하위의 모든 `BackgroundGroundUnitView`를 한 번 탐색하고 프리팹 원본으로 차종을 식별한다. 현재 사용자가 조정한 회전은 탱크 `(286.37036, 0, 0)`, 개틀링 `(276.5353, 180, 180)`, 박격포 `(283.49335, 0, 0)` Euler 오프셋으로 authored configuration v3에 저장했다. 런타임 경로 루트는 기존 +Z 이동·회전·접지를 그대로 담당하고, 저장 회전은 각 차량 생성 시 `VisualRoot.localRotation`에 한 번만 적용하므로 매 프레임 수동값을 되돌리거나 추가 탐색하지 않는다. Builder를 다시 실행해도 저장된 오프셋으로 프리뷰를 재생성한다. 집중 EditMode 10/10과 Play Mode 실제 8대의 오프셋·이동·접지·사격·전투 불변식 검증을 통과했으며, 회전 적용 후 투영 폭은 53.2~96.9px였다.
+
+지상 차량의 차체는 계속 경로 +Z를 따라 움직이고, 분리된 `TurretYawPivot`과 `BarrelPitchPivot`만 몬스터를 추적한다. 기존에는 `HitPoint` 주변에 카메라 right 기준 ±1.15m 흔들림과 차종별 높이 오프셋을 더했으나 제거했다. 이제 몬스터가 살아 있는 동안 공격 예산·전투 연출 휴지 상태와 무관하게 정확한 `BossController.HitPoint`를 부드럽게 추적하며, 몬스터가 죽거나 시간이 멈추면 기존 정면 자세로 복귀한다. 집중 EditMode 10/10과 Play Mode 8대 이동·접지·사격·전투 불변식 검증을 통과했다.
+
+실제 FBX는 포신이 고정 `+Z`가 아니라 차종별 `BarrelPitchPivot → Muzzle` 벡터를 따라가며, 탱크 샘플의 `Muzzle.localPosition`은 `(-0.0038, -0.6452, 0.0086)`으로 거의 로컬 `-Y`다. 따라서 고정 `+Z` 전방·`+Y` Yaw 가정을 제거하고 `BackgroundGroundAimMath`가 실제 포신 저작 방향과 차량 월드 Up을 각 피벗 부모 공간으로 변환해 Yaw/Pitch 축을 계산한다. 위쪽 피치 허용은 모델 기준 최대 80°로 넓혀 높은 몬스터 `AimPoint`도 추적한다. 기울어진 VisualRoot와 로컬 `-Y` 포신을 재현한 EditMode 테스트를 포함해 집중 11/11을 통과했고, 실제 8대의 포신-`HitPoint` 최대 각도 오차는 5.80°(나머지 7대 0.00~0.03°)였다.
 
 ## 3. 목표 범위
 
