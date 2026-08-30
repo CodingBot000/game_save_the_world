@@ -27,6 +27,7 @@ public class BattleController : MonoBehaviour
     [SerializeField] private GameObject backgroundRoot;
     [SerializeField] private BattleBackgroundHost backgroundHost;
     [SerializeField] private BackgroundAllyArmyController backgroundAllyArmy;
+    [SerializeField] private BackgroundGroundArmoredUnitsRuntime backgroundGroundArmoredUnits;
     [SerializeField] private Transform stageVisualRoot;
     [SerializeField] private EnvironmentThemeDebugPanel environmentThemeDebugPanel;
     [SerializeField] private PlayerMoveGuide playerMoveGuide;
@@ -44,6 +45,7 @@ public class BattleController : MonoBehaviour
     public BossLockOnTargetProvider BossLockOnTargetProvider => bossLockOnTargetProvider;
     public PlayerLockOnController PlayerLockOnController => playerLockOnController;
     public BackgroundAllyArmyController BackgroundAllyArmy => backgroundAllyArmy;
+    public BackgroundGroundArmoredUnitsRuntime BackgroundGroundArmoredUnits => backgroundGroundArmoredUnits;
 
     private void Awake()
     {
@@ -201,6 +203,7 @@ public class BattleController : MonoBehaviour
         backgroundRoot ??= FindSceneObject("BackgroundRoot");
         backgroundHost ??= backgroundRoot != null ? backgroundRoot.GetComponent<BattleBackgroundHost>() : FindSceneComponent<BattleBackgroundHost>();
         backgroundAllyArmy ??= FindSceneComponent<BackgroundAllyArmyController>();
+        backgroundGroundArmoredUnits ??= FindSceneComponent<BackgroundGroundArmoredUnitsRuntime>();
         stageVisualRoot ??= FindSceneTransform("StageVisualRoot");
         environmentThemeDebugPanel ??= FindSceneComponent<EnvironmentThemeDebugPanel>();
         playerMoveGuide ??= FindSceneComponent<PlayerMoveGuide>();
@@ -454,6 +457,7 @@ public class BattleController : MonoBehaviour
         }
 
         backgroundAllyArmy?.Configure(this, bossController, Camera.main, stageVisualRoot);
+        backgroundGroundArmoredUnits?.Configure(this, bossController, Camera.main, stageVisualRoot);
     }
 
     private void WireRuntime()

@@ -122,4 +122,78 @@ public class BackgroundAllyArmyTests
         Assert.That(Vector3.Dot(planarForward, Vector3.left), Is.GreaterThan(0.999f));
         Assert.That(Vector3.Angle(rotation * Vector3.up, Vector3.up), Is.LessThan(7.1f));
     }
+
+    [Test]
+    public void GroundRouteWrapsAndRemainsContinuous()
+    {
+        BackgroundGroundRoute route = new(
+            new[]
+            {
+                new Vector3(-5f, 0f, -3f),
+                new Vector3(-4f, 0f, 4f),
+                new Vector3(4f, 0f, 5f),
+                new Vector3(6f, 0f, -2f),
+            },
+            16);
+
+        route.Sample(0.25f, out Vector3 nearStart, out Vector3 startTangent);
+        route.Sample(route.TotalLength + 0.25f, out Vector3 wrapped, out Vector3 wrappedTangent);
+
+        Assert.That(route.TotalLength, Is.GreaterThan(20f));
+        Assert.That(Vector3.Distance(nearStart, wrapped), Is.LessThan(0.0001f));
+        Assert.That(Vector3.Dot(startTangent, wrappedTangent), Is.GreaterThan(0.9999f));
+        Assert.That(BackgroundGroundRoute.WrapDistance(-1f, 10f), Is.EqualTo(9f).Within(0.0001f));
+    }
+
+    [Test]
+    public void GroundFormationDistanceOffsetStaysOnTheRoute()
+    {
+        BackgroundGroundRoute route = new(
+            new[]
+            {
+                new Vector3(-6f, 0f, 0f),
+                new Vector3(0f, 0f, 6f),
+                new Vector3(6f, 0f, 0f),
+                new Vector3(0f, 0f, -6f),
+            },
+            24);
+        float leaderDistance = route.TotalLength * 0.05f;
+        float followerDistance = BackgroundGroundRoute.WrapDistance(leaderDistance - 2.5f, route.TotalLength);
+
+        route.Sample(leaderDistance, out Vector3 leader, out _);
+        route.Sample(followerDistance, out Vector3 follower, out _);
+
+        Assert.That(Vector3.Distance(leader, follower), Is.GreaterThan(1.5f));
+        Assert.That(follower.y, Is.EqualTo(0f).Within(0.0001f));
+    }
+
+    [Test]
+    public void CosmeticCombatBudgetAllowsOnePrimaryAndTwoAmbientOwners()
+    {
+        GameObject host = new("BackgroundBudgetTest");
+        try
+        {
+            BackgroundCosmeticCombatBudget budget = host.AddComponent<BackgroundCosmeticCombatBudget>();
+            object primaryA = new();
+            object primaryB = new();
+            object ambientA = new();
+            object ambientB = new();
+            object ambientC = new();
+
+            Assert.That(budget.TryAcquirePrimary(primaryA), Is.True);
+            Assert.That(budget.TryAcquirePrimary(primaryB), Is.False);
+            Assert.That(budget.TryAcquireAmbient(ambientA), Is.True);
+            Assert.That(budget.TryAcquireAmbient(ambientB), Is.True);
+            Assert.That(budget.TryAcquireAmbient(ambientC), Is.False);
+
+            budget.ReleasePrimary(primaryA);
+            budget.ReleaseAmbient(ambientA);
+            Assert.That(budget.TryAcquirePrimary(primaryB), Is.True);
+            Assert.That(budget.TryAcquireAmbient(ambientC), Is.True);
+        }
+        finally
+        {
+            Object.DestroyImmediate(host);
+        }
+    }
 }

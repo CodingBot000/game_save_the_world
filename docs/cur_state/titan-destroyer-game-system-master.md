@@ -3,11 +3,11 @@ title: Titan Destroyer 게임 시스템 중심 문서
 document_id: TD-GAME-SYSTEM-SSOT
 document_type: game-system-ssot
 status: live
-version: "1.0.36"
+version: "1.0.38"
 last_verified: "2026-08-30"
-last_verification_scope: "배경 아군 헬기 전방축 반전, 공격 기동 속도 0.5배, 순찰 개틀링 버스트, 한 대씩 연기·자회전 추락 구현. 집중 EditMode 7/7, 실제 이동/기수 최소 내적 0.911, 개틀링 167회, 트레이서 3발, 추락 2.367m·368.07°·연기 및 보스/플레이어/락온 불변식 통과. 직전 전체 110/110 유지; 신규 전체 MCP 작업은 95/112 상태 갱신 손실로 미확정. 탱크·모바일은 미구현/미검증."
+last_verification_scope: "배경 지상 장갑차 3종 기본 8대의 간헐적 포구 화염을 보강. 단발 Ambient 종료 프레임의 즉시 소등을 제거하고 Muzzle 교차 Quad를 발사마다 0.075~0.19초 맥동시킨다. 배치 Play Mode에서 화염 ON→자동 OFF, 8대 이동·접지, 보스 2000·플레이어 100/120·락온 5 불변식 통과. 전체 EditMode 115/115. 7/10대·다화면비·10분 soak·모바일은 미검증."
 partial_review_baseline: "git a6554a7 + 2026-08-29 Background Ally Army 공중 구현 작업 트리"
-implementation_baseline: "git a6554a7 + 2026-08-29 Background Ally Army 공중 Phase 0~2 작업 트리. 기존 전투·오디오·HUD·락온·횡단 빔 구현 이력 보존"
+implementation_baseline: "git a6554a7 + Background Ally Army 공중 구현 작업 트리 + 2026-08-30 지상 장갑차 기본 8대 프로토타입. 기존 전투·오디오·HUD·락온·횡단 빔 구현 이력 보존"
 unity_version: 6000.4.0f1
 authoritative_scope:
   - game_flow
@@ -72,7 +72,7 @@ authoritative_scope:
 | 약점 개방 | 타깃과 배율은 있으나 실제 전투에서 개방시키는 흐름은 디버그에만 연결 | 프로토타입/디버그 |
 | 씬 BGM | MainMenu `BGM_title.wav`, BattleArena `BGM_battle_01.ogg`, 무한 반복, 앱 시작 기본 OFF, 전역 static 상태로 모든 등록 BGM 일괄 ON/OFF | 구현됨 |
 | 전역 효과음 | 기관총과 락온 단계·릴리즈·부스트 등 BGM 외 AudioSource, 앱 시작 기본 OFF, 전역 static 상태와 BattleArena `SOUND ON/OFF` 버튼으로 일괄 제어 | 구현됨 |
-| 전투 배경 아군 | 500 tris 헬기 단독기 1대 + 3대 편대가 보스 주변을 순찰하고 가끔 피해 없는 트레이서 공격을 연출. 탱크 종대·포격은 후속 단계 | 공중 구현됨 / 지상 계획 |
+| 전투 배경 아군 | 500 tris 헬기 4대 + 779~820 tris 지상 장갑차 기본 8대가 보스 주변을 순찰하며 피해 없는 공중·지상 공격을 연출 | 공중 구현됨 / 지상 프로토타입 구현 |
 
 현재 플레이어에게 유효한 공격 선택지는 아래 두 가지뿐이다.
 
@@ -176,7 +176,25 @@ BattleArena의 `BattleArenaRoot/AmbientAllyArmyRoot` 아래에서 순수 시각 
 
 전투가 비활성화되거나 보스가 사망하면 새 가짜 공격을 시작하지 않고 활성 트레이서를 정리하며 순찰만 유지한다. 배경 헬기는 PlayerVisual 오버레이 레이어에 넣지 않고 Base 카메라 월드 연출로 표시한다.
 
-지상 탱크는 **계획** 상태다. 여러 탱크가 합쳐진 `small_tanks` 원본을 개별 차량으로 분리·최적화한 뒤 StageVisualRoot 로컬 경로와 공용 가짜 공격 슬롯에 연결한다. 세부 단계는 [Background Ally Army 개발계획서](../background-ally-army-development-plan.md)를 따른다.
+### 2.7 전투 배경 아군 지상 부대
+
+상태: **프로토타입 구현됨**
+
+`BattleArenaRoot/AmbientAllyArmyRoot/GroundArmoredUnits` 아래에서 탱크 3대, 대형 개틀링건 차량 3대, 박격포 차량 2대의 기본 8대 편성을 생성한다. 차량은 StageVisualRoot 로컬 Catmull-Rom 폐회로 3개를 누적 거리로 샘플링하며, 3대 종대와 지원 2대, 독립 차량 3대가 서로 다른 위상·속도로 움직인다.
+
+| 항목 | 현재 기준 |
+| --- | --- |
+| 모델 | 탱크 800 tris / 개틀링 779 tris / 박격포 820 tris, 기본 8대 합계 6,397 tris |
+| 화면 크기 | 1280×720 배치 실행에서 폭 약 17.4~48.3px |
+| 접지 | StageVisualRoot 로컬 Y 0.12~0.20, 런타임 Raycast 없음 |
+| 조준 | `TurretYawPivot`, `BarrelPitchPivot`, `Muzzle` 사용 |
+| 이동 | 폐회로 3개, 종대는 리더 거리에서 1.45/2.95m 후행 |
+| 공격 | 탱크·개틀링 이동 사격, 세 차종 감속·정차·조준·사격·회복·재가속, 0.075~0.19초 간헐적 포구 화염 |
+| 공용 예산 | 공중·지상 Primary 최대 1개, 지상 Ambient 최대 2개 |
+| VFX | 트레이서 16, 박격포 아크 6, 폭발 링 8 고정 풀; Muzzle 교차 Quad 화염은 발사마다 맥동 후 자동 소등 |
+| 물리/피해 | Collider·Rigidbody 0, 실제 Projectile·피해 API 호출 0 |
+
+배치 Play Mode 격리 검증에서 기본 8대 생성·이동·접지와 강제 Primary 사격을 확인했다. 사격 전후 보스 HP 2000, 플레이어 Hull/Armor 100/120, 락온 유효 타깃 5가 유지됐다. 7대/10대 프리셋, 각 차종별 강제 공격 육안 승인, 공중·지상 동시 과밀도, 20:9/4:3, 10분 Profiler soak와 모바일 실기기는 아직 미검증이다. 세부 구현 상태는 [지상 장갑차 개발계획서](../background-ground-armored-units-development-plan.md)를 따른다.
 
 ## 3. 플레이어 조작과 이동
 
@@ -697,6 +715,7 @@ Armor가 120 흡수 → Armor 0, 잔여 피해 30
 | 씬 BGM/전역 음악 상태 | `Assets/_Project/Scripts/Audio/GlobalMusicSettings.cs`, `Assets/_Project/Scripts/Audio/GlobalMusicSource.cs` | `Assets/Scenes/MainMenu.unity/MainMenu.unity`, `Assets/Scenes/BattleArena.unity/BattleArena.unity`, 두 BGM 에셋, `Assets/_Project/Scripts/UI/MenuPresenter.cs`, `Assets/_Project/Scripts/UI/HUDPresenter.cs` |
 | 전역 효과음 상태 | `Assets/_Project/Scripts/Audio/GlobalSoundSettings.cs`, `Assets/_Project/Scripts/Audio/RuntimeAudioOutputGuard.cs` | `Assets/_Project/Scripts/Gameplay/PlayerCombatController.cs`, `Assets/_Project/Scripts/Gameplay/LockOnCombatFeedback.cs`, `Assets/_Project/Scripts/UI/HUDPresenter.cs` |
 | 메인 메뉴 배경 레이어 | `Assets/_Project/Scripts/UI/MenuPresenter.cs` | `Assets/Scenes/MainMenu.unity/MainMenu.unity`, 메인 메뉴 배경·캐릭터·머플러 텍스처 |
+| 배경 아군 공중·지상 부대 | `Assets/_Project/Scripts/Environment/BackgroundAllyArmyController.cs`, `Assets/_Project/Scripts/Environment/BackgroundGroundArmoredUnitsRuntime.cs` | `BackgroundCosmeticCombatBudget.cs`, `BackgroundGroundRoute.cs`, 3종 Ground Prefab, `BattleArena`의 `AmbientAllyArmyRoot` |
 
 ## 11. 불일치 및 결정 필요 항목
 
@@ -744,6 +763,17 @@ Armor가 120 흡수 → Armor 0, 잔여 피해 30
 - 현재 씬이 미커밋 상태라면 사용자 변경을 보존하고 충돌 없이 문서 또는 별도 파일을 수정한다.
 
 ## 13. 검증 메모
+
+### 2026-08-30 — Background Ground Armored Units 기본 8대 프로토타입
+
+- 최적화 FBX 3종을 `BackgroundTank_800`, `BackgroundGatlingCarrier_800`, `BackgroundMortarCarrier_820` Prefab으로 만들고 공용 instancing Material을 적용했다. FBX 단위는 Unity Importer `globalScale=100`으로 보정했다.
+- 기본 8대는 탱크 3, 개틀링 3, 박격포 2다. 3대 종대는 같은 경로의 누적 거리 오프셋을 사용하고 나머지는 서로 다른 경로·위상·속도로 움직인다.
+- StageVisualRoot 로컬 Catmull-Rom 폐회로 3개, 감속·정차·조준·사격·회복·재가속 상태, 포탑 Yaw/포신 Pitch, 이동 버스트와 박격포 포물선, 고정 LineRenderer 풀을 구현했다.
+- 공중과 지상이 공유하는 `BackgroundCosmeticCombatBudget`은 Primary 1개와 Ambient 2개를 제한한다. 지상 VFX는 실제 투사체·피해 API·Collider·Rigidbody를 사용하지 않는다.
+- Unity GUI를 띄우지 않은 Builder와 배치 Play Mode로 씬을 생성·검증했다. 기본 8대의 투영 폭은 17.4~48.3px, StageVisualRoot 로컬 접지 높이는 0.12~0.20이었다.
+- 강제 지상 Primary 사격 뒤 보스 HP 2000, 플레이어 Hull/Armor 100/120, 락온 유효 타깃 5가 유지됐다. 집중 EditMode 10/10과 전체 EditMode 115/115가 통과했다.
+- 단발 Ambient 종료가 같은 프레임에 포구 화염을 끄던 흐름을 수정했다. 차종별 0.075~0.19초 수명과 크기·회전 펄스를 적용하고, 배치 Play Mode에서 화염 렌더러 ON→자동 OFF와 캡처를 확인했다.
+- 미검증: 7대·10대 프리셋, 각 차종별 강제 공격의 독립 시각 승인, 공중·지상 동시 장시간 과밀도, 20:9/4:3, 10분 Profiler soak, 모바일 실기기.
 
 ### 2026-08-30 — 배경 아군 방향·속도·개틀링·추락 연출
 
@@ -1031,6 +1061,8 @@ Armor가 120 흡수 → Armor 0, 잔여 피해 30
 
 | 날짜 | 버전 | 변경 내용 | 검증 |
 | --- | --- | --- | --- |
+| 2026-08-30 | 1.0.38 | 지상 공격대 포구 화염 가시성 보강: 단발 Ambient 즉시 소등 수정, 교차 Quad 확대, 차종별 0.075~0.19초 크기·회전 펄스와 자동 소등 진단 추가 | 전체 EditMode 115/115, 배치 Play Mode 화염 ON→OFF·8대 이동·보스/플레이어/락온 불변식 PASS |
+| 2026-08-30 | 1.0.37 | Background Ground Armored Units 기본 8대: 최적화 차량 3종 Prefab, StageVisualRoot 로컬 경로 3개, 3대 종대+지원/독립 이동, 이동·정차 가짜 사격, 고정 VFX 풀, 공중·지상 공용 연출 예산을 BattleArena에 연결 | 집중 10/10, 전체 EditMode 115/115, 배치 Play Mode 8대·17.4~48.3px·접지 Y 0.12~0.20·보스/플레이어/락온 불변식 PASS |
 | 2026-08-30 | 1.0.36 | 배경 헬기 모델 전방 반전, 공격 기동 속도 0.5배, 독립 개틀링 총구 화염, 한 대씩 연기·자회전 추락 및 재보충 추가 | 집중 7/7, 이동/기수 최소 내적 0.911, 개틀링 167회, 트레이서 3발, 추락 2.367m·368.07°·연기, 전투 불변식 통과. 신규 전체 작업은 95/112 상태 갱신 손실로 미확정 |
 | 2026-08-30 | 1.0.35 | 배경 아군 헬기 이동 경로와 자세를 분리해 월드 수평 전방, 최대 피치 7°·뱅크 8°로 제한. 수직 자세와 후진처럼 보이는 방향 전환 제거 | 집중 EditMode 7/7, 실제 10,910 샘플 최대 Up 편차 9.889°·이동/기수 최소 내적 0.608, 4대·3발·전투 불변식 통과. 신규 전체 작업은 99/112 상태 갱신 손실로 미확정 |
 | 2026-08-29 | 1.0.34 | Background Ally Army 공중 Phase 0~2: 500 tris 헬기 단독기 1대+3대 편대 순찰, 로터 블러, 단일 공격 슬롯과 피해 없는 트레이서 풀을 BattleArena에 연결. 탱크 단계는 계획 유지 | 신규 집중 5/5, 전체 EditMode 110/110, BattleArena 4대 생성·3발 공격·복귀, 보스 2000/플레이어 100·120/락온 5 불변식, Collider·Rigidbody 0 |

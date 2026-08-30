@@ -1,0 +1,105 @@
+{
+  "version": 1,
+  "operation": "background_ground_vehicle_optimization",
+  "source_model": "/Users/switch/Downloads/tanks/small_tanks.glb",
+  "source_vertices": 42529,
+  "source_triangles": 61493,
+  "source_structure": "single mesh containing a 3x3 exploded layout",
+  "split_strategy": "connected-component classification into row(vehicle) and column(body/turret/weapon)",
+  "hierarchy": [
+    "VehicleRoot",
+    "Body",
+    "TurretYawPivot/TurretMesh",
+    "TurretYawPivot/BarrelPitchPivot/BarrelMesh",
+    "TurretYawPivot/BarrelPitchPivot/Muzzle"
+  ],
+  "decimation": "per-part collapse decimation with triangulated output",
+  "textures": {
+    "shared": true,
+    "base_color": {
+      "file": "background_ground_vehicles_basecolor_256.png",
+      "size": [
+        256,
+        256
+      ],
+      "srgb": true
+    },
+    "normal": {
+      "file": "background_ground_vehicles_normal_128.png",
+      "size": [
+        128,
+        128
+      ],
+      "srgb": false
+    },
+    "unity_metallic_smoothness": {
+      "file": "background_ground_vehicles_unity_metallic_smoothness_128.png",
+      "size": [
+        128,
+        128
+      ],
+      "channels": "R=metallic A=1-roughness"
+    },
+    "emission_removed": true
+  },
+  "vehicles": [
+    {
+      "asset_id": "background_tank_tracked_rounded_optimized_800",
+      "download_fbx": "/Users/switch/Downloads/tanks_optimized/EXPORT/background_tank_tracked_rounded_optimized_800.fbx",
+      "project_fbx": "/Users/switch/Development/Game/Unity/TitanSlayer/game_save_the_world/Assets/_Project/Art/Environment/BackgroundAllyArmy/Ground/Models/background_tank_tracked_rounded_optimized_800.fbx",
+      "source_triangles": 22351,
+      "output_triangles": 800,
+      "part_triangles": {
+        "body": 500,
+        "turret": 160,
+        "weapon": 140
+      },
+      "muzzle_local_position": [
+        0.003839,
+        -0.645162,
+        0.008584
+      ],
+      "weapon_alignment_degrees": 28.7734
+    },
+    {
+      "asset_id": "background_tank_wheeled_gatling_optimized_800",
+      "download_fbx": "/Users/switch/Downloads/tanks_optimized/EXPORT/background_tank_wheeled_gatling_optimized_800.fbx",
+      "project_fbx": "/Users/switch/Development/Game/Unity/TitanSlayer/game_save_the_world/Assets/_Project/Art/Environment/BackgroundAllyArmy/Ground/Models/background_tank_wheeled_gatling_optimized_800.fbx",
+      "source_triangles": 16797,
+      "output_triangles": 779,
+      "part_triangles": {
+        "body": 420,
+        "turret": 140,
+        "weapon": 219
+      },
+      "muzzle_local_position": [
+        -0.000656,
+        -0.509827,
+        0.032859
+      ],
+      "weapon_alignment_degrees": 34.755
+    },
+    {
+      "asset_id": "background_tank_tracked_cannon_optimized_800",
+      "download_fbx": "/Users/switch/Downloads/tanks_optimized/EXPORT/background_tank_tracked_cannon_optimized_800.fbx",
+      "project_fbx": "/Users/switch/Development/Game/Unity/TitanSlayer/game_save_the_world/Assets/_Project/Art/Environment/BackgroundAllyArmy/Ground/Models/background_tank_tracked_cannon_optimized_800.fbx",
+      "source_triangles": 22345,
+      "output_triangles": 820,
+      "part_triangles": {
+        "body": 500,
+        "turret": 160,
+        "weapon": 160
+      },
+      "muzzle_local_position": [
+        0.003607,
+        -0.708388,
+        0.08083
+      ],
+      "weapon_alignment_degrees": 30.8347
+    }
+  ],
+  "total_output_triangles": 2399,
+  "blend": "/Users/switch/Downloads/tanks_optimized/BLEND/background_ground_vehicles_optimized.blend",
+  "preview": "/Users/switch/Downloads/tanks_optimized/VALIDATION/background_ground_vehicles_optimized_preview.png",
+  "project_root": "/Users/switch/Development/Game/Unity/TitanSlayer/game_save_the_world/Assets/_Project/Art/Environment/BackgroundAllyArmy/Ground"
+}

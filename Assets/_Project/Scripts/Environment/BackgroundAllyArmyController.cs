@@ -157,6 +157,7 @@ public sealed class BackgroundAllyArmyController : MonoBehaviour
     private BossController bossController;
     private Camera baseCamera;
     private Transform stageVisualRoot;
+    private BackgroundCosmeticCombatBudget combatBudget;
     private Random random;
     private FlightGroup activeAttackGroup;
     private AirUnit activeCrashUnit;
@@ -251,6 +252,7 @@ public sealed class BackgroundAllyArmyController : MonoBehaviour
         bossController = boss;
         baseCamera = camera != null ? camera : Camera.main;
         stageVisualRoot = configuredStageVisualRoot;
+        combatBudget = GetComponent<BackgroundCosmeticCombatBudget>();
 
         if (chopperPrefab == null || bossController == null || baseCamera == null)
         {
@@ -482,6 +484,11 @@ public sealed class BackgroundAllyArmyController : MonoBehaviour
 
     private void ClearAirUnits()
     {
+        if (activeAttackGroup != null)
+        {
+            combatBudget?.ReleasePrimary(activeAttackGroup);
+        }
+
         for (int groupIndex = 0; groupIndex < flightGroups.Count; groupIndex++)
         {
             List<AirUnit> units = flightGroups[groupIndex].Units;
@@ -947,6 +954,7 @@ public sealed class BackgroundAllyArmyController : MonoBehaviour
                 EnterState(group, FlightState.Patrol, 0f);
                 if (activeAttackGroup == group)
                 {
+                    combatBudget?.ReleasePrimary(group);
                     activeAttackGroup = null;
                     ScheduleNextAttack();
                 }
@@ -994,6 +1002,12 @@ public sealed class BackgroundAllyArmyController : MonoBehaviour
     {
         if (group == null || group.Units.Count == 0 || group.Units[0].LifeState != UnitLifeState.Active || activeAttackGroup != null)
         {
+            return;
+        }
+
+        if (combatBudget != null && !combatBudget.TryAcquirePrimary(group))
+        {
+            nextAttackDelay = NextFloat(1.2f, 2.2f);
             return;
         }
 
@@ -1062,6 +1076,7 @@ public sealed class BackgroundAllyArmyController : MonoBehaviour
     {
         FlightGroup group = activeAttackGroup;
         activeAttackGroup = null;
+        combatBudget?.ReleasePrimary(group);
         if (group != null)
         {
             group.BreakTarget = group.LeaderTarget;
@@ -1270,6 +1285,12 @@ public sealed class BackgroundAllyArmyController : MonoBehaviour
 
     private void OnDisable()
     {
+        if (activeAttackGroup != null)
+        {
+            combatBudget?.ReleasePrimary(activeAttackGroup);
+            activeAttackGroup = null;
+        }
+
         DisableAllTracers();
         for (int groupIndex = 0; groupIndex < flightGroups.Count; groupIndex++)
         {

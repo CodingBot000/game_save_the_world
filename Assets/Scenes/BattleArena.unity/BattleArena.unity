@@ -677,6 +677,76 @@ CanvasRenderer:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 96527401}
   m_CullTransparentMesh: 1
+--- !u!1 &137139728
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 137139729}
+  - component: {fileID: 137139730}
+  m_Layer: 0
+  m_Name: GroundArmoredUnits
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &137139729
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 137139728}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children:
+  - {fileID: 1049630653}
+  - {fileID: 840180767}
+  m_Father: {fileID: 1287457929}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &137139730
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 137139728}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 4b33f3647a4ce4baebb68abb8944e5a0, type: 3}
+  m_Name:
+  m_EditorClassIdentifier: Assembly-CSharp::BackgroundGroundArmoredUnitsRuntime
+  tankPrefab: {fileID: 1365366731483692076, guid: 944068fed79b6446fb8895362a29833b, type: 3}
+  gatlingCarrierPrefab: {fileID: 5798846493370258680, guid: a6eb62821275245b998da43678049a97, type: 3}
+  mortarCarrierPrefab: {fileID: 7967404837004341004, guid: 021db8d5d49e34241a220c89be7add57, type: 3}
+  tracerMaterial: {fileID: 2100000, guid: 622e960487bbd41f5bca0fa564cde39a, type: 2}
+  mortarTrailMaterial: {fileID: 2100000, guid: b85efec26eb4643ff87bfceb41dba39e, type: 2}
+  explosionMaterial: {fileID: 2100000, guid: 40e93d2aea7c84eca9073dc7b887cb3c, type: 2}
+  groundUnitsRoot: {fileID: 1049630653}
+  cosmeticVfxRoot: {fileID: 840180767}
+  authoredConfigurationVersion: 1
+  enableGroundArmoredUnits: 1
+  enableTank: 1
+  enableGatlingCarrier: 1
+  enableMortarCarrier: 1
+  enableFormationMovement: 1
+  visualScale: 2
+  globalSpeedScale: 1
+  routeRotationResponse: 7
+  randomSeed: 20260830
+  enableGroundCosmeticAttacks: 1
+  primaryAttackIntervalSeconds: {x: 8, y: 14}
+  ambientCooldownSeconds: {x: 2.5, y: 5.5}
+  tracerPoolSize: 16
+  mortarArcPoolSize: 6
+  explosionPoolSize: 8
 --- !u!1001 &154126028
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -2616,7 +2686,8 @@ MonoBehaviour:
   backgroundRoot: {fileID: 0}
   backgroundHost: {fileID: 0}
   backgroundAllyArmy: {fileID: 1287457930}
-  stageVisualRoot: {fileID: 0}
+  backgroundGroundArmoredUnits: {fileID: 137139730}
+  stageVisualRoot: {fileID: 2056611780}
   environmentThemeDebugPanel: {fileID: 0}
   playerMoveGuide: {fileID: 0}
   damageNumberPresenter: {fileID: 0}
@@ -4893,6 +4964,37 @@ CanvasRenderer:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 817203359}
   m_CullTransparentMesh: 1
+--- !u!1 &840180766
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 840180767}
+  m_Layer: 0
+  m_Name: GroundCosmeticVfxRoot
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &840180767
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 840180766}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 137139729}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1001 &862797274
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -6572,6 +6674,37 @@ Transform:
   m_CorrespondingSourceObject: {fileID: 7424637343031806901, guid: d1cf2b114447ee9468b67b9037c8545c, type: 3}
   m_PrefabInstance: {fileID: 1048351082}
   m_PrefabAsset: {fileID: 0}
+--- !u!1 &1049630652
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 1049630653}
+  m_Layer: 0
+  m_Name: GroundUnitsRoot
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &1049630653
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1049630652}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 137139729}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1001 &1057032067
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -7844,6 +7977,7 @@ GameObject:
   m_Component:
   - component: {fileID: 1287457929}
   - component: {fileID: 1287457930}
+  - component: {fileID: 1287457931}
   m_Layer: 0
   m_Name: AmbientAllyArmyRoot
   m_TagString: Untagged
@@ -7866,6 +8000,7 @@ Transform:
   m_Children:
   - {fileID: 68966250}
   - {fileID: 1177362676}
+  - {fileID: 137139729}
   m_Father: {fileID: 1453801792}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!114 &1287457930
@@ -7934,6 +8069,19 @@ MonoBehaviour:
   crashInitialDownSpeed: {x: 0.5, y: 1}
   crashGravity: 2.4
   crashSpinDegreesPerSecond: {x: 240, y: 420}
+--- !u!114 &1287457931
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1287457928}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: b888cc69e84e24bf4a49539fbac4f339, type: 3}
+  m_Name:
+  m_EditorClassIdentifier: TitanDestroyer.BackgroundAllyArmy::BackgroundCosmeticCombatBudget
+  maximumAmbientOwners: 2
 --- !u!1 &1322313177
 GameObject:
   m_ObjectHideFlags: 0

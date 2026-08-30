@@ -11,5 +11,6 @@
 ## 개발계획서
 
 - [Background Ally Army](background-ally-army-development-plan.md) — **공중 구현됨 / 지상 계획**, 500 tris 헬기 단독기·3대 편대, 절반 속도 공격 기동, 개틀링 총구 화염, 단일 랜덤 연기 추락을 BattleArena에 연결. 다음 단계는 탱크 개별 분리·종대·포격 연출.
+- [Background Ground Armored Units](background-ground-armored-units-development-plan.md) — **계획 / 에셋 최적화 대기**, 탱크·대형 개틀링건 탑재 차량·박격포 차량 총 7~10대의 편대/개별 이동, 이동 사격, 정차 사격, 공중 부대 연출 예산 통합 계획.
 - [Kaiju 가속 횡단 빔·입 방향 동기화](kaiju-sweep-beam-alignment-development-plan.md) — **구현됨**, 기존 횡단 동작을 보존하는 목·머리 보정과 검증 결과. EditMode 105/105, 실제 전투 44조합 통과; 실기기/전체 아트 승인 별도.
 - [Kaiju 애니메이션 통합](kaiju-animation-integration-plan.md) — 기존 애니메이션 통합의 사양·구현 이력.
