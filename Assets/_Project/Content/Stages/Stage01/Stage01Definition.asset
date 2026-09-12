@@ -1,0 +1,19 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 7f709b9f7cf89430a959cb7cdbe33a35, type: 3}
+  m_Name: Stage01Definition
+  m_EditorClassIdentifier: Assembly-CSharp::StageDefinition
+  stageId: stage_01_tokyo
+  displayName: Tokyo
+  bossDefinition: {fileID: 11400000, guid: c1f8ecd77103b4bd1b8f3ef031b9461d, type: 2}
+  environmentPrefab: {fileID: 5946734305139628376, guid: 8f52f54868f774adc8bb9a147442dbca, type: 3}
+  environmentTheme: 0
