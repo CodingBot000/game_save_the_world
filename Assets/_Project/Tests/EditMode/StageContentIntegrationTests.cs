@@ -73,6 +73,33 @@ public sealed class StageContentIntegrationTests
     }
 
     [Test]
+    public void Stage2VisualHeight_MatchesStage1VisualHeight()
+    {
+        float stage1Height = MeasureVisualHeight(Stage1PrefabPath);
+        float stage2Height = MeasureVisualHeight(Stage2PrefabPath);
+
+        Assert.That(stage1Height, Is.GreaterThan(0f));
+        Assert.That(stage2Height, Is.EqualTo(stage1Height).Within(stage1Height * 0.01f));
+    }
+
+    [TestCase("Assets/Materials/Aircraft/Viper.mat")]
+    [TestCase("Assets/Materials/Aircraft/20mmGatlingGun_Viper.mat")]
+    [TestCase("Assets/Materials/Aircraft/AGM.mat")]
+    [TestCase("Assets/Materials/Aircraft/PylonAGM4rds.mat")]
+    [TestCase("Assets/Materials/Aircraft/RocketPod19rds.mat")]
+    [TestCase("Assets/Materials/Aircraft/Sidewinder.mat")]
+    [TestCase("Assets/Materials/Aircraft/pilot_test.mat")]
+    [TestCase("Assets/Materials/Aircraft/ViperCockpitGlass.mat")]
+    public void ViperMaterial_UsesSupportedUrpShader(string materialPath)
+    {
+        Material material = AssetDatabase.LoadAssetAtPath<Material>(materialPath);
+        Assert.That(material, Is.Not.Null, materialPath);
+        Assert.That(material.shader, Is.Not.Null, materialPath);
+        Assert.That(material.shader.isSupported, Is.True, materialPath);
+        Assert.That(material.shader.name, Is.EqualTo("Universal Render Pipeline/Lit"), materialPath);
+    }
+
+    [Test]
     public void Stage2Content_DoesNotReferenceStage1OrImportedSourceAssets()
     {
         string[] dependencies = AssetDatabase.GetDependencies(Stage2Root, true);
@@ -133,5 +160,31 @@ public sealed class StageContentIntegrationTests
         Type type = Type.GetType(assemblyQualifiedName);
         Assert.That(type, Is.Not.Null, $"Could not resolve {assemblyQualifiedName}");
         return type;
+    }
+
+    private static float MeasureVisualHeight(string prefabPath)
+    {
+        GameObject root = PrefabUtility.LoadPrefabContents(prefabPath);
+        try
+        {
+            root.transform.SetLocalPositionAndRotation(Vector3.zero, Quaternion.identity);
+            root.transform.localScale = Vector3.one;
+            Transform visualRoot = root.transform.Find("BossVisualRoot");
+            Assert.That(visualRoot, Is.Not.Null, prefabPath);
+
+            Renderer[] renderers = visualRoot.GetComponentsInChildren<Renderer>(true);
+            Assert.That(renderers, Is.Not.Empty, prefabPath);
+            Bounds bounds = renderers[0].bounds;
+            for (int i = 1; i < renderers.Length; i++)
+            {
+                bounds.Encapsulate(renderers[i].bounds);
+            }
+
+            return bounds.size.y;
+        }
+        finally
+        {
+            PrefabUtility.UnloadPrefabContents(root);
+        }
     }
 }

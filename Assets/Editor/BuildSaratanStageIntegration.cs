@@ -172,6 +172,62 @@ internal static class BuildSaratanStageIntegration
         Debug.Log("SARATAN_MATERIAL_FIX_SUCCESS shader=Universal Render Pipeline/Lit");
     }
 
+    [MenuItem("Tools/Titan Destroyer/Stage Content/Match Saratan Scale To Stage 1")]
+    public static void MatchSaratanScaleToStage1()
+    {
+        float targetHeight = CalculatePrefabVisualHeight(Stage1PrefabPath);
+        GameObject stage2Root = PrefabUtility.LoadPrefabContents(Stage2PrefabPath);
+
+        try
+        {
+            Transform rootTransform = stage2Root.transform;
+            Vector3 rootPosition = rootTransform.localPosition;
+            Quaternion rootRotation = rootTransform.localRotation;
+            Vector3 rootScale = rootTransform.localScale;
+            rootTransform.SetLocalPositionAndRotation(Vector3.zero, Quaternion.identity);
+            rootTransform.localScale = Vector3.one;
+
+            Transform visualRoot = rootTransform.Find("BossVisualRoot");
+            Transform model = visualRoot != null ? visualRoot.Find("SaratanVisual") : null;
+            if (visualRoot == null || model == null)
+            {
+                throw new InvalidOperationException("Stage 2 prefab is missing BossVisualRoot/SaratanVisual.");
+            }
+
+            Bounds currentBounds = CalculateRendererBounds(visualRoot.gameObject);
+            if (currentBounds.size.y <= 0.001f)
+            {
+                throw new InvalidOperationException("Stage 2 Saratan visual has no measurable renderer height.");
+            }
+
+            float scaleRatio = targetHeight / currentBounds.size.y;
+            model.localScale *= scaleRatio;
+
+            Bounds scaledBounds = CalculateRendererBounds(visualRoot.gameObject);
+            Vector3 worldOffset = new(
+                -scaledBounds.center.x,
+                -scaledBounds.min.y,
+                -scaledBounds.center.z);
+            model.localPosition += visualRoot.InverseTransformVector(worldOffset);
+
+            Bounds finalBounds = CalculateRendererBounds(visualRoot.gameObject);
+            UpdateStage2TargetGeometry(stage2Root, finalBounds);
+
+            rootTransform.SetLocalPositionAndRotation(rootPosition, rootRotation);
+            rootTransform.localScale = rootScale;
+            PrefabUtility.SaveAsPrefabAsset(stage2Root, Stage2PrefabPath);
+            AssetDatabase.SaveAssets();
+
+            Debug.Log(
+                $"SARATAN_SCALE_MATCH_SUCCESS oldHeight={currentBounds.size.y:F3} " +
+                $"targetHeight={targetHeight:F3} finalHeight={finalBounds.size.y:F3} ratio={scaleRatio:F4}");
+        }
+        finally
+        {
+            PrefabUtility.UnloadPrefabContents(stage2Root);
+        }
+    }
+
     public static void CaptureStage2Preview()
     {
         EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
@@ -369,7 +425,10 @@ internal static class BuildSaratanStageIntegration
         model.transform.localScale = Vector3.one;
 
         Bounds initialBounds = CalculateRendererBounds(model);
-        float normalizationScale = initialBounds.size.y > 0.001f ? 3f / initialBounds.size.y : 1f;
+        float targetHeight = CalculatePrefabVisualHeight(Stage1PrefabPath);
+        float normalizationScale = initialBounds.size.y > 0.001f
+            ? targetHeight / initialBounds.size.y
+            : 1f;
         model.transform.localScale = Vector3.one * normalizationScale;
         Bounds normalizedBounds = CalculateRendererBounds(model);
         model.transform.localPosition += new Vector3(
@@ -386,19 +445,11 @@ internal static class BuildSaratanStageIntegration
         animator.applyRootMotion = false;
 
         Bounds finalBounds = CalculateRendererBounds(model);
-        GameObject aimPoint = new("AimPoint");
-        aimPoint.transform.SetParent(root.transform, false);
-        aimPoint.transform.localPosition = new Vector3(0f, Mathf.Max(1f, finalBounds.size.y * 0.7f), 0f);
-
+        new GameObject("AimPoint").transform.SetParent(root.transform, false);
         GameObject hurtbox = new("BossHurtbox");
         hurtbox.transform.SetParent(root.transform, false);
-        hurtbox.transform.localPosition = new Vector3(0f, finalBounds.size.y * 0.5f, 0f);
-        BoxCollider collider = hurtbox.AddComponent<BoxCollider>();
-        collider.isTrigger = true;
-        collider.size = new Vector3(
-            Mathf.Max(1f, finalBounds.size.x * 0.9f),
-            Mathf.Max(1f, finalBounds.size.y),
-            Mathf.Max(1f, finalBounds.size.z * 0.9f));
+        hurtbox.AddComponent<BoxCollider>();
+        UpdateStage2TargetGeometry(root, finalBounds);
 
         root.transform.localPosition = rootPosition;
         root.transform.localRotation = rootRotation;
@@ -513,6 +564,57 @@ internal static class BuildSaratanStageIntegration
         }
 
         return bounds;
+    }
+
+    private static float CalculatePrefabVisualHeight(string prefabPath)
+    {
+        GameObject prefabRoot = PrefabUtility.LoadPrefabContents(prefabPath);
+        try
+        {
+            Transform rootTransform = prefabRoot.transform;
+            Vector3 rootPosition = rootTransform.localPosition;
+            Quaternion rootRotation = rootTransform.localRotation;
+            Vector3 rootScale = rootTransform.localScale;
+            rootTransform.SetLocalPositionAndRotation(Vector3.zero, Quaternion.identity);
+            rootTransform.localScale = Vector3.one;
+
+            Transform visualRoot = rootTransform.Find("BossVisualRoot");
+            Bounds bounds = CalculateRendererBounds(
+                visualRoot != null ? visualRoot.gameObject : prefabRoot);
+
+            rootTransform.SetLocalPositionAndRotation(rootPosition, rootRotation);
+            rootTransform.localScale = rootScale;
+            return bounds.size.y;
+        }
+        finally
+        {
+            PrefabUtility.UnloadPrefabContents(prefabRoot);
+        }
+    }
+
+    private static void UpdateStage2TargetGeometry(GameObject root, Bounds visualBounds)
+    {
+        Transform aimPoint = root.transform.Find("AimPoint");
+        Transform hurtbox = root.transform.Find("BossHurtbox");
+        if (aimPoint == null || hurtbox == null)
+        {
+            throw new InvalidOperationException("Stage 2 prefab is missing AimPoint or BossHurtbox.");
+        }
+
+        aimPoint.localPosition = new Vector3(0f, Mathf.Max(1f, visualBounds.size.y * 0.7f), 0f);
+        hurtbox.localPosition = new Vector3(0f, visualBounds.size.y * 0.5f, 0f);
+
+        BoxCollider collider = hurtbox.GetComponent<BoxCollider>();
+        if (collider == null)
+        {
+            collider = hurtbox.gameObject.AddComponent<BoxCollider>();
+        }
+
+        collider.isTrigger = true;
+        collider.size = new Vector3(
+            Mathf.Max(1f, visualBounds.size.x * 0.9f),
+            Mathf.Max(1f, visualBounds.size.y),
+            Mathf.Max(1f, visualBounds.size.z * 0.9f));
     }
 
     private static void SetObjectReference(UnityEngine.Object target, string propertyName, UnityEngine.Object value)
