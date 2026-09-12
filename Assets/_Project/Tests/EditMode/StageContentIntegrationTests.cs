@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 using NUnit.Framework;
@@ -56,20 +57,63 @@ public sealed class StageContentIntegrationTests
     }
 
     [Test]
-    public void Stage2Prefab_UsesIdleAnimatorAndDisabledAttackController()
+    public void Stage2Prefab_UsesOwnCombatAnimatorAndEnabledTemporaryAttack()
     {
+        GameObject stage1 = AssetDatabase.LoadAssetAtPath<GameObject>(Stage1PrefabPath);
         GameObject stage2 = AssetDatabase.LoadAssetAtPath<GameObject>(Stage2PrefabPath);
+        Assert.That(stage1, Is.Not.Null);
         Assert.That(stage2, Is.Not.Null);
         Component attack = stage2.GetComponent(BossAttackControllerType);
         Assert.That(attack, Is.Not.Null);
-        Assert.That(((Behaviour)attack).enabled, Is.False);
+        Assert.That(((Behaviour)attack).enabled, Is.True);
+
+        Type patternType = RequireType("BossBulletPatternController, Assembly-CSharp");
+        Component stage1Patterns = stage1.GetComponent(patternType);
+        Component stage2Patterns = stage2.GetComponent(patternType);
+        Assert.That(stage1Patterns, Is.Not.Null);
+        Assert.That(stage2Patterns, Is.Not.Null);
+        Assert.That(((Behaviour)stage2Patterns).enabled, Is.True);
+        AssertSerializedValuesEqual(stage1.GetComponent(BossAttackControllerType), attack);
+        AssertSerializedValuesEqual(stage1Patterns, stage2Patterns);
 
         Animator animator = stage2.GetComponentInChildren<Animator>(true);
         Assert.That(animator, Is.Not.Null);
         Assert.That(animator.runtimeAnimatorController, Is.Not.Null);
-        AnimationClip idle = animator.runtimeAnimatorController.animationClips
-            .Single(clip => clip.name.Contains("BasicIdle", StringComparison.Ordinal));
+        string controllerPath = AssetDatabase.GetAssetPath(animator.runtimeAnimatorController);
+        Assert.That(controllerPath, Does.StartWith(Stage2Root + "/Runtime/Animation/"));
+
+        AnimationClip[] clips = animator.runtimeAnimatorController.animationClips;
+        Assert.That(clips.Select(clip => clip.name), Is.EquivalentTo(new[]
+        {
+            "Saratan_RigB_BasicIdle",
+            "Saratan_RigB_Attack_FiringFront",
+            "Saratan_RigB_Attack_BreathFront",
+        }));
+        foreach (AnimationClip clip in clips)
+        {
+            Assert.That(AssetDatabase.GetAssetPath(clip), Does.StartWith(Stage2Root + "/Art/RigB/Animations/"));
+        }
+
+        AnimationClip idle = clips.Single(clip => clip.name.Contains("BasicIdle", StringComparison.Ordinal));
         Assert.That(AnimationUtility.GetAnimationClipSettings(idle).loopTime, Is.True);
+        foreach (AnimationClip attackClip in clips.Where(clip => clip != idle))
+        {
+            Assert.That(AnimationUtility.GetAnimationClipSettings(attackClip).loopTime, Is.False, attackClip.name);
+        }
+
+        Type driverType = RequireType("KaijuBossAnimationDriver, Assembly-CSharp");
+        Assert.That(stage2.GetComponentInChildren(driverType, true), Is.Null);
+        Assert.That(stage2.GetComponentsInChildren<Transform>(true).Count(t => t.name == "SaratanMouthFirePoint"), Is.EqualTo(1));
+        Assert.That(stage2.GetComponentsInChildren<Transform>(true).Count(t => t.name == "BossFootDebrisFirePoint1"), Is.EqualTo(1));
+        Assert.That(stage2.GetComponentsInChildren<Transform>(true).Count(t => t.name == "BossFootDebrisFirePoint2"), Is.EqualTo(1));
+
+        SerializedObject serializedPatterns = new(stage2Patterns);
+        UnityEngine.Object debrisCatalog = serializedPatterns.FindProperty("debrisFragmentCatalog").objectReferenceValue;
+        string debrisCatalogPath = AssetDatabase.GetAssetPath(debrisCatalog);
+        Assert.That(debrisCatalogPath, Is.EqualTo(
+            Stage2Root + "/Runtime/Attack/Data/SaratanDebrisFragmentCatalog.asset"));
+        Assert.That(AssetDatabase.AssetPathToGUID(debrisCatalogPath), Is.Not.EqualTo(
+            AssetDatabase.AssetPathToGUID("Assets/_Project/Resources/VFX/MonsterDebrisFragmentCatalog.asset")));
     }
 
     [Test]
@@ -186,5 +230,34 @@ public sealed class StageContentIntegrationTests
         {
             PrefabUtility.UnloadPrefabContents(root);
         }
+    }
+
+    private static void AssertSerializedValuesEqual(Component expected, Component actual)
+    {
+        Dictionary<string, string> expectedValues = CaptureNonReferenceValues(expected);
+        Dictionary<string, string> actualValues = CaptureNonReferenceValues(actual);
+        Assert.That(actualValues, Is.EqualTo(expectedValues));
+    }
+
+    private static Dictionary<string, string> CaptureNonReferenceValues(Component component)
+    {
+        SerializedObject serialized = new(component);
+        SerializedProperty property = serialized.GetIterator();
+        Dictionary<string, string> values = new(StringComparer.Ordinal);
+        bool enterChildren = true;
+        while (property.NextVisible(enterChildren))
+        {
+            enterChildren = true;
+            if (property.propertyPath == "m_Script" ||
+                property.propertyType == SerializedPropertyType.ObjectReference ||
+                property.propertyType == SerializedPropertyType.Generic)
+            {
+                continue;
+            }
+
+            values[property.propertyPath] = property.boxedValue?.ToString() ?? "<null>";
+        }
+
+        return values;
     }
 }

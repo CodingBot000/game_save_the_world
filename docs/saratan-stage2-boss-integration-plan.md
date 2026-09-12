@@ -3,7 +3,7 @@ title: Stage 2 Saratan 보스 통합 개발계획서
 document_id: TD-STAGE02-SARATAN-BOSS-INTEGRATION
 document_type: development-plan
 status: "구현 완료"
-version: "1.0.0"
+version: "1.1.0"
 created: "2026-09-12"
 last_reviewed: "2026-09-12"
 unity_version: 6000.4.0f1
@@ -96,7 +96,7 @@ Stage 1 Kaiju와 Stage 2 Saratan은 모델, 텍스처, 머티리얼, 애니메�
 - `KaijuBossAnimationDriver`는 Kaiju 뼈 경로, Beam/Tail, `JumpTurnR` 상태를 전제로 한다.
 - Saratan 설명은 별도 뼈 구조, Breath 공격, `JumpTurnL`을 사용한다.
 
-첫 통합에서는 Stage 1의 기존 전투 동작을 그대로 보존하고 Stage 2 공격 컴포넌트를 비활성화한다. Saratan 전용 전투 Animation Driver의 완성은 후속 범위로 둔다.
+최초 표시 통합(Phase 6)에서는 Stage 1의 기존 전투 동작을 그대로 보존하고 Stage 2 공격 컴포넌트를 비활성화한다. 이후 Phase 9에서 Kaiju 전용 자산을 참조하지 않는 Saratan 독립 임시 공격 구성을 추가한다. Saratan 전용 전투 Animation Driver의 완성은 후속 범위로 둔다.
 
 ### 3.3 패키지 충돌 위험
 
@@ -380,7 +380,7 @@ Boss_Stage02_Saratan
         └── Saratan 모델 계층
 ```
 
-초기 컴포넌트:
+Phase 6 초기 표시 단계의 컴포넌트:
 
 - `BossController`
 - `BossAttackController` — 초기 비활성화
@@ -400,7 +400,7 @@ Boss_Stage02_Saratan
 
 ### 9.3 초기 Animator
 
-첫 Controller는 다음 상태만 필수로 한다.
+Phase 6의 첫 Controller는 다음 상태만 필수로 한다. Phase 9에서는 Saratan 전용 Firing/Breath 상태와 Trigger를 추가한다.
 
 ```text
 Base Layer
@@ -530,6 +530,20 @@ Stage02Environment.prefab
 
 완료 조건: 아래 인수 조건을 모두 충족한다.
 
+### Phase 9 — Saratan 임시 공격 패턴
+
+최종 Saratan 공격 설계 전까지 Stage 1 Kaiju와 동일한 공격 순서와 수치를 Stage 2에 복제한다. 동일 동작은 기준값일 뿐이며 Stage 1 런타임 오브젝트나 보스 전용 애니메이션 자산을 참조하지 않는다.
+
+- 공용 `BossAttackController`, `BossBulletPatternController`, 투사체 및 피해 처리 코드는 재사용한다.
+- 패턴 목록과 수치는 `Boss_Stage02_Saratan.prefab`의 별도 컴포넌트에 값으로 복제한다.
+- Stage 2는 `SaratanDebrisFragmentCatalog.asset`을 별도 GUID로 소유한다.
+- 발사점과 지면 파편 발사점은 Saratan 프리팹 내부에 새로 만든다.
+- `Attack1`은 `Saratan_RigB_Attack_FiringFront`, `Attack2`는 `Saratan_RigB_Attack_BreathFront`를 사용한다.
+- Kaiju Animator Controller, AnimationClip, `KaijuBossAnimationDriver`, Mouth/Tail Socket은 사용하지 않는다.
+- 이후 Saratan 최종 패턴 개발은 Stage 2 프리팹과 전용 자산만 교체하며 Stage 1에는 영향을 주지 않는다.
+
+완료 조건: 두 보스의 현재 패턴 값은 같지만, Stage 2 공격 관련 보스 전용 참조가 모두 Stage 2 폴더 또는 Stage 2 프리팹 내부를 가리킨다.
+
 ## 12. 테스트 계획
 
 ### 12.1 에셋 검사
@@ -568,7 +582,9 @@ Stage02Environment.prefab
 - AimPoint가 모델 중심/상체의 적절한 위치에 있음
 - Hurtbox가 모델 크기와 대체로 일치함
 - 플레이어 궤도와 카메라가 Saratan 중심을 사용함
-- 공격 비활성 상태에서 오류가 반복 출력되지 않음
+- 임시 공격 컨트롤러와 패턴 컨트롤러가 활성화됨
+- 임시 패턴을 강제 실행했을 때 Coroutine과 공격 애니메이션 Trigger가 정상 동작함
+- Kaiju 전용 Animation Driver 없이 Saratan 전용 Firing/Breath Clip을 사용함
 - 기존 공용 배경이 Stage 1과 동일하게 표시됨
 - Retry 시 Saratan이 중복 생성되지 않음
 
@@ -596,6 +612,7 @@ Stage02Environment.prefab
 10. Console에 컴파일 오류, Missing Reference, 반복 Animator 오류가 없다.
 11. 집중 테스트와 전체 EditMode 테스트 결과가 기록된다.
 12. 최종 에셋과 Manifest가 커밋된 뒤 임시 Unity 프로젝트가 삭제된다.
+13. Stage 2 임시 공격 설정은 Stage 1 패턴과 값이 같아도 독립 컴포넌트와 독립 보스 전용 자산으로 존재한다.
 
 ## 14. 위험과 대응
 
@@ -606,14 +623,14 @@ Stage02Environment.prefab
 | 두 Animation 계열의 리그 대응을 이름으로 오판 | 애니메이션 무반응 또는 뒤틀림 | Transform/Curve binding 및 실제 SampleAnimation 검증 |
 | Stage 1 Prefab 추출 중 override 유실 | 기존 공격/충돌/연출 회귀 | 추출 전후 직렬화 스냅샷과 Play Mode 회귀 |
 | 로더 실행 순서가 늦음 | BattleController가 보스를 찾지 못함 | 실행 순서 명시, 보스 생성 완료 후 BattleController 초기화 |
-| Saratan에 Kaiju Driver 연결 | 뼈 경로 오류와 잘못된 공격 상태 | 초기 미부착, 후속 Saratan 전용 Driver 작성 |
-| Stage 2 공격 비활성으로 기존 패턴 코드가 경고 반복 | Console 오염 또는 예외 | Stage 2 Definition에서 명시적 Preview/Combat capability 처리 |
+| Saratan에 Kaiju Driver 연결 | 뼈 경로 오류와 잘못된 공격 상태 | 미부착 유지, 공통 Trigger fallback과 Saratan 전용 Clip 사용 |
+| 임시 동일 패턴을 Stage 1 자산 참조로 연결 | 향후 Saratan 변경이 Kaiju에 영향 | 수치만 복사하고 Stage 2 전용 컴포넌트·Controller·Catalog·Socket 사용을 테스트로 고정 |
 | 환경 분리 중 StageVisualRoot 참조 유실 | 배경 회전·아군 경로 오류 | 환경 래퍼 생성 전후 BackgroundHost/StageVisualRoot 검증 |
 | 임시 프로젝트 조기 삭제 | GUID/의존성 추적 자료 손실 | Export, Manifest, 본 프로젝트 검증 및 커밋 후 삭제 |
 
 ## 15. 이번 범위에서 제외
 
-- Saratan의 최종 공격 패턴 설계
+- Saratan의 최종 공격 패턴 설계(현재는 Kaiju와 동일한 임시 복제본 사용)
 - Breath 공격 판정과 VFX
 - 상체 3방향 Blend Tree 완성
 - 플레이어 수평 추적과 공격 방향 연동
@@ -636,15 +653,20 @@ Stage02Environment.prefab
 - 제공 Toon Shader는 현재 Unity/URP 조합에서 Metal 컴파일 오류가 발생해, Stage 2 전용 Material을 지원되는 `Universal Render Pipeline/Lit`로 변환하고 전용 Base/Emission Texture만 다시 연결했다.
 - `BattleArena`의 기존 Kaiju 설정을 `Boss_Stage01_Kaiju.prefab`으로 추출하고 고정 보스 인스턴스를 제거했다.
 - `StageCatalog`와 `BattleStageLoader`가 `stage_01_tokyo` 및 `stage_02_seoul`을 각각 독립 Boss/Environment Prefab으로 해석한다.
-- Stage 2 Saratan은 `BasicIdle` 단일 상태를 반복 재생하며 공격 컨트롤러는 첫 표시 범위에 맞춰 비활성화했다.
+- Stage 2 Saratan의 `BossAttackController`와 `BossBulletPatternController`는 Stage 1의 현재 수치와 순서를 독립 직렬화 값으로 복제해 활성화했다.
+- `Saratan.controller`는 Stage 2 Rig B의 `BasicIdle`, `Attack_FiringFront`, `Attack_BreathFront`만 참조하며 `Attack1`/`Attack2` Trigger로 전환한다.
+- 공격 발사점은 Saratan 턱 뼈의 `SaratanMouthFirePoint`와 Stage 2 Prefab 내부의 양쪽 발 파편 발사점으로 별도 구성했다.
+- 파편 설정은 새 GUID의 `SaratanDebrisFragmentCatalog.asset`으로 분리했으며, `KaijuBossAnimationDriver` 및 Stage 1 보스 전용 에셋 의존성은 없다.
+- 공격 실행 코드, 투사체 및 공용 VFX 기반은 몬스터에 종속되지 않는 공용 런타임으로 유지한다.
 - Stage 1/2 환경 Prefab은 서로 다른 GUID를 사용하며 현재는 기존 공용 배경 결과를 유지한다.
 
 검증 결과:
 
 ```text
-Saratan 집중 EditMode: 9/9 Passed
-전체 EditMode:          125/125 Passed
+Saratan 집중 EditMode: 18/18 Passed
+전체 EditMode:          134/134 Passed
 Stage 로딩 PlayMode:    2/2 Passed
+Unity Console Error:    0
 프로젝트 중복 GUID:     0
 Stage 2/기존 프로젝트 GUID 교집합: 0
 Stage 2 금지 Dependency: 0

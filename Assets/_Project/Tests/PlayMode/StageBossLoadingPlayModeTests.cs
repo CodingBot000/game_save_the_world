@@ -43,12 +43,28 @@ public sealed class StageBossLoadingPlayModeTests
 
         Component attack = boss.GetComponent(RequireType("BossAttackController, Assembly-CSharp"));
         Assert.That(attack, Is.Not.Null);
-        Assert.That(((Behaviour)attack).enabled, Is.False);
+        Assert.That(((Behaviour)attack).enabled, Is.True);
+
+        Type patternType = RequireType("BossBulletPatternController, Assembly-CSharp");
+        Component patterns = boss.GetComponent(patternType);
+        Assert.That(patterns, Is.Not.Null);
+        Assert.That(((Behaviour)patterns).enabled, Is.True);
 
         yield return new WaitForSeconds(0.25f);
         AnimatorStateInfo state = animator.GetCurrentAnimatorStateInfo(0);
         Assert.That(state.IsName("BasicIdle"), Is.True);
         Assert.That(state.normalizedTime, Is.GreaterThan(0f));
+
+        Type patternEnumType = RequireType("BossBulletPatternType, Assembly-CSharp");
+        object debrisPattern = Enum.Parse(patternEnumType, "DebrisFragmentScatter");
+        MethodInfo runPattern = patternType.GetMethod("TryRunPatternForDebug", BindingFlags.Public | BindingFlags.Instance);
+        Assert.That(runPattern, Is.Not.Null);
+        Assert.That((bool)runPattern.Invoke(patterns, new[] { debrisPattern }), Is.True);
+        yield return null;
+
+        PropertyInfo isPatternRunning = patternType.GetProperty("IsPatternRunning", BindingFlags.Public | BindingFlags.Instance);
+        Assert.That(isPatternRunning, Is.Not.Null);
+        Assert.That((bool)isPatternRunning.GetValue(patterns), Is.True);
     }
 
     private static void SetStageSelection(string stageId, string stageName)

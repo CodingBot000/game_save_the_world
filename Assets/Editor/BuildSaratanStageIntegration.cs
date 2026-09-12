@@ -21,8 +21,14 @@ internal static class BuildSaratanStageIntegration
     private const string Stage1EnvironmentPath = StagesRoot + "/Stage01/Environment/Stage01Environment.prefab";
     private const string Stage2EnvironmentPath = StagesRoot + "/Stage02/Environment/Stage02Environment.prefab";
     private const string AnimatorControllerPath = Stage2Root + "/Runtime/Animation/Controllers/Saratan.controller";
+    private const string SaratanAttackDataFolder = Stage2Root + "/Runtime/Attack/Data";
+    private const string SharedDebrisCatalogPath = "Assets/_Project/Resources/VFX/MonsterDebrisFragmentCatalog.asset";
+    private const string SaratanDebrisCatalogPath = SaratanAttackDataFolder + "/SaratanDebrisFragmentCatalog.asset";
     private const string RigBModelPath = Stage2Root + "/Art/RigB/Models/Saratan_RigB_Model.fbx";
     private const string RigBIdlePath = Stage2Root + "/Art/RigB/Animations/Saratan_RigB_BasicIdle.anim";
+    private const string RigBFiringFrontPath = Stage2Root + "/Art/RigB/Animations/Saratan_RigB_Attack_FiringFront.anim";
+    private const string RigBBreathFrontPath = Stage2Root + "/Art/RigB/Animations/Saratan_RigB_Attack_BreathFront.anim";
+    private const string SaratanMouthBonePath = "Root/Pelvis/Spine 01/Neck_01/Head/Jaw Under";
 
     public static void Run()
     {
@@ -32,12 +38,14 @@ internal static class BuildSaratanStageIntegration
         EnsureFolder(Stage1Root + "/Data");
         EnsureFolder(Stage2Root + "/Runtime/Animation/Controllers");
         EnsureFolder(Stage2Root + "/Runtime/Animation/Masks");
+        EnsureFolder(SaratanAttackDataFolder);
         EnsureFolder(Stage2Root + "/Runtime/Prefabs");
         EnsureFolder(Stage2Root + "/Data");
         EnsureFolder(StagesRoot + "/Stage01/Environment");
         EnsureFolder(StagesRoot + "/Stage02/Environment");
 
-        AnimatorController animatorController = CreateIdleAnimatorController();
+        AnimatorController animatorController = CreateSaratanAnimatorController();
+        DebrisFragmentCatalog saratanDebrisCatalog = CreateSaratanDebrisCatalog();
         GameObject stage1Environment = CreateEnvironmentPrefab(Stage1EnvironmentPath, "Stage01Environment");
         GameObject stage2Environment = CreateEnvironmentPrefab(Stage2EnvironmentPath, "Stage02Environment");
 
@@ -55,7 +63,9 @@ internal static class BuildSaratanStageIntegration
 
         GameObject stage1Prefab = CreateStage1Prefab(existingBoss);
         GameObject stage2Prefab = CreateStage2Prefab(
+            stage1Prefab,
             animatorController,
+            saratanDebrisCatalog,
             bossLocalPosition,
             bossLocalRotation,
             bossLocalScale);
@@ -228,6 +238,39 @@ internal static class BuildSaratanStageIntegration
         }
     }
 
+    [MenuItem("Tools/Titan Destroyer/Stage Content/Apply Temporary Saratan Attack Pattern")]
+    public static void ApplyTemporarySaratanAttackPattern()
+    {
+        EnsureFolder(Stage2Root + "/Runtime/Animation/Controllers");
+        EnsureFolder(SaratanAttackDataFolder);
+
+        AnimatorController animatorController = CreateSaratanAnimatorController();
+        DebrisFragmentCatalog saratanDebrisCatalog = CreateSaratanDebrisCatalog();
+        GameObject stage1Root = PrefabUtility.LoadPrefabContents(Stage1PrefabPath);
+        GameObject stage2Root = PrefabUtility.LoadPrefabContents(Stage2PrefabPath);
+
+        try
+        {
+            ConfigureTemporaryStage2Attack(
+                stage1Root,
+                stage2Root,
+                animatorController,
+                saratanDebrisCatalog);
+            PrefabUtility.SaveAsPrefabAsset(stage2Root, Stage2PrefabPath);
+            AssetDatabase.SaveAssets();
+            AssetDatabase.Refresh(ImportAssetOptions.ForceSynchronousImport);
+
+            ValidateStage2AttackIsolation(
+                AssetDatabase.LoadAssetAtPath<GameObject>(Stage2PrefabPath));
+            Debug.Log("SARATAN_TEMPORARY_ATTACK_PATTERN_SUCCESS");
+        }
+        finally
+        {
+            PrefabUtility.UnloadPrefabContents(stage2Root);
+            PrefabUtility.UnloadPrefabContents(stage1Root);
+        }
+    }
+
     public static void CaptureStage2Preview()
     {
         EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
@@ -350,22 +393,63 @@ internal static class BuildSaratanStageIntegration
         EditorUtility.SetDirty(material);
     }
 
-    private static AnimatorController CreateIdleAnimatorController()
+    private static AnimatorController CreateSaratanAnimatorController()
     {
-        AssetDatabase.DeleteAsset(AnimatorControllerPath);
-        AnimatorController controller = AnimatorController.CreateAnimatorControllerAtPath(AnimatorControllerPath);
-        AnimationClip idle = AssetDatabase.LoadAssetAtPath<AnimationClip>(RigBIdlePath);
-        if (idle == null)
+        AnimatorController controller = AssetDatabase.LoadAssetAtPath<AnimatorController>(AnimatorControllerPath);
+        if (controller == null)
         {
-            throw new InvalidOperationException($"Rig B idle clip is missing: {RigBIdlePath}");
+            controller = AnimatorController.CreateAnimatorControllerAtPath(AnimatorControllerPath);
         }
 
-        AnimatorState state = controller.layers[0].stateMachine.AddState("BasicIdle");
-        state.motion = idle;
-        state.writeDefaultValues = false;
-        controller.layers[0].stateMachine.defaultState = state;
+        AnimationClip idle = AssetDatabase.LoadAssetAtPath<AnimationClip>(RigBIdlePath);
+        AnimationClip firing = AssetDatabase.LoadAssetAtPath<AnimationClip>(RigBFiringFrontPath);
+        AnimationClip breath = AssetDatabase.LoadAssetAtPath<AnimationClip>(RigBBreathFrontPath);
+        if (idle == null || firing == null || breath == null)
+        {
+            throw new InvalidOperationException("One or more Saratan Rig B combat clips are missing.");
+        }
+
+        SetClipLoop(idle, true);
+        SetClipLoop(firing, false);
+        SetClipLoop(breath, false);
+        EnsureTriggerParameter(controller, "Attack1");
+        EnsureTriggerParameter(controller, "Attack2");
+
+        AnimatorStateMachine stateMachine = controller.layers[0].stateMachine;
+        ClearStateMachine(stateMachine);
+        AnimatorState idleState = CreateAnimatorState(stateMachine, "BasicIdle", idle, new Vector3(220f, 0f, 0f));
+        AnimatorState firingState = CreateAnimatorState(stateMachine, "Attack1_FiringFront", firing, new Vector3(220f, 90f, 0f));
+        AnimatorState breathState = CreateAnimatorState(stateMachine, "Attack2_BreathFront", breath, new Vector3(220f, 180f, 0f));
+        stateMachine.defaultState = idleState;
+        AddAttackTransition(stateMachine, firingState, "Attack1");
+        AddAttackTransition(stateMachine, breathState, "Attack2");
+        AddReturnToIdleTransition(firingState, idleState);
+        AddReturnToIdleTransition(breathState, idleState);
+
         EditorUtility.SetDirty(controller);
         return controller;
+    }
+
+    private static DebrisFragmentCatalog CreateSaratanDebrisCatalog()
+    {
+        DebrisFragmentCatalog source = AssetDatabase.LoadAssetAtPath<DebrisFragmentCatalog>(SharedDebrisCatalogPath);
+        if (source == null)
+        {
+            throw new InvalidOperationException($"Shared debris catalog is missing: {SharedDebrisCatalogPath}");
+        }
+
+        DebrisFragmentCatalog target = AssetDatabase.LoadAssetAtPath<DebrisFragmentCatalog>(SaratanDebrisCatalogPath);
+        if (target == null)
+        {
+            target = ScriptableObject.CreateInstance<DebrisFragmentCatalog>();
+            target.name = "SaratanDebrisFragmentCatalog";
+            AssetDatabase.CreateAsset(target, SaratanDebrisCatalogPath);
+        }
+
+        EditorUtility.CopySerialized(source, target);
+        target.name = "SaratanDebrisFragmentCatalog";
+        EditorUtility.SetDirty(target);
+        return target;
     }
 
     private static GameObject CreateEnvironmentPrefab(string path, string name)
@@ -399,7 +483,9 @@ internal static class BuildSaratanStageIntegration
     }
 
     private static GameObject CreateStage2Prefab(
+        GameObject stage1Prefab,
         RuntimeAnimatorController animatorController,
+        DebrisFragmentCatalog saratanDebrisCatalog,
         Vector3 rootPosition,
         Quaternion rootRotation,
         Vector3 rootScale)
@@ -412,8 +498,7 @@ internal static class BuildSaratanStageIntegration
 
         GameObject root = new("Boss_Stage02_Saratan");
         root.AddComponent<BossController>();
-        BossAttackController attackController = root.AddComponent<BossAttackController>();
-        attackController.enabled = false;
+        root.AddComponent<BossAttackController>();
 
         GameObject visualRoot = new("BossVisualRoot");
         visualRoot.transform.SetParent(root.transform, false);
@@ -450,6 +535,11 @@ internal static class BuildSaratanStageIntegration
         hurtbox.transform.SetParent(root.transform, false);
         hurtbox.AddComponent<BoxCollider>();
         UpdateStage2TargetGeometry(root, finalBounds);
+        ConfigureTemporaryStage2Attack(
+            stage1Prefab,
+            root,
+            animatorController,
+            saratanDebrisCatalog);
 
         root.transform.localPosition = rootPosition;
         root.transform.localRotation = rootRotation;
@@ -566,25 +656,112 @@ internal static class BuildSaratanStageIntegration
         return bounds;
     }
 
+    private static void ConfigureTemporaryStage2Attack(
+        GameObject stage1Root,
+        GameObject stage2Root,
+        RuntimeAnimatorController animatorController,
+        DebrisFragmentCatalog saratanDebrisCatalog)
+    {
+        BossAttackController sourceAttack = stage1Root.GetComponent<BossAttackController>();
+        BossBulletPatternController sourcePatterns = stage1Root.GetComponent<BossBulletPatternController>();
+        if (sourceAttack == null || sourcePatterns == null)
+        {
+            throw new InvalidOperationException("Stage 1 prefab does not contain the expected attack components.");
+        }
+
+        BossAttackController targetAttack = stage2Root.GetComponent<BossAttackController>();
+        if (targetAttack == null)
+        {
+            targetAttack = stage2Root.AddComponent<BossAttackController>();
+        }
+
+        BossBulletPatternController targetPatterns = stage2Root.GetComponent<BossBulletPatternController>();
+        if (targetPatterns == null)
+        {
+            targetPatterns = stage2Root.AddComponent<BossBulletPatternController>();
+        }
+
+        // Copy values into components owned by the Stage 2 prefab. No component or
+        // pattern asset from Stage 1 is referenced after this one-time migration.
+        EditorUtility.CopySerialized(sourceAttack, targetAttack);
+        EditorUtility.CopySerialized(sourcePatterns, targetPatterns);
+        targetAttack.enabled = true;
+        targetPatterns.enabled = true;
+
+        Animator animator = stage2Root.GetComponentInChildren<Animator>(true);
+        if (animator == null)
+        {
+            throw new InvalidOperationException("Stage 2 prefab does not contain an Animator.");
+        }
+
+        animator.runtimeAnimatorController = animatorController;
+        animator.applyRootMotion = false;
+
+        Transform mouthBone = animator.transform.Find(SaratanMouthBonePath);
+        if (mouthBone == null)
+        {
+            throw new InvalidOperationException($"Saratan mouth bone is missing: {SaratanMouthBonePath}");
+        }
+
+        Transform mouthFirePoint = EnsureNamedChild(stage2Root, mouthBone, "SaratanMouthFirePoint");
+        mouthFirePoint.SetLocalPositionAndRotation(Vector3.zero, Quaternion.identity);
+        mouthFirePoint.localScale = Vector3.one;
+
+        Bounds visualBounds = CalculateVisualBoundsWithNormalizedRoot(stage2Root);
+        Transform debrisPoint1 = EnsureNamedChild(stage2Root, stage2Root.transform, "BossFootDebrisFirePoint1");
+        Transform debrisPoint2 = EnsureNamedChild(stage2Root, stage2Root.transform, "BossFootDebrisFirePoint2");
+        float debrisX = Mathf.Max(0.5f, visualBounds.extents.x * 0.35f);
+        float debrisY = visualBounds.min.y + visualBounds.size.y * 0.08f;
+        debrisPoint1.localPosition = new Vector3(-debrisX, debrisY, visualBounds.center.z);
+        debrisPoint2.localPosition = new Vector3(debrisX, debrisY, visualBounds.center.z);
+        debrisPoint1.localRotation = debrisPoint2.localRotation = Quaternion.identity;
+        debrisPoint1.localScale = debrisPoint2.localScale = Vector3.one;
+
+        SetObjectReference(targetAttack, "firePoint", mouthFirePoint);
+        SetObjectReference(targetAttack, "bulletPatternController", targetPatterns);
+        SetObjectReference(targetAttack, "bossAnimator", animator);
+        SetObjectReference(targetPatterns, "debrisFragmentCatalog", saratanDebrisCatalog);
+        EditorUtility.SetDirty(animator);
+        EditorUtility.SetDirty(targetAttack);
+        EditorUtility.SetDirty(targetPatterns);
+    }
+
+    private static Transform EnsureNamedChild(GameObject searchRoot, Transform parent, string name)
+    {
+        Transform child = searchRoot.GetComponentsInChildren<Transform>(true)
+            .FirstOrDefault(candidate => candidate.name == name);
+        if (child == null)
+        {
+            child = new GameObject(name).transform;
+        }
+
+        child.SetParent(parent, false);
+        return child;
+    }
+
+    private static Bounds CalculateVisualBoundsWithNormalizedRoot(GameObject prefabRoot)
+    {
+        Transform rootTransform = prefabRoot.transform;
+        Vector3 rootPosition = rootTransform.localPosition;
+        Quaternion rootRotation = rootTransform.localRotation;
+        Vector3 rootScale = rootTransform.localScale;
+        rootTransform.SetLocalPositionAndRotation(Vector3.zero, Quaternion.identity);
+        rootTransform.localScale = Vector3.one;
+
+        Transform visualRoot = rootTransform.Find("BossVisualRoot");
+        Bounds bounds = CalculateRendererBounds(visualRoot != null ? visualRoot.gameObject : prefabRoot);
+
+        rootTransform.SetLocalPositionAndRotation(rootPosition, rootRotation);
+        rootTransform.localScale = rootScale;
+        return bounds;
+    }
+
     private static float CalculatePrefabVisualHeight(string prefabPath)
     {
         GameObject prefabRoot = PrefabUtility.LoadPrefabContents(prefabPath);
         try
         {
-            Transform rootTransform = prefabRoot.transform;
-            Vector3 rootPosition = rootTransform.localPosition;
-            Quaternion rootRotation = rootTransform.localRotation;
-            Vector3 rootScale = rootTransform.localScale;
-            rootTransform.SetLocalPositionAndRotation(Vector3.zero, Quaternion.identity);
-            rootTransform.localScale = Vector3.one;
-
-            Transform visualRoot = rootTransform.Find("BossVisualRoot");
-            Bounds bounds = CalculateRendererBounds(
-                visualRoot != null ? visualRoot.gameObject : prefabRoot);
-
-            rootTransform.SetLocalPositionAndRotation(rootPosition, rootRotation);
-            rootTransform.localScale = rootScale;
-            return bounds.size.y;
+            return CalculateVisualBoundsWithNormalizedRoot(prefabRoot).size.y;
         }
         finally
         {
@@ -615,6 +792,88 @@ internal static class BuildSaratanStageIntegration
             Mathf.Max(1f, visualBounds.size.x * 0.9f),
             Mathf.Max(1f, visualBounds.size.y),
             Mathf.Max(1f, visualBounds.size.z * 0.9f));
+    }
+
+    private static AnimatorState CreateAnimatorState(
+        AnimatorStateMachine stateMachine,
+        string name,
+        AnimationClip clip,
+        Vector3 position)
+    {
+        AnimatorState state = stateMachine.AddState(name, position);
+        state.motion = clip;
+        state.writeDefaultValues = false;
+        return state;
+    }
+
+    private static void EnsureTriggerParameter(AnimatorController controller, string parameterName)
+    {
+        AnimatorControllerParameter existing = controller.parameters
+            .FirstOrDefault(parameter => parameter.name == parameterName);
+        if (existing != null && existing.type == AnimatorControllerParameterType.Trigger)
+        {
+            return;
+        }
+
+        if (existing != null)
+        {
+            controller.RemoveParameter(existing);
+        }
+
+        controller.AddParameter(parameterName, AnimatorControllerParameterType.Trigger);
+    }
+
+    private static void ClearStateMachine(AnimatorStateMachine stateMachine)
+    {
+        foreach (AnimatorStateTransition transition in stateMachine.anyStateTransitions.ToArray())
+        {
+            stateMachine.RemoveAnyStateTransition(transition);
+        }
+
+        foreach (ChildAnimatorState childState in stateMachine.states.ToArray())
+        {
+            stateMachine.RemoveState(childState.state);
+        }
+
+        foreach (ChildAnimatorStateMachine childStateMachine in stateMachine.stateMachines.ToArray())
+        {
+            stateMachine.RemoveStateMachine(childStateMachine.stateMachine);
+        }
+    }
+
+    private static void AddAttackTransition(
+        AnimatorStateMachine stateMachine,
+        AnimatorState targetState,
+        string triggerName)
+    {
+        AnimatorStateTransition transition = stateMachine.AddAnyStateTransition(targetState);
+        transition.hasExitTime = false;
+        transition.duration = 0.05f;
+        transition.hasFixedDuration = true;
+        transition.canTransitionToSelf = true;
+        transition.AddCondition(AnimatorConditionMode.If, 0f, triggerName);
+    }
+
+    private static void AddReturnToIdleTransition(AnimatorState attackState, AnimatorState idleState)
+    {
+        AnimatorStateTransition transition = attackState.AddTransition(idleState);
+        transition.hasExitTime = true;
+        transition.exitTime = 0.95f;
+        transition.duration = 0.1f;
+        transition.hasFixedDuration = true;
+    }
+
+    private static void SetClipLoop(AnimationClip clip, bool loopTime)
+    {
+        AnimationClipSettings settings = AnimationUtility.GetAnimationClipSettings(clip);
+        if (settings.loopTime == loopTime)
+        {
+            return;
+        }
+
+        settings.loopTime = loopTime;
+        AnimationUtility.SetAnimationClipSettings(clip, settings);
+        EditorUtility.SetDirty(clip);
     }
 
     private static void SetObjectReference(UnityEngine.Object target, string propertyName, UnityEngine.Object value)
@@ -661,11 +920,7 @@ internal static class BuildSaratanStageIntegration
             throw new InvalidOperationException("Each boss prefab must contain exactly one BossController.");
         }
 
-        BossAttackController stage2Attack = stage2Prefab.GetComponent<BossAttackController>();
-        if (stage2Attack == null || stage2Attack.enabled)
-        {
-            throw new InvalidOperationException("Stage 2 attack controller must exist and remain disabled for idle preview scope.");
-        }
+        ValidateStage2AttackIsolation(stage2Prefab);
 
         string[] forbiddenDependencies = AssetDatabase.GetDependencies(Stage2Root, true)
             .Where(path =>
@@ -681,6 +936,38 @@ internal static class BuildSaratanStageIntegration
         {
             throw new InvalidOperationException(
                 "Stage 2 content references Stage 1 or package source assets:\n" +
+                string.Join("\n", forbiddenDependencies));
+        }
+    }
+
+    private static void ValidateStage2AttackIsolation(GameObject stage2Prefab)
+    {
+        BossAttackController stage2Attack = stage2Prefab.GetComponent<BossAttackController>();
+        BossBulletPatternController stage2Patterns = stage2Prefab.GetComponent<BossBulletPatternController>();
+        if (stage2Attack == null || !stage2Attack.enabled || stage2Patterns == null || !stage2Patterns.enabled)
+        {
+            throw new InvalidOperationException("Stage 2 temporary attack components must exist and be enabled.");
+        }
+
+        if (stage2Prefab.GetComponentInChildren<KaijuBossAnimationDriver>(true) != null)
+        {
+            throw new InvalidOperationException("Stage 2 must not use the Kaiju-specific animation driver.");
+        }
+
+        SerializedObject patterns = new(stage2Patterns);
+        UnityEngine.Object debrisCatalog = patterns.FindProperty("debrisFragmentCatalog").objectReferenceValue;
+        if (AssetDatabase.GetAssetPath(debrisCatalog) != SaratanDebrisCatalogPath)
+        {
+            throw new InvalidOperationException("Stage 2 must use its own debris catalog asset.");
+        }
+
+        string[] forbiddenDependencies = AssetDatabase.GetDependencies(Stage2PrefabPath, true)
+            .Where(path => path.StartsWith(Stage1Root, StringComparison.Ordinal))
+            .ToArray();
+        if (forbiddenDependencies.Length > 0)
+        {
+            throw new InvalidOperationException(
+                "Stage 2 attack setup references Stage 1 assets:\n" +
                 string.Join("\n", forbiddenDependencies));
         }
     }
