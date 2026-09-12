@@ -1,0 +1,18 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 5b2943c88fc2f49749147f9d2b7ac4cd, type: 3}
+  m_Name: SaratanBossDefinition
+  m_EditorClassIdentifier: Assembly-CSharp::BossDefinition
+  bossId: boss_stage02_saratan
+  displayName: Saratan
+  bossPrefab: {fileID: 930424441115227854, guid: e229d05f9ad374c85a2c21171b7d46ba, type: 3}
+  maxHealth: 2000
