@@ -16,6 +16,7 @@ public class BattleController : MonoBehaviour
     [Header("Runtime References")]
     [SerializeField] private BossController bossController;
     [SerializeField] private BossAttackController bossAttackController;
+    [SerializeField] private BattleStageLoader stageLoader;
     [SerializeField] private PlayerOrbitController playerOrbitController;
     [SerializeField] private PlayerCombatController playerCombatController;
     [SerializeField] private PlayerLockOnController playerLockOnController;
@@ -192,6 +193,7 @@ public class BattleController : MonoBehaviour
     {
         bossController ??= FindSceneComponent<BossController>();
         bossAttackController ??= FindSceneComponent<BossAttackController>();
+        stageLoader ??= FindSceneComponent<BattleStageLoader>();
         playerOrbitController ??= FindSceneComponent<PlayerOrbitController>();
         playerCombatController ??= FindSceneComponent<PlayerCombatController>();
         playerLockOnController ??= FindSceneComponent<PlayerLockOnController>();
@@ -229,7 +231,12 @@ public class BattleController : MonoBehaviour
 
         if (bossController != null)
         {
-            float health = GameFlowController.CurrentMode == GameMode.MultiPlaceholder ? 2800f : 2000f;
+            float baseHealth = stageLoader != null && stageLoader.ActiveBossDefinition != null
+                ? stageLoader.ActiveBossDefinition.MaxHealth
+                : 2000f;
+            float health = GameFlowController.CurrentMode == GameMode.MultiPlaceholder
+                ? baseHealth * 1.4f
+                : baseHealth;
             bossController.ConfigureEncounter(health);
         }
 
