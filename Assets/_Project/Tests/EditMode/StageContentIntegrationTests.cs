@@ -83,6 +83,50 @@ public sealed class StageContentIntegrationTests
         Assert.That(legacyDependencies, Is.Empty, string.Join("\n", legacyDependencies));
     }
 
+    [Test]
+    public void Stage1KaijuPrefab_UsesUnitScaleForGameplayAndVisualHierarchy()
+    {
+        GameObject root = PrefabUtility.LoadPrefabContents(Stage1PrefabPath);
+        try
+        {
+            Assert.That(root.transform.localScale, Is.EqualTo(Vector3.one), "Boss root");
+
+            Transform visualRoot = root.transform.Find("BossVisualRoot");
+            Transform visual = visualRoot != null ? visualRoot.Find("BossVisual_Kaiju") : null;
+            Assert.That(visualRoot, Is.Not.Null);
+            Assert.That(visual, Is.Not.Null);
+            Assert.That(visualRoot.localScale, Is.EqualTo(Vector3.one), "BossVisualRoot");
+            Assert.That(visual.localScale, Is.EqualTo(Vector3.one), "BossVisual_Kaiju");
+
+            foreach (string childName in new[]
+                     {
+                         "AimPoint",
+                         "AimPoint2",
+                         "AimPoint3",
+                         "AimPoint4",
+                         "AimPoint5",
+                         "BossHurtbox",
+                         "BossFootDebrisFirePoint1",
+                         "BossFootDebrisFirePoint2",
+                     })
+            {
+                Transform child = root.transform.Find(childName);
+                Assert.That(child, Is.Not.Null, childName);
+                Assert.That(child.localScale, Is.EqualTo(Vector3.one), childName);
+            }
+
+            BoxCollider hurtbox = root.transform.Find("BossHurtbox")?.GetComponent<BoxCollider>();
+            Assert.That(hurtbox, Is.Not.Null);
+            Assert.That(hurtbox.size.x, Is.GreaterThan(0f));
+            Assert.That(hurtbox.size.y, Is.GreaterThan(0f));
+            Assert.That(hurtbox.size.z, Is.GreaterThan(0f));
+        }
+        finally
+        {
+            PrefabUtility.UnloadPrefabContents(root);
+        }
+    }
+
     [TestCase("Kaiju_001.mat")]
     [TestCase("Kaiju_Eye.mat")]
     [TestCase("Kaiju_HeadSail.mat")]
@@ -192,13 +236,54 @@ public sealed class StageContentIntegrationTests
     }
 
     [Test]
-    public void Stage2VisualHeight_MatchesStage1VisualHeight()
+    public void Stage2SaratanPrefab_UsesUnitScaleForGameplayAndVisualHierarchy()
+    {
+        GameObject root = PrefabUtility.LoadPrefabContents(Stage2PrefabPath);
+        try
+        {
+            Assert.That(root.transform.localScale, Is.EqualTo(Vector3.one), "Boss root");
+
+            Transform visualRoot = root.transform.Find("BossVisualRoot");
+            Assert.That(visualRoot, Is.Not.Null);
+            Assert.That(visualRoot.localScale, Is.EqualTo(Vector3.one), "BossVisualRoot");
+
+            Animator animator = root.GetComponentInChildren<Animator>(true);
+            Assert.That(animator, Is.Not.Null);
+            Assert.That(animator.transform.localScale, Is.EqualTo(Vector3.one), "Saratan model");
+
+            foreach (string childName in new[]
+                     {
+                         "AimPoint",
+                         "BossHurtbox",
+                         "BossFootDebrisFirePoint1",
+                         "BossFootDebrisFirePoint2",
+                     })
+            {
+                Transform child = root.transform.Find(childName);
+                Assert.That(child, Is.Not.Null, childName);
+                Assert.That(child.localScale, Is.EqualTo(Vector3.one), childName);
+            }
+
+            BoxCollider hurtbox = root.transform.Find("BossHurtbox")?.GetComponent<BoxCollider>();
+            Assert.That(hurtbox, Is.Not.Null);
+            Assert.That(hurtbox.size.x, Is.GreaterThan(0f));
+            Assert.That(hurtbox.size.y, Is.GreaterThan(0f));
+            Assert.That(hurtbox.size.z, Is.GreaterThan(0f));
+        }
+        finally
+        {
+            PrefabUtility.UnloadPrefabContents(root);
+        }
+    }
+
+    [Test]
+    public void StageVisualHeights_AreValidAtAuthoredUnitScales()
     {
         float stage1Height = MeasureVisualHeight(Stage1PrefabPath);
         float stage2Height = MeasureVisualHeight(Stage2PrefabPath);
 
         Assert.That(stage1Height, Is.GreaterThan(0f));
-        Assert.That(stage2Height, Is.EqualTo(stage1Height).Within(stage1Height * 0.01f));
+        Assert.That(stage2Height, Is.GreaterThan(0f));
     }
 
     [TestCase("Assets/Materials/Aircraft/Viper.mat")]
@@ -295,7 +380,8 @@ public sealed class StageContentIntegrationTests
         try
         {
             root.transform.SetLocalPositionAndRotation(Vector3.zero, Quaternion.identity);
-            root.transform.localScale = Vector3.one;
+            // Compare the authored in-game size; both boss prefabs keep their gameplay
+            // hierarchy at unit scale.
             Transform visualRoot = root.transform.Find("BossVisualRoot");
             Assert.That(visualRoot, Is.Not.Null, prefabPath);
 
