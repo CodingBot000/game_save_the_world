@@ -2162,7 +2162,7 @@ GameObject:
   - component: {fileID: 6513656114724290663}
   - component: {fileID: 6142293519312461764}
   m_Layer: 0
-  m_Name: Boss_Stage01_Kaiju
+  m_Name: Kaiju
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0

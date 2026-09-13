@@ -8,7 +8,7 @@ using UnityEngine.SceneManagement;
 
 public static class ApplyKaijuBossVisual
 {
-    private const string Stage1Root = "Assets/_Project/Content/Bosses/Stage01_Kaiju";
+    private const string Stage1Root = "Assets/_Project/Content/Bosses/Kaiju";
     private const string ArtRoot = Stage1Root + "/Art/RigA";
     private const string PreviewAnimationRoot = Stage1Root + "/Editor/Preview/Animation";
     private const string BattleArenaScenePath = "Assets/Scenes/BattleArena.unity/BattleArena.unity";

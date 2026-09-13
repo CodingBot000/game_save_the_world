@@ -9,11 +9,11 @@ using UnityEngine;
 public sealed class StageContentIntegrationTests
 {
     private const string ContentRoot = "Assets/_Project/Content";
-    private const string Stage1Root = ContentRoot + "/Bosses/Stage01_Kaiju";
-    private const string Stage2Root = ContentRoot + "/Bosses/Stage02_Saratan";
+    private const string KaijuRoot = ContentRoot + "/Bosses/Kaiju";
+    private const string SaratanRoot = ContentRoot + "/Bosses/Saratan";
     private const string CatalogPath = ContentRoot + "/Stages/StageCatalog.asset";
-    private const string Stage1PrefabPath = Stage1Root + "/Runtime/Prefabs/Boss_Stage01_Kaiju.prefab";
-    private const string Stage2PrefabPath = Stage2Root + "/Runtime/Prefabs/Boss_Stage02_Saratan.prefab";
+    private const string KaijuPrefabPath = KaijuRoot + "/Runtime/Prefabs/Kaiju.prefab";
+    private const string SaratanPrefabPath = SaratanRoot + "/Runtime/Prefabs/Saratan.prefab";
 
     private static Type BossControllerType => RequireType("BossController, Assembly-CSharp");
     private static Type BossAttackControllerType => RequireType("BossAttackController, Assembly-CSharp");
@@ -46,36 +46,38 @@ public sealed class StageContentIntegrationTests
     [Test]
     public void BossPrefabs_AreDistinctAndContainOneBossController()
     {
-        GameObject stage1 = AssetDatabase.LoadAssetAtPath<GameObject>(Stage1PrefabPath);
-        GameObject stage2 = AssetDatabase.LoadAssetAtPath<GameObject>(Stage2PrefabPath);
-        Assert.That(stage1, Is.Not.Null);
-        Assert.That(stage2, Is.Not.Null);
-        Assert.That(AssetDatabase.AssetPathToGUID(Stage1PrefabPath),
-            Is.Not.EqualTo(AssetDatabase.AssetPathToGUID(Stage2PrefabPath)));
-        Assert.That(stage1.GetComponentsInChildren(BossControllerType, true), Has.Length.EqualTo(1));
-        Assert.That(stage2.GetComponentsInChildren(BossControllerType, true), Has.Length.EqualTo(1));
+        GameObject kaiju = AssetDatabase.LoadAssetAtPath<GameObject>(KaijuPrefabPath);
+        GameObject saratan = AssetDatabase.LoadAssetAtPath<GameObject>(SaratanPrefabPath);
+        Assert.That(kaiju, Is.Not.Null);
+        Assert.That(saratan, Is.Not.Null);
+        Assert.That(kaiju.name, Is.EqualTo("Kaiju"));
+        Assert.That(saratan.name, Is.EqualTo("Saratan"));
+        Assert.That(AssetDatabase.AssetPathToGUID(KaijuPrefabPath),
+            Is.Not.EqualTo(AssetDatabase.AssetPathToGUID(SaratanPrefabPath)));
+        Assert.That(kaiju.GetComponentsInChildren(BossControllerType, true), Has.Length.EqualTo(1));
+        Assert.That(saratan.GetComponentsInChildren(BossControllerType, true), Has.Length.EqualTo(1));
     }
 
     [Test]
-    public void Stage1Prefab_UsesRelocatedOwnedVisualAssets()
+    public void KaijuPrefab_UsesOwnedVisualAssets()
     {
-        GameObject stage1 = AssetDatabase.LoadAssetAtPath<GameObject>(Stage1PrefabPath);
-        Assert.That(stage1, Is.Not.Null);
+        GameObject kaiju = AssetDatabase.LoadAssetAtPath<GameObject>(KaijuPrefabPath);
+        Assert.That(kaiju, Is.Not.Null);
 
-        Animator animator = stage1.GetComponentInChildren<Animator>(true);
+        Animator animator = kaiju.GetComponentInChildren<Animator>(true);
         Assert.That(animator, Is.Not.Null);
         Assert.That(animator.runtimeAnimatorController, Is.Not.Null);
         Assert.That(AssetDatabase.GetAssetPath(animator.runtimeAnimatorController),
-            Does.StartWith(Stage1Root + "/Runtime/Animation/"));
+            Does.StartWith(KaijuRoot + "/Runtime/Animation/"));
 
         foreach (AnimationClip clip in animator.runtimeAnimatorController.animationClips)
         {
-            Assert.That(AssetDatabase.GetAssetPath(clip), Does.StartWith(Stage1Root + "/Art/RigA/Animations/"),
+            Assert.That(AssetDatabase.GetAssetPath(clip), Does.StartWith(KaijuRoot + "/Art/RigA/Animations/"),
                 clip.name);
         }
 
-        string[] dependencies = AssetDatabase.GetDependencies(Stage1PrefabPath, true);
-        Assert.That(dependencies, Does.Contain(Stage1Root + "/Art/RigA/Models/Kaiju_001.fbx"));
+        string[] dependencies = AssetDatabase.GetDependencies(KaijuPrefabPath, true);
+        Assert.That(dependencies, Does.Contain(KaijuRoot + "/Art/RigA/Models/Kaiju_001.fbx"));
         Assert.That(dependencies.Any(path => path.EndsWith("_Combat.mat", StringComparison.Ordinal)), Is.False,
             string.Join("\n", dependencies));
 
@@ -84,9 +86,9 @@ public sealed class StageContentIntegrationTests
     }
 
     [Test]
-    public void Stage1KaijuPrefab_UsesUnitScaleForGameplayAndVisualHierarchy()
+    public void KaijuPrefab_UsesUnitScaleForGameplayAndVisualHierarchy()
     {
-        GameObject root = PrefabUtility.LoadPrefabContents(Stage1PrefabPath);
+        GameObject root = PrefabUtility.LoadPrefabContents(KaijuPrefabPath);
         try
         {
             Assert.That(root.transform.localScale, Is.EqualTo(Vector3.one), "Boss root");
@@ -130,9 +132,9 @@ public sealed class StageContentIntegrationTests
     [TestCase("Kaiju_001.mat")]
     [TestCase("Kaiju_Eye.mat")]
     [TestCase("Kaiju_HeadSail.mat")]
-    public void Stage1Material_UsesSupportedUrpShaderAndOwnTexture(string fileName)
+    public void KaijuMaterial_UsesSupportedUrpShaderAndOwnTexture(string fileName)
     {
-        string materialPath = Stage1Root + "/Art/RigA/Materials/" + fileName;
+        string materialPath = KaijuRoot + "/Art/RigA/Materials/" + fileName;
         Material material = AssetDatabase.LoadAssetAtPath<Material>(materialPath);
         Assert.That(material, Is.Not.Null, materialPath);
         Assert.That(material.shader, Is.Not.Null, materialPath);
@@ -148,7 +150,7 @@ public sealed class StageContentIntegrationTests
             }
 
             string texturePath = AssetDatabase.GetAssetPath(texture);
-            Assert.That(texturePath, Does.StartWith(Stage1Root + "/Art/RigA/Textures/"),
+            Assert.That(texturePath, Does.StartWith(KaijuRoot + "/Art/RigA/Textures/"),
                 $"{materialPath} property {propertyName} references {texturePath}");
         }
     }
@@ -176,30 +178,30 @@ public sealed class StageContentIntegrationTests
     }
 
     [Test]
-    public void Stage2Prefab_UsesOwnCombatAnimatorAndEnabledTemporaryAttack()
+    public void SaratanPrefab_UsesOwnCombatAnimatorAndEnabledTemporaryAttack()
     {
-        GameObject stage1 = AssetDatabase.LoadAssetAtPath<GameObject>(Stage1PrefabPath);
-        GameObject stage2 = AssetDatabase.LoadAssetAtPath<GameObject>(Stage2PrefabPath);
-        Assert.That(stage1, Is.Not.Null);
-        Assert.That(stage2, Is.Not.Null);
-        Component attack = stage2.GetComponent(BossAttackControllerType);
+        GameObject kaiju = AssetDatabase.LoadAssetAtPath<GameObject>(KaijuPrefabPath);
+        GameObject saratan = AssetDatabase.LoadAssetAtPath<GameObject>(SaratanPrefabPath);
+        Assert.That(kaiju, Is.Not.Null);
+        Assert.That(saratan, Is.Not.Null);
+        Component attack = saratan.GetComponent(BossAttackControllerType);
         Assert.That(attack, Is.Not.Null);
         Assert.That(((Behaviour)attack).enabled, Is.True);
 
         Type patternType = RequireType("BossBulletPatternController, Assembly-CSharp");
-        Component stage1Patterns = stage1.GetComponent(patternType);
-        Component stage2Patterns = stage2.GetComponent(patternType);
-        Assert.That(stage1Patterns, Is.Not.Null);
-        Assert.That(stage2Patterns, Is.Not.Null);
-        Assert.That(((Behaviour)stage2Patterns).enabled, Is.True);
-        AssertSerializedValuesEqual(stage1.GetComponent(BossAttackControllerType), attack);
-        AssertSerializedValuesEqual(stage1Patterns, stage2Patterns);
+        Component kaijuPatterns = kaiju.GetComponent(patternType);
+        Component saratanPatterns = saratan.GetComponent(patternType);
+        Assert.That(kaijuPatterns, Is.Not.Null);
+        Assert.That(saratanPatterns, Is.Not.Null);
+        Assert.That(((Behaviour)saratanPatterns).enabled, Is.True);
+        AssertSerializedValuesEqual(kaiju.GetComponent(BossAttackControllerType), attack);
+        AssertSerializedValuesEqual(kaijuPatterns, saratanPatterns);
 
-        Animator animator = stage2.GetComponentInChildren<Animator>(true);
+        Animator animator = saratan.GetComponentInChildren<Animator>(true);
         Assert.That(animator, Is.Not.Null);
         Assert.That(animator.runtimeAnimatorController, Is.Not.Null);
         string controllerPath = AssetDatabase.GetAssetPath(animator.runtimeAnimatorController);
-        Assert.That(controllerPath, Does.StartWith(Stage2Root + "/Runtime/Animation/"));
+        Assert.That(controllerPath, Does.StartWith(SaratanRoot + "/Runtime/Animation/"));
 
         AnimationClip[] clips = animator.runtimeAnimatorController.animationClips;
         Assert.That(clips.Select(clip => clip.name), Is.EquivalentTo(new[]
@@ -210,7 +212,7 @@ public sealed class StageContentIntegrationTests
         }));
         foreach (AnimationClip clip in clips)
         {
-            Assert.That(AssetDatabase.GetAssetPath(clip), Does.StartWith(Stage2Root + "/Art/RigB/Animations/"));
+            Assert.That(AssetDatabase.GetAssetPath(clip), Does.StartWith(SaratanRoot + "/Art/RigB/Animations/"));
         }
 
         AnimationClip idle = clips.Single(clip => clip.name.Contains("BasicIdle", StringComparison.Ordinal));
@@ -221,24 +223,24 @@ public sealed class StageContentIntegrationTests
         }
 
         Type driverType = RequireType("KaijuBossAnimationDriver, Assembly-CSharp");
-        Assert.That(stage2.GetComponentInChildren(driverType, true), Is.Null);
-        Assert.That(stage2.GetComponentsInChildren<Transform>(true).Count(t => t.name == "SaratanMouthFirePoint"), Is.EqualTo(1));
-        Assert.That(stage2.GetComponentsInChildren<Transform>(true).Count(t => t.name == "BossFootDebrisFirePoint1"), Is.EqualTo(1));
-        Assert.That(stage2.GetComponentsInChildren<Transform>(true).Count(t => t.name == "BossFootDebrisFirePoint2"), Is.EqualTo(1));
+        Assert.That(saratan.GetComponentInChildren(driverType, true), Is.Null);
+        Assert.That(saratan.GetComponentsInChildren<Transform>(true).Count(t => t.name == "SaratanMouthFirePoint"), Is.EqualTo(1));
+        Assert.That(saratan.GetComponentsInChildren<Transform>(true).Count(t => t.name == "BossFootDebrisFirePoint1"), Is.EqualTo(1));
+        Assert.That(saratan.GetComponentsInChildren<Transform>(true).Count(t => t.name == "BossFootDebrisFirePoint2"), Is.EqualTo(1));
 
-        SerializedObject serializedPatterns = new(stage2Patterns);
+        SerializedObject serializedPatterns = new(saratanPatterns);
         UnityEngine.Object debrisCatalog = serializedPatterns.FindProperty("debrisFragmentCatalog").objectReferenceValue;
         string debrisCatalogPath = AssetDatabase.GetAssetPath(debrisCatalog);
         Assert.That(debrisCatalogPath, Is.EqualTo(
-            Stage2Root + "/Runtime/Attack/Data/SaratanDebrisFragmentCatalog.asset"));
+            SaratanRoot + "/Runtime/Attack/Data/SaratanDebrisFragmentCatalog.asset"));
         Assert.That(AssetDatabase.AssetPathToGUID(debrisCatalogPath), Is.Not.EqualTo(
             AssetDatabase.AssetPathToGUID("Assets/_Project/Resources/VFX/MonsterDebrisFragmentCatalog.asset")));
     }
 
     [Test]
-    public void Stage2SaratanPrefab_UsesUnitScaleForGameplayAndVisualHierarchy()
+    public void SaratanPrefab_UsesUnitScaleForGameplayAndVisualHierarchy()
     {
-        GameObject root = PrefabUtility.LoadPrefabContents(Stage2PrefabPath);
+        GameObject root = PrefabUtility.LoadPrefabContents(SaratanPrefabPath);
         try
         {
             Assert.That(root.transform.localScale, Is.EqualTo(Vector3.one), "Boss root");
@@ -277,13 +279,13 @@ public sealed class StageContentIntegrationTests
     }
 
     [Test]
-    public void StageVisualHeights_AreValidAtAuthoredUnitScales()
+    public void BossVisualHeights_AreValidAtAuthoredUnitScales()
     {
-        float stage1Height = MeasureVisualHeight(Stage1PrefabPath);
-        float stage2Height = MeasureVisualHeight(Stage2PrefabPath);
+        float kaijuHeight = MeasureVisualHeight(KaijuPrefabPath);
+        float saratanHeight = MeasureVisualHeight(SaratanPrefabPath);
 
-        Assert.That(stage1Height, Is.GreaterThan(0f));
-        Assert.That(stage2Height, Is.GreaterThan(0f));
+        Assert.That(kaijuHeight, Is.GreaterThan(0f));
+        Assert.That(saratanHeight, Is.GreaterThan(0f));
     }
 
     [TestCase("Assets/Materials/Aircraft/Viper.mat")]
@@ -304,11 +306,11 @@ public sealed class StageContentIntegrationTests
     }
 
     [Test]
-    public void Stage2Content_DoesNotReferenceStage1OrImportedSourceAssets()
+    public void SaratanContent_DoesNotReferenceKaijuOrImportedSourceAssets()
     {
-        string[] dependencies = AssetDatabase.GetDependencies(Stage2Root, true);
+        string[] dependencies = AssetDatabase.GetDependencies(SaratanRoot, true);
         string[] forbidden = dependencies.Where(path =>
-                path.StartsWith(Stage1Root, StringComparison.Ordinal) ||
+                path.StartsWith(KaijuRoot, StringComparison.Ordinal) ||
                 path.StartsWith("Assets/Animation/Invader/", StringComparison.Ordinal) ||
                 path.StartsWith("Assets/Invader/", StringComparison.Ordinal) ||
                 path.StartsWith("Assets/Materials/Invader/", StringComparison.Ordinal) ||
@@ -320,9 +322,9 @@ public sealed class StageContentIntegrationTests
     }
 
     [Test]
-    public void Stage2Materials_UseSupportedShaderAndOwnTextures()
+    public void SaratanMaterials_UseSupportedShaderAndOwnTextures()
     {
-        string[] materialGuids = AssetDatabase.FindAssets("t:Material", new[] { Stage2Root + "/Art" });
+        string[] materialGuids = AssetDatabase.FindAssets("t:Material", new[] { SaratanRoot + "/Art" });
         Assert.That(materialGuids, Is.Not.Empty);
 
         foreach (string guid in materialGuids)
@@ -342,7 +344,7 @@ public sealed class StageContentIntegrationTests
                 }
 
                 string texturePath = AssetDatabase.GetAssetPath(texture);
-                Assert.That(texturePath, Does.StartWith(Stage2Root + "/Art/"),
+                Assert.That(texturePath, Does.StartWith(SaratanRoot + "/Art/"),
                     $"{materialPath} property {propertyName} references {texturePath}");
             }
         }

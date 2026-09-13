@@ -11,36 +11,38 @@ using UnityEngine.SceneManagement;
 internal static class BuildSaratanStageIntegration
 {
     private const string ScenePath = "Assets/Scenes/BattleArena.unity/BattleArena.unity";
+    // Legacy export packages still use this source folder name. The destination
+    // under Content/Bosses is stage-independent.
     private const string ImportedRoot = "Assets/SaratanExport/Stage02_Saratan";
     private const string BossContentRoot = "Assets/_Project/Content/Bosses";
-    private const string Stage1Root = BossContentRoot + "/Stage01_Kaiju";
-    private const string Stage2Root = BossContentRoot + "/Stage02_Saratan";
+    private const string KaijuRoot = BossContentRoot + "/Kaiju";
+    private const string SaratanRoot = BossContentRoot + "/Saratan";
     private const string StagesRoot = "Assets/_Project/Content/Stages";
-    private const string Stage1PrefabPath = Stage1Root + "/Runtime/Prefabs/Boss_Stage01_Kaiju.prefab";
-    private const string Stage2PrefabPath = Stage2Root + "/Runtime/Prefabs/Boss_Stage02_Saratan.prefab";
+    private const string KaijuPrefabPath = KaijuRoot + "/Runtime/Prefabs/Kaiju.prefab";
+    private const string SaratanPrefabPath = SaratanRoot + "/Runtime/Prefabs/Saratan.prefab";
     private const string Stage1EnvironmentPath = StagesRoot + "/Stage01/Environment/Stage01Environment.prefab";
     private const string Stage2EnvironmentPath = StagesRoot + "/Stage02/Environment/Stage02Environment.prefab";
-    private const string AnimatorControllerPath = Stage2Root + "/Runtime/Animation/Controllers/Saratan.controller";
-    private const string SaratanAttackDataFolder = Stage2Root + "/Runtime/Attack/Data";
+    private const string AnimatorControllerPath = SaratanRoot + "/Runtime/Animation/Controllers/Saratan.controller";
+    private const string SaratanAttackDataFolder = SaratanRoot + "/Runtime/Attack/Data";
     private const string SharedDebrisCatalogPath = "Assets/_Project/Resources/VFX/MonsterDebrisFragmentCatalog.asset";
     private const string SaratanDebrisCatalogPath = SaratanAttackDataFolder + "/SaratanDebrisFragmentCatalog.asset";
-    private const string RigBModelPath = Stage2Root + "/Art/RigB/Models/Saratan_RigB_Model.fbx";
-    private const string RigBIdlePath = Stage2Root + "/Art/RigB/Animations/Saratan_RigB_BasicIdle.anim";
-    private const string RigBFiringFrontPath = Stage2Root + "/Art/RigB/Animations/Saratan_RigB_Attack_FiringFront.anim";
-    private const string RigBBreathFrontPath = Stage2Root + "/Art/RigB/Animations/Saratan_RigB_Attack_BreathFront.anim";
+    private const string RigBModelPath = SaratanRoot + "/Art/RigB/Models/Saratan_RigB_Model.fbx";
+    private const string RigBIdlePath = SaratanRoot + "/Art/RigB/Animations/Saratan_RigB_BasicIdle.anim";
+    private const string RigBFiringFrontPath = SaratanRoot + "/Art/RigB/Animations/Saratan_RigB_Attack_FiringFront.anim";
+    private const string RigBBreathFrontPath = SaratanRoot + "/Art/RigB/Animations/Saratan_RigB_Attack_BreathFront.anim";
     private const string SaratanMouthBonePath = "Root/Pelvis/Spine 01/Neck_01/Head/Jaw Under";
 
     public static void Run()
     {
         MoveImportedContent();
         FixSaratanMaterials();
-        EnsureFolder(Stage1Root + "/Runtime/Prefabs");
-        EnsureFolder(Stage1Root + "/Data");
-        EnsureFolder(Stage2Root + "/Runtime/Animation/Controllers");
-        EnsureFolder(Stage2Root + "/Runtime/Animation/Masks");
+        EnsureFolder(KaijuRoot + "/Runtime/Prefabs");
+        EnsureFolder(KaijuRoot + "/Data");
+        EnsureFolder(SaratanRoot + "/Runtime/Animation/Controllers");
+        EnsureFolder(SaratanRoot + "/Runtime/Animation/Masks");
         EnsureFolder(SaratanAttackDataFolder);
-        EnsureFolder(Stage2Root + "/Runtime/Prefabs");
-        EnsureFolder(Stage2Root + "/Data");
+        EnsureFolder(SaratanRoot + "/Runtime/Prefabs");
+        EnsureFolder(SaratanRoot + "/Data");
         EnsureFolder(StagesRoot + "/Stage01/Environment");
         EnsureFolder(StagesRoot + "/Stage02/Environment");
 
@@ -71,13 +73,13 @@ internal static class BuildSaratanStageIntegration
             bossLocalScale);
 
         BossDefinition stage1BossDefinition = CreateBossDefinition(
-            Stage1Root + "/Data/KaijuBossDefinition.asset",
+            KaijuRoot + "/Data/KaijuBossDefinition.asset",
             "boss_stage01_kaiju",
             "Kaiju",
             stage1Prefab,
             2000f);
         BossDefinition stage2BossDefinition = CreateBossDefinition(
-            Stage2Root + "/Data/SaratanBossDefinition.asset",
+            SaratanRoot + "/Data/SaratanBossDefinition.asset",
             "boss_stage02_saratan",
             "Saratan",
             stage2Prefab,
@@ -152,29 +154,29 @@ internal static class BuildSaratanStageIntegration
         }
 
         ConvertMaterial(
-            Stage2Root + "/Art/RigA/Materials/Saratan_RigA_Body.mat",
-            Stage2Root + "/Art/RigA/Textures/Saratan_RigA_Body.png",
+            SaratanRoot + "/Art/RigA/Materials/Saratan_RigA_Body.mat",
+            SaratanRoot + "/Art/RigA/Textures/Saratan_RigA_Body.png",
             null,
             shader);
         ConvertMaterial(
-            Stage2Root + "/Art/RigA/Materials/Saratan_RigA_Eye.mat",
-            Stage2Root + "/Art/RigA/Textures/Saratan_RigA_Eye.png",
+            SaratanRoot + "/Art/RigA/Materials/Saratan_RigA_Eye.mat",
+            SaratanRoot + "/Art/RigA/Textures/Saratan_RigA_Eye.png",
             null,
             shader);
         ConvertMaterial(
-            Stage2Root + "/Art/RigA/Materials/Saratan_RigA_HeadSail.mat",
-            Stage2Root + "/Art/RigA/Textures/Saratan_RigA_HeadSail.png",
+            SaratanRoot + "/Art/RigA/Materials/Saratan_RigA_HeadSail.mat",
+            SaratanRoot + "/Art/RigA/Textures/Saratan_RigA_HeadSail.png",
             null,
             shader);
         ConvertMaterial(
-            Stage2Root + "/Art/RigB/Materials/Saratan_RigB_Body.mat",
-            Stage2Root + "/Art/RigB/Textures/Saratan_RigB_Body.png",
-            Stage2Root + "/Art/RigB/Textures/Saratan_RigB_Body_Emission.png",
+            SaratanRoot + "/Art/RigB/Materials/Saratan_RigB_Body.mat",
+            SaratanRoot + "/Art/RigB/Textures/Saratan_RigB_Body.png",
+            SaratanRoot + "/Art/RigB/Textures/Saratan_RigB_Body_Emission.png",
             shader);
         ConvertMaterial(
-            Stage2Root + "/Art/RigB/Materials/Saratan_RigB_Eye.mat",
-            Stage2Root + "/Art/RigB/Textures/Saratan_RigB_Eye.png",
-            Stage2Root + "/Art/RigB/Textures/Saratan_RigB_Eye_Emission.png",
+            SaratanRoot + "/Art/RigB/Materials/Saratan_RigB_Eye.mat",
+            SaratanRoot + "/Art/RigB/Textures/Saratan_RigB_Eye.png",
+            SaratanRoot + "/Art/RigB/Textures/Saratan_RigB_Eye_Emission.png",
             shader);
 
         AssetDatabase.SaveAssets();
@@ -185,8 +187,8 @@ internal static class BuildSaratanStageIntegration
     [MenuItem("Tools/Titan Destroyer/Stage Content/Match Saratan Scale To Stage 1")]
     public static void MatchSaratanScaleToStage1()
     {
-        float targetHeight = CalculatePrefabVisualHeight(Stage1PrefabPath);
-        GameObject stage2Root = PrefabUtility.LoadPrefabContents(Stage2PrefabPath);
+        float targetHeight = CalculatePrefabVisualHeight(KaijuPrefabPath);
+        GameObject stage2Root = PrefabUtility.LoadPrefabContents(SaratanPrefabPath);
 
         try
         {
@@ -225,7 +227,7 @@ internal static class BuildSaratanStageIntegration
 
             rootTransform.SetLocalPositionAndRotation(rootPosition, rootRotation);
             rootTransform.localScale = rootScale;
-            PrefabUtility.SaveAsPrefabAsset(stage2Root, Stage2PrefabPath);
+            PrefabUtility.SaveAsPrefabAsset(stage2Root, SaratanPrefabPath);
             AssetDatabase.SaveAssets();
 
             Debug.Log(
@@ -241,13 +243,13 @@ internal static class BuildSaratanStageIntegration
     [MenuItem("Tools/Titan Destroyer/Stage Content/Apply Temporary Saratan Attack Pattern")]
     public static void ApplyTemporarySaratanAttackPattern()
     {
-        EnsureFolder(Stage2Root + "/Runtime/Animation/Controllers");
+        EnsureFolder(SaratanRoot + "/Runtime/Animation/Controllers");
         EnsureFolder(SaratanAttackDataFolder);
 
         AnimatorController animatorController = CreateSaratanAnimatorController();
         DebrisFragmentCatalog saratanDebrisCatalog = CreateSaratanDebrisCatalog();
-        GameObject stage1Root = PrefabUtility.LoadPrefabContents(Stage1PrefabPath);
-        GameObject stage2Root = PrefabUtility.LoadPrefabContents(Stage2PrefabPath);
+        GameObject stage1Root = PrefabUtility.LoadPrefabContents(KaijuPrefabPath);
+        GameObject stage2Root = PrefabUtility.LoadPrefabContents(SaratanPrefabPath);
 
         try
         {
@@ -256,12 +258,12 @@ internal static class BuildSaratanStageIntegration
                 stage2Root,
                 animatorController,
                 saratanDebrisCatalog);
-            PrefabUtility.SaveAsPrefabAsset(stage2Root, Stage2PrefabPath);
+            PrefabUtility.SaveAsPrefabAsset(stage2Root, SaratanPrefabPath);
             AssetDatabase.SaveAssets();
             AssetDatabase.Refresh(ImportAssetOptions.ForceSynchronousImport);
 
             ValidateStage2AttackIsolation(
-                AssetDatabase.LoadAssetAtPath<GameObject>(Stage2PrefabPath));
+                AssetDatabase.LoadAssetAtPath<GameObject>(SaratanPrefabPath));
             Debug.Log("SARATAN_TEMPORARY_ATTACK_PATTERN_SUCCESS");
         }
         finally
@@ -274,10 +276,10 @@ internal static class BuildSaratanStageIntegration
     public static void CaptureStage2Preview()
     {
         EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
-        GameObject prefab = AssetDatabase.LoadAssetAtPath<GameObject>(Stage2PrefabPath);
+        GameObject prefab = AssetDatabase.LoadAssetAtPath<GameObject>(SaratanPrefabPath);
         if (prefab == null)
         {
-            throw new InvalidOperationException($"Stage 2 prefab is missing: {Stage2PrefabPath}");
+            throw new InvalidOperationException($"Stage 2 prefab is missing: {SaratanPrefabPath}");
         }
 
         GameObject boss = (GameObject)PrefabUtility.InstantiatePrefab(prefab);
@@ -323,7 +325,7 @@ internal static class BuildSaratanStageIntegration
 
     private static void MoveImportedContent()
     {
-        if (AssetDatabase.IsValidFolder(Stage2Root))
+        if (AssetDatabase.IsValidFolder(SaratanRoot))
         {
             return;
         }
@@ -334,7 +336,7 @@ internal static class BuildSaratanStageIntegration
         }
 
         EnsureFolder(BossContentRoot);
-        string error = AssetDatabase.MoveAsset(ImportedRoot, Stage2Root);
+        string error = AssetDatabase.MoveAsset(ImportedRoot, SaratanRoot);
         if (!string.IsNullOrEmpty(error))
         {
             throw new InvalidOperationException($"Could not move isolated Saratan content: {error}");
@@ -465,14 +467,14 @@ internal static class BuildSaratanStageIntegration
     private static GameObject CreateStage1Prefab(GameObject existingBoss)
     {
         GameObject copy = UnityEngine.Object.Instantiate(existingBoss);
-        copy.name = "Boss_Stage01_Kaiju";
+        copy.name = "Kaiju";
         copy.transform.SetParent(null, true);
         if (PrefabUtility.IsPartOfPrefabInstance(copy))
         {
             PrefabUtility.UnpackPrefabInstance(copy, PrefabUnpackMode.Completely, InteractionMode.AutomatedAction);
         }
 
-        GameObject prefab = PrefabUtility.SaveAsPrefabAsset(copy, Stage1PrefabPath);
+        GameObject prefab = PrefabUtility.SaveAsPrefabAsset(copy, KaijuPrefabPath);
         UnityEngine.Object.DestroyImmediate(copy);
         if (prefab == null)
         {
@@ -496,7 +498,7 @@ internal static class BuildSaratanStageIntegration
             throw new InvalidOperationException($"Rig B model is missing: {RigBModelPath}");
         }
 
-        GameObject root = new("Boss_Stage02_Saratan");
+        GameObject root = new("Saratan");
         root.AddComponent<BossController>();
         root.AddComponent<BossAttackController>();
 
@@ -510,7 +512,7 @@ internal static class BuildSaratanStageIntegration
         model.transform.localScale = Vector3.one;
 
         Bounds initialBounds = CalculateRendererBounds(model);
-        float targetHeight = CalculatePrefabVisualHeight(Stage1PrefabPath);
+        float targetHeight = CalculatePrefabVisualHeight(KaijuPrefabPath);
         float normalizationScale = initialBounds.size.y > 0.001f
             ? targetHeight / initialBounds.size.y
             : 1f;
@@ -545,7 +547,7 @@ internal static class BuildSaratanStageIntegration
         root.transform.localRotation = rootRotation;
         root.transform.localScale = rootScale;
 
-        GameObject prefab = PrefabUtility.SaveAsPrefabAsset(root, Stage2PrefabPath);
+        GameObject prefab = PrefabUtility.SaveAsPrefabAsset(root, SaratanPrefabPath);
         UnityEngine.Object.DestroyImmediate(root);
         if (prefab == null)
         {
@@ -891,7 +893,7 @@ internal static class BuildSaratanStageIntegration
 
     private static void UpdateManifestFinalPaths()
     {
-        string assetPath = Stage2Root + "/import-manifest.json";
+        string assetPath = SaratanRoot + "/import-manifest.json";
         string absolutePath = Path.Combine(Directory.GetParent(Application.dataPath)!.FullName, assetPath);
         if (!File.Exists(absolutePath))
         {
@@ -899,7 +901,7 @@ internal static class BuildSaratanStageIntegration
         }
 
         string contents = File.ReadAllText(absolutePath)
-            .Replace(ImportedRoot, Stage2Root, StringComparison.Ordinal);
+            .Replace(ImportedRoot, SaratanRoot, StringComparison.Ordinal);
         File.WriteAllText(absolutePath, contents);
         AssetDatabase.ImportAsset(assetPath, ImportAssetOptions.ForceSynchronousImport);
     }
@@ -922,9 +924,9 @@ internal static class BuildSaratanStageIntegration
 
         ValidateStage2AttackIsolation(stage2Prefab);
 
-        string[] forbiddenDependencies = AssetDatabase.GetDependencies(Stage2Root, true)
+        string[] forbiddenDependencies = AssetDatabase.GetDependencies(SaratanRoot, true)
             .Where(path =>
-                path.StartsWith(Stage1Root, StringComparison.Ordinal) ||
+                path.StartsWith(KaijuRoot, StringComparison.Ordinal) ||
                 path.StartsWith("Assets/Animation/Invader/", StringComparison.Ordinal) ||
                 path.StartsWith("Assets/Invader/", StringComparison.Ordinal) ||
                 path.StartsWith("Assets/Materials/Invader/", StringComparison.Ordinal) ||
@@ -961,8 +963,8 @@ internal static class BuildSaratanStageIntegration
             throw new InvalidOperationException("Stage 2 must use its own debris catalog asset.");
         }
 
-        string[] forbiddenDependencies = AssetDatabase.GetDependencies(Stage2PrefabPath, true)
-            .Where(path => path.StartsWith(Stage1Root, StringComparison.Ordinal))
+        string[] forbiddenDependencies = AssetDatabase.GetDependencies(SaratanPrefabPath, true)
+            .Where(path => path.StartsWith(KaijuRoot, StringComparison.Ordinal))
             .ToArray();
         if (forbiddenDependencies.Length > 0)
         {

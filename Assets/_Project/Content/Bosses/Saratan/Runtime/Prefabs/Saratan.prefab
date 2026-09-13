@@ -44,7 +44,7 @@ GameObject:
   - component: {fileID: 8127959698975202041}
   - component: {fileID: 2813416944637826139}
   m_Layer: 0
-  m_Name: Boss_Stage02_Saratan
+  m_Name: Saratan
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0

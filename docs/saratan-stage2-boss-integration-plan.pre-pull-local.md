@@ -122,13 +122,13 @@ FBX는 Generic Rig 설정이다. 제공 TXT는 Basic/방향 Idle을 Loop로 지�
 ```text
 Assets/_Project/Content/
 ├── Bosses/
-│   ├── Stage01_Kaiju/
+│   ├── Kaiju/
 │   │   ├── Prefabs/
-│   │   │   └── Boss_Stage01_Kaiju.prefab
+│   │   │   └── Kaiju.prefab
 │   │   └── Data/
 │   │       └── KaijuBossDefinition.asset
 │   │
-│   └── Stage02_Saratan/
+│   └── Saratan/
 │       ├── Art/
 │       │   ├── RigA/
 │       │   │   ├── Models/
@@ -147,7 +147,7 @@ Assets/_Project/Content/
 │       │   │   └── Masks/
 │       │   │       └── SaratanUpperBody.mask
 │       │   └── Prefabs/
-│       │       └── Boss_Stage02_Saratan.prefab
+│       │       └── Saratan.prefab
 │       └── Data/
 │           └── SaratanBossDefinition.asset
 │
@@ -253,7 +253,7 @@ M  ProjectSettings/QualitySettings.asset
 
 ```text
 Assets/SaratanExport/
-└── Stage02_Saratan/
+└── Saratan/
     ├── Art/RigA/...
     ├── Art/RigB/...
     └── import-manifest.json
@@ -334,7 +334,7 @@ environmentTheme
 
 ### 8.1 Stage 1 보스 Prefab 추출
 
-현재 `BattleArena`의 `BossPlaceholder` 인스턴스와 모든 Prefab override를 기준으로 `Boss_Stage01_Kaiju.prefab`을 만든다.
+현재 `BattleArena`의 `BossPlaceholder` 인스턴스와 모든 Prefab override를 기준으로 `Kaiju.prefab`을 만든다.
 
 반드시 보존할 항목:
 
@@ -371,7 +371,7 @@ BattleArenaRoot
 ### 9.1 초기 Prefab 구조
 
 ```text
-Boss_Stage02_Saratan
+Saratan
 ├── AimPoint
 ├── BossHurtbox
 └── BossVisualRoot
@@ -490,7 +490,7 @@ Stage02Environment.prefab
 ### Phase 5 — Stage 1 Prefab화와 회귀
 
 - 현재 씬의 Stage 1 보스 전체 설정 캡처
-- `Boss_Stage01_Kaiju.prefab` 생성
+- `Kaiju.prefab` 생성
 - `Stage01Definition.asset` 생성
 - BattleArena의 고정 보스를 SpawnPoint 방식으로 교체
 - 기존 Kaiju 전투 회귀 검사
@@ -500,7 +500,7 @@ Stage02Environment.prefab
 ### Phase 6 — Stage 2 Saratan 표시 통합
 
 - `Saratan.controller` 최소 Idle 구성
-- `Boss_Stage02_Saratan.prefab` 생성
+- `Saratan.prefab` 생성
 - Stage 2 전용 Material, AimPoint, Hurtbox 설정
 - `SaratanBossDefinition.asset` 및 `Stage02Definition.asset` 생성
 - Stage 2 공격 시스템 비활성화

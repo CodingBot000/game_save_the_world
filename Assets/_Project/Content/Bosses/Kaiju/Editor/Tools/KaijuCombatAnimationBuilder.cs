@@ -11,7 +11,7 @@ using UnityEngine.SceneManagement;
 /// <summary>Creates phase-D assets without replacing the model, legacy controller, or source FBXs.</summary>
 public static class KaijuCombatAnimationBuilder
 {
-    private const string Stage1Root = "Assets/_Project/Content/Bosses/Stage01_Kaiju";
+    private const string Stage1Root = "Assets/_Project/Content/Bosses/Kaiju";
     private const string ArtRoot = Stage1Root + "/Art/RigA";
     public const string ScenePath = "Assets/Scenes/BattleArena.unity/BattleArena.unity";
     public const string ControllerPath = Stage1Root + "/Runtime/Animation/Controllers/KaijuCombat.controller";

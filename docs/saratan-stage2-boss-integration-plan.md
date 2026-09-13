@@ -122,13 +122,13 @@ FBX는 Generic Rig 설정이다. 제공 TXT는 Basic/방향 Idle을 Loop로 지�
 ```text
 Assets/_Project/Content/
 ├── Bosses/
-│   ├── Stage01_Kaiju/
+│   ├── Kaiju/
 │   │   ├── Prefabs/
-│   │   │   └── Boss_Stage01_Kaiju.prefab
+│   │   │   └── Kaiju.prefab
 │   │   └── Data/
 │   │       └── KaijuBossDefinition.asset
 │   │
-│   └── Stage02_Saratan/
+│   └── Saratan/
 │       ├── Art/
 │       │   ├── RigA/
 │       │   │   ├── Models/
@@ -147,7 +147,7 @@ Assets/_Project/Content/
 │       │   │   └── Masks/
 │       │   │       └── SaratanUpperBody.mask
 │       │   └── Prefabs/
-│       │       └── Boss_Stage02_Saratan.prefab
+│       │       └── Saratan.prefab
 │       └── Data/
 │           └── SaratanBossDefinition.asset
 │
@@ -161,6 +161,8 @@ Assets/_Project/Content/
         └── Environment/
             └── Stage02Environment.prefab
 ```
+
+`Bosses/Kaiju`와 `Bosses/Saratan`은 보스 자체의 소유 경로이며 스테이지에 귀속되지 않는다. 현재 Stage 1/2 배치는 `StageDefinition`의 조합일 뿐이며 이후 다른 스테이지에서도 같은 보스를 선택할 수 있다.
 
 Stage 1 원본 파일은 첫 작업에서 무리하게 이동하지 않는다. 기존 Editor Builder가 경로를 하드코딩하고 있으므로 먼저 Stage 1 완성 보스 Prefab과 Definition을 만들고, 원본 파일 이동은 하드코딩 제거 후 별도 커밋으로 수행한다.
 
@@ -253,7 +255,7 @@ M  ProjectSettings/QualitySettings.asset
 
 ```text
 Assets/SaratanExport/
-└── Stage02_Saratan/
+└── Saratan/
     ├── Art/RigA/...
     ├── Art/RigB/...
     └── import-manifest.json
@@ -334,7 +336,7 @@ environmentTheme
 
 ### 8.1 Stage 1 보스 Prefab 추출
 
-현재 `BattleArena`의 `BossPlaceholder` 인스턴스와 모든 Prefab override를 기준으로 `Boss_Stage01_Kaiju.prefab`을 만든다.
+현재 `BattleArena`의 `BossPlaceholder` 인스턴스와 모든 Prefab override를 기준으로 `Kaiju.prefab`을 만든다.
 
 반드시 보존할 항목:
 
@@ -371,7 +373,7 @@ BattleArenaRoot
 ### 9.1 초기 Prefab 구조
 
 ```text
-Boss_Stage02_Saratan
+Saratan
 ├── AimPoint
 ├── BossHurtbox
 └── BossVisualRoot
@@ -490,7 +492,7 @@ Stage02Environment.prefab
 ### Phase 5 — Stage 1 Prefab화와 회귀
 
 - 현재 씬의 Stage 1 보스 전체 설정 캡처
-- `Boss_Stage01_Kaiju.prefab` 생성
+- `Kaiju.prefab` 생성
 - `Stage01Definition.asset` 생성
 - BattleArena의 고정 보스를 SpawnPoint 방식으로 교체
 - 기존 Kaiju 전투 회귀 검사
@@ -500,7 +502,7 @@ Stage02Environment.prefab
 ### Phase 6 — Stage 2 Saratan 표시 통합
 
 - `Saratan.controller` 최소 Idle 구성
-- `Boss_Stage02_Saratan.prefab` 생성
+- `Saratan.prefab` 생성
 - Stage 2 전용 Material, AimPoint, Hurtbox 설정
 - `SaratanBossDefinition.asset` 및 `Stage02Definition.asset` 생성
 - Stage 2 공격 시스템 비활성화
@@ -535,7 +537,7 @@ Stage02Environment.prefab
 최종 Saratan 공격 설계 전까지 Stage 1 Kaiju와 동일한 공격 순서와 수치를 Stage 2에 복제한다. 동일 동작은 기준값일 뿐이며 Stage 1 런타임 오브젝트나 보스 전용 애니메이션 자산을 참조하지 않는다.
 
 - 공용 `BossAttackController`, `BossBulletPatternController`, 투사체 및 피해 처리 코드는 재사용한다.
-- 패턴 목록과 수치는 `Boss_Stage02_Saratan.prefab`의 별도 컴포넌트에 값으로 복제한다.
+- 패턴 목록과 수치는 `Saratan.prefab`의 별도 컴포넌트에 값으로 복제한다.
 - Stage 2는 `SaratanDebrisFragmentCatalog.asset`을 별도 GUID로 소유한다.
 - 발사점과 지면 파편 발사점은 Saratan 프리팹 내부에 새로 만든다.
 - `Attack1`은 `Saratan_RigB_Attack_FiringFront`, `Attack2`는 `Saratan_RigB_Attack_BreathFront`를 사용한다.
@@ -651,7 +653,7 @@ Stage02Environment.prefab
 - Rig A ↔ Rig A, Rig B ↔ Rig B의 AnimationCurve Transform binding 누락은 각각 0개다.
 - 교차 리그 적용 시 Rig A → Rig B는 41개, Rig B → Rig A는 36개 Transform 경로가 불일치해 런타임에는 Rig B를 선택했다.
 - 제공 Toon Shader는 현재 Unity/URP 조합에서 Metal 컴파일 오류가 발생해, Stage 2 전용 Material을 지원되는 `Universal Render Pipeline/Lit`로 변환하고 전용 Base/Emission Texture만 다시 연결했다.
-- `BattleArena`의 기존 Kaiju 설정을 `Boss_Stage01_Kaiju.prefab`으로 추출하고 고정 보스 인스턴스를 제거했다.
+- `BattleArena`의 기존 Kaiju 설정을 `Kaiju.prefab`으로 추출하고 고정 보스 인스턴스를 제거했다.
 - `StageCatalog`와 `BattleStageLoader`가 `stage_01_tokyo` 및 `stage_02_seoul`을 각각 독립 Boss/Environment Prefab으로 해석한다.
 - Stage 2 Saratan의 `BossAttackController`와 `BossBulletPatternController`는 Stage 1의 현재 수치와 순서를 독립 직렬화 값으로 복제해 활성화했다.
 - `Saratan.controller`는 Stage 2 Rig B의 `BasicIdle`, `Attack_FiringFront`, `Attack_BreathFront`만 참조하며 `Attack1`/`Attack2` Trigger로 전환한다.

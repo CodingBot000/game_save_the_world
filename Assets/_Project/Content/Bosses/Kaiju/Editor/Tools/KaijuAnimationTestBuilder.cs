@@ -16,7 +16,7 @@ using Object = UnityEngine.Object;
 
 public static class KaijuAnimationTestBuilder
 {
-    private const string Stage1Root = "Assets/_Project/Content/Bosses/Stage01_Kaiju";
+    private const string Stage1Root = "Assets/_Project/Content/Bosses/Kaiju";
     private const string ArtRoot = Stage1Root + "/Art/RigA";
     private const string PreviewRoot = Stage1Root + "/Editor/Preview";
     private const string PreviewMaterialsFolder = PreviewRoot + "/Materials";

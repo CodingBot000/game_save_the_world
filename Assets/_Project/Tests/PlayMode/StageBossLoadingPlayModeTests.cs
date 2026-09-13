@@ -21,7 +21,7 @@ public sealed class StageBossLoadingPlayModeTests
 
         Component[] bosses = FindSceneComponents("BossController, Assembly-CSharp");
         Assert.That(bosses, Has.Length.EqualTo(1));
-        Assert.That(bosses[0].name, Is.EqualTo("Boss_Stage01_Kaiju"));
+        Assert.That(bosses[0].name, Is.EqualTo("Kaiju"));
     }
 
     [UnityTest]
@@ -35,7 +35,7 @@ public sealed class StageBossLoadingPlayModeTests
         Component[] bosses = FindSceneComponents("BossController, Assembly-CSharp");
         Assert.That(bosses, Has.Length.EqualTo(1));
         Component boss = bosses[0];
-        Assert.That(boss.name, Is.EqualTo("Boss_Stage02_Saratan"));
+        Assert.That(boss.name, Is.EqualTo("Saratan"));
 
         Animator animator = boss.GetComponentInChildren<Animator>(true);
         Assert.That(animator, Is.Not.Null);

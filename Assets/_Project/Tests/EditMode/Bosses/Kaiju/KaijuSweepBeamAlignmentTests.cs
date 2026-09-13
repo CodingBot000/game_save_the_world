@@ -67,11 +67,11 @@ public class KaijuSweepBeamAlignmentTests
         {
             Component boss = root.AddComponent(Type.GetType("BossController, Assembly-CSharp", true));
             Invoke(boss, "SetCurrentHealthForDebug", 2000f);
-            GameObject model = UnityEngine.Object.Instantiate(AssetDatabase.LoadAssetAtPath<GameObject>("Assets/_Project/Content/Bosses/Stage01_Kaiju/Art/RigA/Models/Kaiju_001.fbx"), root.transform);
+            GameObject model = UnityEngine.Object.Instantiate(AssetDatabase.LoadAssetAtPath<GameObject>("Assets/_Project/Content/Bosses/Kaiju/Art/RigA/Models/Kaiju_001.fbx"), root.transform);
             model.transform.localRotation = Quaternion.identity;
             Animator animator = model.GetComponent<Animator>();
             if (animator == null) animator = model.AddComponent<Animator>();
-            animator.runtimeAnimatorController = AssetDatabase.LoadAssetAtPath<RuntimeAnimatorController>("Assets/_Project/Content/Bosses/Stage01_Kaiju/Runtime/Animation/Controllers/KaijuCombat.controller");
+            animator.runtimeAnimatorController = AssetDatabase.LoadAssetAtPath<RuntimeAnimatorController>("Assets/_Project/Content/Bosses/Kaiju/Runtime/Animation/Controllers/KaijuCombat.controller");
             animator.fireEvents = false;
             animator.Rebind();
             animator.Update(0f);
@@ -85,7 +85,7 @@ public class KaijuSweepBeamAlignmentTests
             Invoke(driver, "Configure", boss, mouth, null);
             Transform[] bones = { head.parent.parent, head.parent, head };
             Transform foot = model.transform.Find("Root/Pelvis/Thigh L/Calf L/Cannon L/Foot L");
-            AnimationClip clip = AssetDatabase.LoadAssetAtPath<AnimationClip>("Assets/_Project/Content/Bosses/Stage01_Kaiju/Art/RigA/Animations/Kaiju_Attack_Beam" + (leftToRight ? "LeftToR" : "RightToL") + ".anim");
+            AnimationClip clip = AssetDatabase.LoadAssetAtPath<AnimationClip>("Assets/_Project/Content/Bosses/Kaiju/Art/RigA/Animations/Kaiju_Attack_Beam" + (leftToRight ? "LeftToR" : "RightToL") + ".anim");
             foreach (float yaw in new[] { -90f, -45f, 0f, 45f, 90f })
             {
                 Invoke(driver, "CancelAction");
