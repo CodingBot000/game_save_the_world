@@ -16,7 +16,7 @@ internal static class BuildSaratanStageIntegration
     private const string Stage1Root = BossContentRoot + "/Stage01_Kaiju";
     private const string Stage2Root = BossContentRoot + "/Stage02_Saratan";
     private const string StagesRoot = "Assets/_Project/Content/Stages";
-    private const string Stage1PrefabPath = Stage1Root + "/Prefabs/Boss_Stage01_Kaiju.prefab";
+    private const string Stage1PrefabPath = Stage1Root + "/Runtime/Prefabs/Boss_Stage01_Kaiju.prefab";
     private const string Stage2PrefabPath = Stage2Root + "/Runtime/Prefabs/Boss_Stage02_Saratan.prefab";
     private const string Stage1EnvironmentPath = StagesRoot + "/Stage01/Environment/Stage01Environment.prefab";
     private const string Stage2EnvironmentPath = StagesRoot + "/Stage02/Environment/Stage02Environment.prefab";
@@ -34,7 +34,7 @@ internal static class BuildSaratanStageIntegration
     {
         MoveImportedContent();
         FixSaratanMaterials();
-        EnsureFolder(Stage1Root + "/Prefabs");
+        EnsureFolder(Stage1Root + "/Runtime/Prefabs");
         EnsureFolder(Stage1Root + "/Data");
         EnsureFolder(Stage2Root + "/Runtime/Animation/Controllers");
         EnsureFolder(Stage2Root + "/Runtime/Animation/Masks");

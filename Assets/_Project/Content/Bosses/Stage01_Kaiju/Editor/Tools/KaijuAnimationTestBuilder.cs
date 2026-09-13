@@ -16,9 +16,13 @@ using Object = UnityEngine.Object;
 
 public static class KaijuAnimationTestBuilder
 {
-    public const string ModelPath = "Assets/Invader/Kaiju_001.fbx";
-    public const string ClipsFolder = "Assets/Animation/Invader/Clips";
-    public const string ScenePath = "Assets/Scenes/animTestScene.unity";
+    private const string Stage1Root = "Assets/_Project/Content/Bosses/Stage01_Kaiju";
+    private const string ArtRoot = Stage1Root + "/Art/RigA";
+    private const string PreviewRoot = Stage1Root + "/Editor/Preview";
+    private const string PreviewMaterialsFolder = PreviewRoot + "/Materials";
+    public const string ModelPath = ArtRoot + "/Models/Kaiju_001.fbx";
+    public const string ClipsFolder = ArtRoot + "/Animations";
+    public const string ScenePath = PreviewRoot + "/Scenes/animTestScene.unity";
     public static readonly string[] ClipNames =
     {
         "Kaiju_BasicIdle", "Kaiju_IdleFront", "Kaiju_IdleLeft45", "Kaiju_IdleRight45",
@@ -36,8 +40,8 @@ public static class KaijuAnimationTestBuilder
         var target = AssetDatabase.LoadAssetAtPath<GameObject>(ModelPath);
         if (target == null) throw new InvalidOperationException("Existing Kaiju model not found.");
         EnsureFolder(ClipsFolder);
-        string stage = AssetDatabase.GenerateUniqueAssetPath("Assets/Editor/KaijuAnimationImportTemp");
-        AssetDatabase.CreateFolder("Assets/Editor", Path.GetFileName(stage));
+        string stage = AssetDatabase.GenerateUniqueAssetPath(PreviewRoot + "/KaijuAnimationImportTemp");
+        AssetDatabase.CreateFolder(PreviewRoot, Path.GetFileName(stage));
         try
         {
             for (int index = 0; index < ClipNames.Length; index++)
@@ -174,8 +178,8 @@ public static class KaijuAnimationTestBuilder
             ground.transform.position = new Vector3(0f, renderers.Min(r => r.bounds.min.y) - 0.03f, 0f);
             ground.transform.localScale = Vector3.one * 30f;
             Object.DestroyImmediate(ground.GetComponent<Collider>());
-            EnsureFolder("Assets/Materials/Debug");
-            const string groundPath = "Assets/Materials/Debug/KaijuAnimationTestGround.mat";
+            EnsureFolder(PreviewMaterialsFolder);
+            const string groundPath = PreviewMaterialsFolder + "/KaijuAnimationTestGround.mat";
             var groundMaterial = AssetDatabase.LoadAssetAtPath<Material>(groundPath);
             if (groundMaterial == null)
             {
@@ -300,12 +304,12 @@ public static class KaijuAnimationTestBuilder
     // Preview-only Lit materials reuse the existing PNGs without editing production materials.
     public static Material PreviewMaterial(string name)
     {
-        EnsureFolder("Assets/Materials/Debug");
-        string path = "Assets/Materials/Debug/" + name + "_AnimationPreview.mat";
+        EnsureFolder(PreviewMaterialsFolder);
+        string path = PreviewMaterialsFolder + "/" + name + "_AnimationPreview.mat";
         var material = AssetDatabase.LoadAssetAtPath<Material>(path);
         if (material != null) return material;
         var shader = Shader.Find("Universal Render Pipeline/Lit");
-        var texture = AssetDatabase.LoadAssetAtPath<Texture2D>("Assets/Textures/Invader/" + name + ".png");
+        var texture = AssetDatabase.LoadAssetAtPath<Texture2D>(ArtRoot + "/Textures/" + name + ".png");
         if (shader == null || texture == null) throw new InvalidOperationException("Missing preview shader or PNG: " + name);
         material = new Material(shader) { name = name + "_AnimationPreview" };
         material.SetTexture("_BaseMap", texture);

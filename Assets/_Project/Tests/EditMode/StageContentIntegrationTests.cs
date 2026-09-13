@@ -12,7 +12,7 @@ public sealed class StageContentIntegrationTests
     private const string Stage1Root = ContentRoot + "/Bosses/Stage01_Kaiju";
     private const string Stage2Root = ContentRoot + "/Bosses/Stage02_Saratan";
     private const string CatalogPath = ContentRoot + "/Stages/StageCatalog.asset";
-    private const string Stage1PrefabPath = Stage1Root + "/Prefabs/Boss_Stage01_Kaiju.prefab";
+    private const string Stage1PrefabPath = Stage1Root + "/Runtime/Prefabs/Boss_Stage01_Kaiju.prefab";
     private const string Stage2PrefabPath = Stage2Root + "/Runtime/Prefabs/Boss_Stage02_Saratan.prefab";
 
     private static Type BossControllerType => RequireType("BossController, Assembly-CSharp");
@@ -54,6 +54,81 @@ public sealed class StageContentIntegrationTests
             Is.Not.EqualTo(AssetDatabase.AssetPathToGUID(Stage2PrefabPath)));
         Assert.That(stage1.GetComponentsInChildren(BossControllerType, true), Has.Length.EqualTo(1));
         Assert.That(stage2.GetComponentsInChildren(BossControllerType, true), Has.Length.EqualTo(1));
+    }
+
+    [Test]
+    public void Stage1Prefab_UsesRelocatedOwnedVisualAssets()
+    {
+        GameObject stage1 = AssetDatabase.LoadAssetAtPath<GameObject>(Stage1PrefabPath);
+        Assert.That(stage1, Is.Not.Null);
+
+        Animator animator = stage1.GetComponentInChildren<Animator>(true);
+        Assert.That(animator, Is.Not.Null);
+        Assert.That(animator.runtimeAnimatorController, Is.Not.Null);
+        Assert.That(AssetDatabase.GetAssetPath(animator.runtimeAnimatorController),
+            Does.StartWith(Stage1Root + "/Runtime/Animation/"));
+
+        foreach (AnimationClip clip in animator.runtimeAnimatorController.animationClips)
+        {
+            Assert.That(AssetDatabase.GetAssetPath(clip), Does.StartWith(Stage1Root + "/Art/RigA/Animations/"),
+                clip.name);
+        }
+
+        string[] dependencies = AssetDatabase.GetDependencies(Stage1PrefabPath, true);
+        Assert.That(dependencies, Does.Contain(Stage1Root + "/Art/RigA/Models/Kaiju_001.fbx"));
+        Assert.That(dependencies.Any(path => path.EndsWith("_Combat.mat", StringComparison.Ordinal)), Is.False,
+            string.Join("\n", dependencies));
+
+        string[] legacyDependencies = dependencies.Where(IsLegacyKaijuPath).ToArray();
+        Assert.That(legacyDependencies, Is.Empty, string.Join("\n", legacyDependencies));
+    }
+
+    [TestCase("Kaiju_001.mat")]
+    [TestCase("Kaiju_Eye.mat")]
+    [TestCase("Kaiju_HeadSail.mat")]
+    public void Stage1Material_UsesSupportedUrpShaderAndOwnTexture(string fileName)
+    {
+        string materialPath = Stage1Root + "/Art/RigA/Materials/" + fileName;
+        Material material = AssetDatabase.LoadAssetAtPath<Material>(materialPath);
+        Assert.That(material, Is.Not.Null, materialPath);
+        Assert.That(material.shader, Is.Not.Null, materialPath);
+        Assert.That(material.shader.isSupported, Is.True, materialPath);
+        Assert.That(material.shader.name, Is.EqualTo("Universal Render Pipeline/Lit"), materialPath);
+
+        foreach (string propertyName in material.GetTexturePropertyNames())
+        {
+            Texture texture = material.GetTexture(propertyName);
+            if (texture == null)
+            {
+                continue;
+            }
+
+            string texturePath = AssetDatabase.GetAssetPath(texture);
+            Assert.That(texturePath, Does.StartWith(Stage1Root + "/Art/RigA/Textures/"),
+                $"{materialPath} property {propertyName} references {texturePath}");
+        }
+    }
+
+    [Test]
+    public void LegacyKaijuAssetFolders_AreEmptyOrRemoved()
+    {
+        string[] legacyRoots =
+        {
+            "Assets/Animation/Invader",
+            "Assets/Invader",
+            "Assets/Materials/Invader",
+            "Assets/Textures/Invader",
+        };
+
+        foreach (string root in legacyRoots)
+        {
+            if (!AssetDatabase.IsValidFolder(root))
+            {
+                continue;
+            }
+
+            Assert.That(AssetDatabase.FindAssets(string.Empty, new[] { root }), Is.Empty, root);
+        }
     }
 
     [Test]
@@ -204,6 +279,14 @@ public sealed class StageContentIntegrationTests
         Type type = Type.GetType(assemblyQualifiedName);
         Assert.That(type, Is.Not.Null, $"Could not resolve {assemblyQualifiedName}");
         return type;
+    }
+
+    private static bool IsLegacyKaijuPath(string path)
+    {
+        return path.StartsWith("Assets/Animation/Invader/", StringComparison.Ordinal) ||
+               path.StartsWith("Assets/Invader/", StringComparison.Ordinal) ||
+               path.StartsWith("Assets/Materials/Invader/", StringComparison.Ordinal) ||
+               path.StartsWith("Assets/Textures/Invader/", StringComparison.Ordinal);
     }
 
     private static float MeasureVisualHeight(string prefabPath)

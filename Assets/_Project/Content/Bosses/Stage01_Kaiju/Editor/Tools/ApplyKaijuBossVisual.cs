@@ -8,18 +8,21 @@ using UnityEngine.SceneManagement;
 
 public static class ApplyKaijuBossVisual
 {
+    private const string Stage1Root = "Assets/_Project/Content/Bosses/Stage01_Kaiju";
+    private const string ArtRoot = Stage1Root + "/Art/RigA";
+    private const string PreviewAnimationRoot = Stage1Root + "/Editor/Preview/Animation";
     private const string BattleArenaScenePath = "Assets/Scenes/BattleArena.unity/BattleArena.unity";
-    private const string KaijuVisualAssetPath = "Assets/Invader/Kaiju_001.fbx";
-    private const string KaijuIdleClipPath = "Assets/Animation/Invader/Kaiju_Turn_Idle_001.anim";
-    private const string KaijuAttack1ClipPath = "Assets/Animation/Invader/Kaiju_Turn_Attack_001.anim";
-    private const string KaijuAttack2ClipPath = "Assets/Animation/Invader/Kaiju_Turn_Attack_002.anim";
-    private const string AnimatorControllerPath = "Assets/Animation/Invader/KaijuBoss.controller";
-    private const string KaijuBodyMaterialPath = "Assets/Materials/Invader/Kaiju_001.mat";
-    private const string KaijuEyeMaterialPath = "Assets/Materials/Invader/Kaiju_Eye.mat";
-    private const string KaijuHeadSailMaterialPath = "Assets/Materials/Invader/Kaiju_HeadSail.mat";
-    private const string KaijuBodyTexturePath = "Assets/Textures/Invader/Kaiju_001.png";
-    private const string KaijuEyeTexturePath = "Assets/Textures/Invader/Kaiju_Eye.png";
-    private const string KaijuHeadSailTexturePath = "Assets/Textures/Invader/Kaiju_HeadSail.png";
+    private const string KaijuVisualAssetPath = ArtRoot + "/Models/Kaiju_001.fbx";
+    private const string KaijuIdleClipPath = PreviewAnimationRoot + "/Kaiju_Turn_Idle_001.anim";
+    private const string KaijuAttack1ClipPath = PreviewAnimationRoot + "/Kaiju_Turn_Attack_001.anim";
+    private const string KaijuAttack2ClipPath = PreviewAnimationRoot + "/Kaiju_Turn_Attack_002.anim";
+    private const string AnimatorControllerPath = PreviewAnimationRoot + "/KaijuBoss.controller";
+    private const string KaijuBodyMaterialPath = ArtRoot + "/Materials/Kaiju_001.mat";
+    private const string KaijuEyeMaterialPath = ArtRoot + "/Materials/Kaiju_Eye.mat";
+    private const string KaijuHeadSailMaterialPath = ArtRoot + "/Materials/Kaiju_HeadSail.mat";
+    private const string KaijuBodyTexturePath = ArtRoot + "/Textures/Kaiju_001.png";
+    private const string KaijuEyeTexturePath = ArtRoot + "/Textures/Kaiju_Eye.png";
+    private const string KaijuHeadSailTexturePath = ArtRoot + "/Textures/Kaiju_HeadSail.png";
 
     private const string BossRootName = "BossPlaceholder";
     private const string BossVisualRootName = "BossVisualRoot";

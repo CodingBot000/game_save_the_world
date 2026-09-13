@@ -11,11 +11,14 @@ using UnityEngine.SceneManagement;
 /// <summary>Creates phase-D assets without replacing the model, legacy controller, or source FBXs.</summary>
 public static class KaijuCombatAnimationBuilder
 {
+    private const string Stage1Root = "Assets/_Project/Content/Bosses/Stage01_Kaiju";
+    private const string ArtRoot = Stage1Root + "/Art/RigA";
     public const string ScenePath = "Assets/Scenes/BattleArena.unity/BattleArena.unity";
-    public const string ControllerPath = "Assets/Animation/Invader/KaijuCombat.controller";
-    public const string MaskPath = "Assets/Animation/Invader/KaijuUpperBody.mask";
-    private const string ClipFolder = "Assets/Animation/Invader/Clips/";
-    private const string ModelPath = "Assets/Invader/Kaiju_001.fbx";
+    public const string ControllerPath = Stage1Root + "/Runtime/Animation/Controllers/KaijuCombat.controller";
+    public const string MaskPath = Stage1Root + "/Runtime/Animation/Masks/KaijuUpperBody.mask";
+    private const string ClipFolder = ArtRoot + "/Animations/";
+    private const string MaterialFolder = ArtRoot + "/Materials/";
+    private const string ModelPath = ArtRoot + "/Models/Kaiju_001.fbx";
     private const string Menu = "Tools/TitanDestroyer/Kaiju Combat/";
 
     [MenuItem(Menu + "1. Create combat assets and bind BattleArena")]
@@ -85,8 +88,8 @@ public static class KaijuCombatAnimationBuilder
 
         foreach (SkinnedMeshRenderer renderer in animator.GetComponentsInChildren<SkinnedMeshRenderer>())
         {
-            Undo.RecordObject(renderer, "Assign combat-only Kaiju material");
-            renderer.sharedMaterial = CombatMaterial(renderer.name == "Kaiju" ? "Kaiju_001" : renderer.name);
+            Undo.RecordObject(renderer, "Assign Stage 1 Kaiju material");
+            renderer.sharedMaterial = KaijuMaterial(renderer.name == "Kaiju" ? "Kaiju_001" : renderer.name);
             renderer.updateWhenOffscreen = true;
             PrefabUtility.RecordPrefabInstancePropertyModifications(renderer);
         }
@@ -99,7 +102,7 @@ public static class KaijuCombatAnimationBuilder
         EditorSceneManager.SaveScene(scene);
         AssetDatabase.SaveAssets();
         VerifyAssets();
-        Debug.Log("Kaiju phase D bound to BattleArena. Original model, Toon materials, and KaijuBoss.controller preserved.");
+        Debug.Log("Kaiju phase D bound to BattleArena with Stage 1-owned model, animation, and materials.");
     }
 
     private static AnimationClip Clip(string suffix)
@@ -234,19 +237,11 @@ public static class KaijuCombatAnimationBuilder
         EditorUtility.SetDirty(clip);
     }
 
-    private static Material CombatMaterial(string name)
+    private static Material KaijuMaterial(string name)
     {
-        string path = "Assets/Materials/Invader/" + name + "_Combat.mat";
+        string path = MaterialFolder + name + ".mat";
         var material = AssetDatabase.LoadAssetAtPath<Material>(path);
-        if (material != null) return material;
-        var shader = Shader.Find("Universal Render Pipeline/Lit");
-        if (shader == null) throw new InvalidOperationException("URP Lit shader unavailable.");
-        material = new Material(shader) { name = name + "_Combat", enableInstancing = true };
-        material.SetTexture("_BaseMap", AssetDatabase.LoadAssetAtPath<Texture>("Assets/Textures/Invader/" + name + ".png"));
-        material.SetColor("_BaseColor", Color.white);
-        material.SetFloat("_Smoothness", 0.25f);
-        material.SetFloat("_Cull", 0f);
-        AssetDatabase.CreateAsset(material, path);
+        if (material == null) throw new InvalidOperationException("Missing Stage 1 Kaiju material: " + path);
         return material;
     }
 

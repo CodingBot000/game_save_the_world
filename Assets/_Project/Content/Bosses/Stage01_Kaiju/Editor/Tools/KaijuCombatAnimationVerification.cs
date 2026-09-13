@@ -322,7 +322,7 @@ public static class KaijuCombatAnimationVerification
     }
 
     private static AnimationClip SweepClip(string suffix) => AssetDatabase.LoadAssetAtPath<AnimationClip>(
-        "Assets/Animation/Invader/Clips/Kaiju_" + suffix + ".anim");
+        "Assets/_Project/Content/Bosses/Stage01_Kaiju/Art/RigA/Animations/Kaiju_" + suffix + ".anim");
 
     private static void AddReviewRay(Transform root, Vector3 origin, Vector3 direction, Color color, float length)
     {
